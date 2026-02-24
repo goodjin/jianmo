@@ -167,6 +167,10 @@ function applyFormat(format: string): void {
     case 'quote':
       command = wrapIn(nodes.blockquote!);
       break;
+    case 'taskList':
+      // 任务列表通过 insertNode 处理，这里调用它
+      insertNode('taskList');
+      return;
     default:
       console.log('Unknown format:', format);
       return;
