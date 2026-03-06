@@ -108,6 +108,9 @@ const headingButtons = [
   { id: 'h1', icon: 'H1', label: 'Heading 1' },
   { id: 'h2', icon: 'H2', label: 'Heading 2' },
   { id: 'h3', icon: 'H3', label: 'Heading 3' },
+  { id: 'h4', icon: 'H4', label: 'Heading 4' },
+  { id: 'h5', icon: 'H5', label: 'Heading 5' },
+  { id: 'h6', icon: 'H6', label: 'Heading 6' },
 ];
 
 const formatButtons = [
@@ -115,6 +118,9 @@ const formatButtons = [
   { id: 'italic', icon: 'I', label: 'Italic' },
   { id: 'strike', icon: 'S', label: 'Strikethrough' },
   { id: 'code', icon: '</>', label: 'Inline Code' },
+  { id: 'highlight', icon: '🖍', label: 'Highlight' },
+  { id: 'subscript', icon: 'X₂', label: 'Subscript' },
+  { id: 'superscript', icon: 'X²', label: 'Superscript' },
 ];
 
 const listButtons = [
@@ -130,6 +136,7 @@ const insertButtons = [
   { id: 'codeBlock', icon: '{ }', label: 'Code Block' },
   { id: 'table', icon: '⊞', label: 'Table' },
   { id: 'hr', icon: '—', label: 'Horizontal Rule' },
+  { id: 'math', icon: '∑', label: 'Math Formula' },
 ];
 </script>
 

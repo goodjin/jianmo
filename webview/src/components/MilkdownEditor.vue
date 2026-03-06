@@ -9,8 +9,11 @@ import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
+import { math } from '@milkdown/plugin-math';
+import { highlight } from '@milkdown/plugin-highlight';
 import { callCommand } from '@milkdown/utils';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
+import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
 import type { ExtensionConfig } from '@types';
 
@@ -29,6 +32,8 @@ const editorRef = ref<HTMLElement | null>(null);
 let editor: Editor | null = null;
 let isInternalChange = false;
 let lastEmittedContent = '';
+let pendingUpdate: { content: string; cursorPos: number } | null = null;
+let updateTimeout: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(async () => {
   if (!editorRef.value) return;
@@ -48,6 +53,8 @@ onMounted(async () => {
       })
       .use(commonmark)
       .use(gfm)
+      .use(math)
+      .use(highlight)
       .use(listener)
       .use(history)
       .create();
@@ -69,19 +76,57 @@ onUnmounted(() => {
 watch(
   () => props.content,
   (newContent) => {
+    // 清除待处理的更新
+    if (updateTimeout) {
+      clearTimeout(updateTimeout);
+      updateTimeout = null;
+    }
+
     // 如果是刚刚发出的内容变更，忽略这次更新，避免光标跳动
     if (newContent === lastEmittedContent) {
       return;
     }
+
     if (editor && newContent !== getContent()) {
-      isInternalChange = true;
-      setContent(newContent);
-      setTimeout(() => {
-        isInternalChange = false;
-      }, 100);
+      // 使用防抖机制
+      pendingUpdate = { content: newContent, cursorPos: getCursorPosition() };
+      scheduleUpdate();
     }
   }
 );
+
+function scheduleUpdate(): void {
+  if (updateTimeout) {
+    clearTimeout(updateTimeout);
+  }
+
+  updateTimeout = setTimeout(() => {
+    if (pendingUpdate) {
+      isInternalChange = true;
+      setContent(pendingUpdate.content);
+
+      // 使用 requestAnimationFrame 确保在下一帧重置标志
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          isInternalChange = false;
+        });
+      });
+
+      pendingUpdate = null;
+    }
+  }, 50);
+}
+
+function getCursorPosition(): number {
+  if (!editor) return 0;
+  try {
+    const ctx = editor.ctx;
+    const editorView = ctx.get(editorViewCtx);
+    return editorView.state.selection.from;
+  } catch {
+    return 0;
+  }
+}
 
 function getContent(): string {
   if (!editor) return '';
@@ -117,10 +162,27 @@ function setContent(content: string): void {
       return;
     }
 
-    // 内容不同，执行更新
-    editorView.dispatch(
-      state.tr.replaceWith(0, state.doc.content.size, newDoc.content)
+    // 保存当前光标位置
+    const cursorPos = state.selection.from;
+    const docSize = oldDoc.content.size;
+
+    // 计算相对位置比例
+    const relativeRatio = docSize > 0 ? cursorPos / docSize : 0;
+
+    // 执行更新
+    const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
+
+    // 恢复光标位置
+    const newDocSize = tr.doc.content.size;
+    const newCursorPos = Math.min(
+      Math.round(relativeRatio * newDocSize),
+      newDocSize
     );
+
+    // 设置新的光标位置
+    tr.setSelection(TextSelection.create(tr.doc, newCursorPos, newCursorPos));
+
+    editorView.dispatch(tr);
   } catch (e) {
     console.error('Failed to set content:', e);
   }
@@ -149,6 +211,21 @@ function applyFormat(format: string): void {
     case 'code':
       command = toggleMark(marks.code_inline!);
       break;
+    case 'highlight':
+      if (marks.highlight) {
+        command = toggleMark(marks.highlight);
+      }
+      break;
+    case 'subscript':
+      if (marks.subscript) {
+        command = toggleMark(marks.subscript);
+      }
+      break;
+    case 'superscript':
+      if (marks.superscript) {
+        command = toggleMark(marks.superscript);
+      }
+      break;
     case 'h1':
       command = setBlockType(nodes.heading!, { level: 1 });
       break;
@@ -157,6 +234,15 @@ function applyFormat(format: string): void {
       break;
     case 'h3':
       command = setBlockType(nodes.heading!, { level: 3 });
+      break;
+    case 'h4':
+      command = setBlockType(nodes.heading!, { level: 4 });
+      break;
+    case 'h5':
+      command = setBlockType(nodes.heading!, { level: 5 });
+      break;
+    case 'h6':
+      command = setBlockType(nodes.heading!, { level: 6 });
       break;
     case 'bulletList':
       command = wrapIn(nodes.bullet_list!);
@@ -209,6 +295,9 @@ function insertNode(type: string): void {
       break;
     case 'taskList':
       insertMarkdown = '- [ ] 任务项\n';
+      break;
+    case 'math':
+      insertMarkdown = '\n$$\nE = mc^2\n$$\n';
       break;
     default:
       console.log('Unknown insert type:', type);
@@ -326,6 +415,60 @@ defineExpose({
   font-size: 1.4em;
   font-weight: 600;
   margin: 0.5em 0;
+}
+
+.milkdown-editor h4 {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin: 0.5em 0;
+}
+
+.milkdown-editor h5 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.5em 0;
+}
+
+.milkdown-editor h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0.5em 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 高亮样式 */
+.milkdown-editor mark {
+  background: rgba(255, 235, 59, 0.4);
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* 上下标样式 */
+.milkdown-editor sub,
+.milkdown-editor sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.milkdown-editor sup {
+  top: -0.5em;
+}
+
+.milkdown-editor sub {
+  bottom: -0.25em;
+}
+
+/* 数学公式样式 */
+.milkdown-editor .math-display {
+  overflow-x: auto;
+  padding: 1em 0;
+  text-align: center;
+}
+
+.milkdown-editor .math-inline {
+  display: inline;
 }
 
 .milkdown-editor p {

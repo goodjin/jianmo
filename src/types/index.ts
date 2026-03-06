@@ -61,12 +61,12 @@ export interface ExtensionConfig {
 // 消息类型
 export type ExtensionMessage =
   | { type: 'INIT'; payload: { content: string; config: ExtensionConfig } }
-  | { type: 'CONTENT_UPDATE'; payload: { content: string } }
+  | { type: 'CONTENT_UPDATE'; payload: { content: string; version?: number } }
   | { type: 'CONFIG_CHANGE'; payload: { config: Partial<ExtensionConfig> } }
   | { type: 'SWITCH_MODE'; payload: { mode: EditorMode } };
 
 export type WebViewMessage =
-  | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition } }
+  | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition; version?: number } }
   | { type: 'SAVE_IMAGE'; payload: { data: string; filename: string } }
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }

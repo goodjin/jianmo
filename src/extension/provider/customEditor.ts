@@ -5,6 +5,7 @@ import { registerWebview, unregisterWebview } from '../commands';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
+  private readonly documentVersions = new Map<string, number>();
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -78,10 +79,15 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       if (e.document.uri.toString() === uri) {
         const doc = this.documentStore.getDocument(uri);
         if (doc) {
+          // 更新版本号
+          const currentVersion = this.documentVersions.get(uri) || 0;
+          const newVersion = currentVersion + 1;
+          this.documentVersions.set(uri, newVersion);
+
           doc.content = e.document.getText();
           this.postMessage(uri, {
             type: 'CONTENT_UPDATE',
-            payload: { content: doc.content },
+            payload: { content: doc.content, version: newVersion },
           });
         }
       }
@@ -109,6 +115,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
 
       case 'CONTENT_CHANGE':
+        // 版本号检查，避免循环更新
+        const incomingVersion = message.payload.version;
+        const currentVersion = this.documentVersions.get(uri) || 0;
+
+        if (incomingVersion !== undefined && incomingVersion <= currentVersion) {
+          // 忽略旧版本的更新
+          break;
+        }
+
+        // 更新版本号
+        this.documentVersions.set(uri, incomingVersion ?? currentVersion + 1);
+
         this.documentStore.updateContent(uri, message.payload.content);
         // 同步到文件
         await this.saveDocument(uri, message.payload.content);

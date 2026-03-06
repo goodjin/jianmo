@@ -94,6 +94,11 @@
           "default": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           "description": "Editor font family"
         },
+        "mdEditor.editor.defaultForMarkdown": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use JianMo as the default editor for Markdown files"
+        },
         "mdEditor.export.pdf.format": {
           "type": "string",
           "default": "A4",

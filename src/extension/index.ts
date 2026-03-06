@@ -13,6 +13,29 @@ let configStore: ConfigurationStore | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Markdown Editor is now active');
 
+  // 首次激活提示：询问是否设为默认编辑器
+  if (!context.globalState.get('hasShownDefaultEditorPrompt')) {
+    const choice = await vscode.window.showInformationMessage(
+      '是否将简墨设置为 Markdown 文件的默认编辑器？',
+      '是',
+      '否'
+    );
+
+    if (choice === '是') {
+      try {
+        const config = vscode.workspace.getConfiguration('workbench');
+        const associations = config.get<Record<string, string>>('editorAssociations') || {};
+        associations['*.md'] = 'md-editor.preview';
+        await config.update('editorAssociations', associations, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage('已将简墨设置为 Markdown 文件的默认编辑器');
+      } catch (error) {
+        console.error('Failed to set default editor:', error);
+      }
+    }
+
+    await context.globalState.update('hasShownDefaultEditorPrompt', true);
+  }
+
   // 初始化配置
   configStore = new ConfigurationStore();
   const config = configStore.getConfig();
