@@ -261,6 +261,9 @@ function applyFormat(format: string): void {
       // 任务列表通过 insertNode 处理，这里调用它
       insertNode('taskList');
       return;
+    case 'clearFormat':
+      clearFormat();
+      return;
     default:
       console.log('Unknown format:', format);
       return;
@@ -367,6 +370,32 @@ function redo(): void {
     });
   } catch (e) {
     console.error('Failed to redo:', e);
+  }
+}
+
+function clearFormat(): void {
+  if (!editor) return;
+  try {
+    const ctx = editor.ctx;
+    const view = ctx.get(editorViewCtx);
+    const { state, dispatch } = view;
+    const { marks } = state.schema;
+    const { from, to } = state.selection;
+
+    // 移除所有行内格式标记
+    let tr = state.tr;
+    const markTypes = ['strong', 'em', 'strikethrough', 'code_inline', 'highlight', 'subscript', 'superscript'];
+
+    markTypes.forEach(markName => {
+      const markType = marks[markName];
+      if (markType) {
+        tr = tr.removeMark(from, to, markType);
+      }
+    });
+
+    dispatch(tr);
+  } catch (e) {
+    console.error('Failed to clear format:', e);
   }
 }
 

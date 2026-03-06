@@ -157,6 +157,7 @@ const formatButtons = [
   { id: 'highlight', icon: '🖍', label: 'Highlight' },
   { id: 'subscript', icon: 'X₂', label: 'Subscript' },
   { id: 'superscript', icon: 'X²', label: 'Superscript' },
+  { id: 'clearFormat', icon: '✕', label: 'Clear Format' },
 ];
 
 const listButtons = [
