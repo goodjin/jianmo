@@ -6,6 +6,8 @@
       @format="handleFormat"
       @insert="handleInsert"
       @toggle-mode="toggleMode"
+      @undo="handleUndo"
+      @redo="handleRedo"
     />
     <div class="editor-container">
       <!-- 源码模式 -->
@@ -148,6 +150,18 @@ function handleInsert(type: string) {
   }
 }
 
+function handleUndo() {
+  if (currentMode.value === 'preview') {
+    editorRef.value?.undo();
+  }
+}
+
+function handleRedo() {
+  if (currentMode.value === 'preview') {
+    editorRef.value?.redo();
+  }
+}
+
 function handleImageClick(src: string, images: string[], index: number) {
   sendMessage({
     type: 'OPEN_IMAGE_PREVIEW',
@@ -162,9 +176,55 @@ function handleImageContextMenu(src: string, x: number, y: number) {
   });
 }
 
+// Keyboard shortcuts
+function handleKeyDown(e: KeyboardEvent) {
+  // 只在预览模式下处理快捷键
+  if (currentMode.value !== 'preview') return;
+
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+  if (ctrlKey) {
+    switch (e.key.toLowerCase()) {
+      case 'b':
+        e.preventDefault();
+        editorRef.value?.applyFormat('bold');
+        break;
+      case 'i':
+        e.preventDefault();
+        editorRef.value?.applyFormat('italic');
+        break;
+      case 'k':
+        e.preventDefault();
+        if (e.shiftKey) {
+          editorRef.value?.insertNode('codeBlock');
+        } else {
+          editorRef.value?.insertNode('link');
+        }
+        break;
+      case 'm':
+        if (e.shiftKey) {
+          e.preventDefault();
+          editorRef.value?.insertNode('math');
+        }
+        break;
+      case 'z':
+        e.preventDefault();
+        if (e.shiftKey) {
+          editorRef.value?.redo();
+        } else {
+          editorRef.value?.undo();
+        }
+        break;
+    }
+  }
+
+}
+
 // Lifecycle
 onMounted(() => {
   window.addEventListener('message', handleMessage);
+  window.addEventListener('keydown', handleKeyDown);
   sendMessage({ type: 'READY' });
 
   // 监听系统主题变化
@@ -175,6 +235,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('message', handleMessage);
+  window.removeEventListener('keydown', handleKeyDown);
 });
 </script>
 

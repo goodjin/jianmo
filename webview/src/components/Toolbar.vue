@@ -24,6 +24,26 @@
 
     <div class="toolbar-divider"></div>
 
+    <!-- 撤销/重做 -->
+    <div class="toolbar-group">
+      <button
+        class="toolbar-btn"
+        title="Undo (Ctrl+Z)"
+        @click="$emit('undo')"
+      >
+        ↩
+      </button>
+      <button
+        class="toolbar-btn"
+        title="Redo (Ctrl+Y)"
+        @click="$emit('redo')"
+      >
+        ↪
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
     <!-- 标题 -->
     <div class="toolbar-group">
       <button
@@ -102,6 +122,8 @@ defineEmits<{
   (e: 'format', format: string): void;
   (e: 'insert', type: string): void;
   (e: 'toggle-mode'): void;
+  (e: 'undo'): void;
+  (e: 'redo'): void;
 }>();
 
 const headingButtons = [

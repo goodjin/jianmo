@@ -11,6 +11,8 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { math } from '@milkdown/plugin-math';
 import { highlight } from '@milkdown/plugin-highlight';
+import { prism } from '@milkdown/plugin-prism';
+import { diagram } from '@milkdown/plugin-diagram';
 import { callCommand } from '@milkdown/utils';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
@@ -55,6 +57,8 @@ onMounted(async () => {
       .use(gfm)
       .use(math)
       .use(highlight)
+      .use(prism)
+      .use(diagram)
       .use(listener)
       .use(history)
       .create();
@@ -337,11 +341,42 @@ function bindImageEvents(): void {
   });
 }
 
+function undo(): void {
+  if (!editor) return;
+  try {
+    const ctx = editor.ctx;
+    const editorView = ctx.get(editorViewCtx);
+    const { state, dispatch } = editorView;
+    // history 插件会自动注册 undo 命令
+    import('@milkdown/plugin-history').then(({ undo }) => {
+      undo(state, dispatch);
+    });
+  } catch (e) {
+    console.error('Failed to undo:', e);
+  }
+}
+
+function redo(): void {
+  if (!editor) return;
+  try {
+    const ctx = editor.ctx;
+    const editorView = ctx.get(editorViewCtx);
+    const { state, dispatch } = editorView;
+    import('@milkdown/plugin-history').then(({ redo }) => {
+      redo(state, dispatch);
+    });
+  } catch (e) {
+    console.error('Failed to redo:', e);
+  }
+}
+
 defineExpose({
   applyFormat,
   insertNode,
   getContent,
   setContent,
+  undo,
+  redo,
 });
 </script>
 
@@ -504,6 +539,71 @@ defineExpose({
 .milkdown-editor pre code {
   padding: 0;
   background: transparent;
+}
+
+/* 代码高亮样式 - Prism.js */
+.milkdown-editor code .token.comment,
+.milkdown-editor code .token.prolog,
+.milkdown-editor code .token.doctype,
+.milkdown-editor code .token.cdata {
+  color: var(--vscode-descriptionForeground);
+}
+
+.milkdown-editor code .token.punctuation {
+  color: var(--vscode-editor-foreground);
+}
+
+.milkdown-editor code .token.property,
+.milkdown-editor code .token.tag,
+.milkdown-editor code .token.boolean,
+.milkdown-editor code .token.number,
+.milkdown-editor code .token.constant,
+.milkdown-editor code .token.symbol {
+  color: #b5cea8;
+}
+
+.milkdown-editor code .token.selector,
+.milkdown-editor code .token.attr-name,
+.milkdown-editor code .token.string,
+.milkdown-editor code .token.char,
+.milkdown-editor code .token.builtin {
+  color: #ce9178;
+}
+
+.milkdown-editor code .token.operator,
+.milkdown-editor code .token.entity,
+.milkdown-editor code .token.url,
+.milkdown-editor code .language-css .token.string,
+.milkdown-editor code .style .token.string {
+  color: #d4d4d4;
+}
+
+.milkdown-editor code .token.atrule,
+.milkdown-editor code .token.attr-value,
+.milkdown-editor code .token.keyword {
+  color: #569cd6;
+}
+
+.milkdown-editor code .token.function,
+.milkdown-editor code .token.class-name {
+  color: #dcdcaa;
+}
+
+.milkdown-editor code .token.regex,
+.milkdown-editor code .token.important,
+.milkdown-editor code .token.variable {
+  color: #d16969;
+}
+
+/* Mermaid 图表样式 */
+.milkdown-editor .mermaid {
+  text-align: center;
+  padding: 1em 0;
+}
+
+.milkdown-editor .mermaid svg {
+  max-width: 100%;
+  height: auto;
 }
 
 .milkdown-editor blockquote {
