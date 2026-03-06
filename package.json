@@ -81,7 +81,11 @@
         "mdEditor.editor.theme": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "light", "dark"],
+          "enum": [
+            "auto",
+            "light",
+            "dark"
+          ],
           "description": "Editor theme"
         },
         "mdEditor.editor.fontSize": {
@@ -102,7 +106,12 @@
         "mdEditor.export.pdf.format": {
           "type": "string",
           "default": "A4",
-          "enum": ["A4", "A3", "Letter", "Legal"],
+          "enum": [
+            "A4",
+            "A3",
+            "Letter",
+            "Legal"
+          ],
           "description": "PDF page format"
         },
         "mdEditor.export.pdf.margin": {
@@ -147,26 +156,27 @@
     "@types/vscode": "^1.80.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.19.8",
     "eslint": "^8.55.0",
     "typescript": "^5.3.2",
-    "vitest": "^1.0.4",
-    "@vscode/vsce": "^2.22.0"
+    "vitest": "^1.0.4"
   },
   "dependencies": {
     "@milkdown/core": "^7.3.6",
-    "@milkdown/preset-commonmark": "^7.3.6",
-    "@milkdown/preset-gfm": "^7.3.6",
-    "@milkdown/plugin-listener": "^7.3.6",
     "@milkdown/plugin-history": "^7.3.6",
+    "@milkdown/plugin-listener": "^7.3.6",
     "@milkdown/plugin-math": "^7.3.6",
+    "@milkdown/plugin-table": "^5.3.1",
+    "@milkdown/preset-commonmark": "^7.3.6",
+    "@milkdown/preset-gfm": "^7.19.0",
     "@milkdown/vue": "^7.3.6",
+    "browser-image-compression": "^2.0.2",
     "katex": "^0.16.9",
     "marked": "^12.0.0",
     "mermaid": "^10.8.0",
     "shiki": "^1.0.0",
-    "viewerjs": "^1.11.6",
     "tui-image-editor": "^3.15.3",
-    "browser-image-compression": "^2.0.2"
+    "viewerjs": "^1.11.6"
   }
 }

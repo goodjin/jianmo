@@ -8,32 +8,66 @@
       @toggle-mode="toggleMode"
       @undo="handleUndo"
       @redo="handleRedo"
+      @find-replace="findReplaceVisible = true"
     />
-    <div class="editor-container">
-      <!-- 源码模式 -->
-      <div v-if="currentMode === 'source'" class="source-editor">
-        <textarea
-          ref="textareaRef"
-          v-model="sourceContent"
-          class="source-textarea"
-          @input="handleSourceChange"
-        ></textarea>
+    <!-- 字数统计 -->
+    <div class="word-count" v-if="editorReady">
+      <span>字数: {{ wordCount }}</span>
+      <span>字符: {{ charCount }}</span>
+      <span>行数: {{ lineCount }}</span>
+    </div>
+
+    <!-- 查找替换面板 -->
+    <FindReplacePanel
+      :visible="findReplaceVisible"
+      :content="content"
+      @close="findReplaceVisible = false"
+    />
+
+    <!-- 图片预览弹窗 -->
+    <ImagePreview
+      :visible="imagePreviewVisible"
+      :src="currentImageSrc"
+      :images="currentImages"
+      :index="currentImageIndex"
+      @close="imagePreviewVisible = false"
+    />
+
+    <div class="editor-main">
+      <div class="editor-container">
+        <!-- 源码模式 -->
+        <div v-if="currentMode === 'source'" class="source-editor">
+          <textarea
+            ref="textareaRef"
+            v-model="sourceContent"
+            class="source-textarea"
+            @input="handleSourceChange"
+          ></textarea>
+        </div>
+
+        <!-- 预览模式 -->
+        <MilkdownEditor
+          v-else-if="currentMode === 'preview' && editorReady"
+          ref="editorRef"
+          :content="content"
+          :config="config"
+          @change="handleChange"
+          @image-click="handleImageClick"
+          @image-context-menu="handleImageContextMenu"
+        />
+
+        <div v-if="!editorReady" class="loading">
+          <span>Loading editor...</span>
+        </div>
       </div>
 
-      <!-- 预览模式 -->
-      <MilkdownEditor
-        v-else-if="currentMode === 'preview' && editorReady"
-        ref="editorRef"
+      <!-- 大纲视图 -->
+      <OutlinePanel
+        v-if="currentMode === 'preview' && editorReady"
         :content="content"
-        :config="config"
-        @change="handleChange"
-        @image-click="handleImageClick"
-        @image-context-menu="handleImageContextMenu"
+        :current-mode="currentMode"
+        @jump="handleOutlineJump"
       />
-
-      <div v-if="!editorReady" class="loading">
-        <span>Loading editor...</span>
-      </div>
     </div>
   </div>
 </template>
@@ -42,6 +76,9 @@
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import MilkdownEditor from './components/MilkdownEditor.vue';
 import Toolbar from './components/Toolbar.vue';
+import OutlinePanel from './components/OutlinePanel.vue';
+import FindReplacePanel from './components/FindReplacePanel.vue';
+import ImagePreview from './components/ImagePreview.vue';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
 
 const vscode = (window as any).vscode;
@@ -54,6 +91,31 @@ const editorReady = ref(false);
 const currentMode = ref<EditorMode>('preview');
 const editorRef = ref<InstanceType<typeof MilkdownEditor> | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+// UI state
+const findReplaceVisible = ref(false);
+const imagePreviewVisible = ref(false);
+const currentImages = ref<string[]>([]);
+const currentImageIndex = ref(0);
+const currentImageSrc = ref('');
+
+// Word count
+const wordCount = computed(() => {
+  if (!content.value) return 0;
+  // Count Chinese characters and English words
+  const chineseChars = (content.value.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const englishWords = (content.value.match(/[a-zA-Z]+/g) || []).length;
+  return chineseChars + englishWords;
+});
+
+const charCount = computed(() => {
+  return content.value?.length || 0;
+});
+
+const lineCount = computed(() => {
+  if (!content.value) return 0;
+  return content.value.split('\n').length;
+});
 
 // Theme
 const isDark = computed(() => {
@@ -163,10 +225,10 @@ function handleRedo() {
 }
 
 function handleImageClick(src: string, images: string[], index: number) {
-  sendMessage({
-    type: 'OPEN_IMAGE_PREVIEW',
-    payload: { src, images, index },
-  });
+  currentImageSrc.value = src;
+  currentImages.value = images;
+  currentImageIndex.value = index;
+  imagePreviewVisible.value = true;
 }
 
 function handleImageContextMenu(src: string, x: number, y: number) {
@@ -174,6 +236,11 @@ function handleImageContextMenu(src: string, x: number, y: number) {
     type: 'OPEN_IMAGE_EDITOR',
     payload: { src },
   });
+}
+
+function handleOutlineJump(pos: number) {
+  // 大纲跳转暂不实现，需要编辑器支持
+  console.log('Jump to position:', pos);
 }
 
 // Keyboard shortcuts
@@ -219,6 +286,18 @@ function handleKeyDown(e: KeyboardEvent) {
     }
   }
 
+  // Tab 键缩进处理
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (currentMode.value === 'preview') {
+      if (e.shiftKey) {
+        editorRef.value?.applyFormat('outdent');
+      } else {
+        editorRef.value?.applyFormat('indent');
+      }
+    }
+  }
+
 }
 
 // Lifecycle
@@ -247,6 +326,12 @@ onUnmounted(() => {
   width: 100%;
   background: var(--vscode-editor-background);
   color: var(--vscode-editor-foreground);
+  overflow: hidden;
+}
+
+.editor-main {
+  flex: 1;
+  display: flex;
   overflow: hidden;
 }
 
@@ -292,5 +377,19 @@ onUnmounted(() => {
 
 .theme-dark {
   /* Dark theme specific styles */
+}
+
+.word-count {
+  display: flex;
+  gap: 16px;
+  padding: 6px 16px;
+  background: var(--vscode-editorWidget-background);
+  border-top: 1px solid var(--vscode-editorWidget-border);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.word-count span {
+  white-space: nowrap;
 }
 </style>

@@ -104,6 +104,19 @@
 
     <div class="toolbar-spacer"></div>
 
+    <!-- 查找替换 -->
+    <div class="toolbar-group">
+      <button
+        class="toolbar-btn"
+        title="Find and Replace (Ctrl+H)"
+        @click="$emit('find-replace')"
+      >
+        🔍
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
     <!-- 快捷键提示 -->
     <div class="toolbar-hint">
       <kbd>Cmd + \\</kbd> Toggle Mode
@@ -124,6 +137,7 @@ defineEmits<{
   (e: 'toggle-mode'): void;
   (e: 'undo'): void;
   (e: 'redo'): void;
+  (e: 'find-replace'): void;
 }>();
 
 const headingButtons = [
@@ -150,6 +164,8 @@ const listButtons = [
   { id: 'orderedList', icon: '1.', label: 'Ordered List' },
   { id: 'taskList', icon: '☐', label: 'Task List' },
   { id: 'quote', icon: '"', label: 'Quote' },
+  { id: 'indent', icon: '→', label: 'Indent' },
+  { id: 'outdent', icon: '←', label: 'Outdent' },
 ];
 
 const insertButtons = [
