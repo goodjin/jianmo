@@ -176,6 +176,7 @@ const insertButtons = [
   { id: 'table', icon: '⊞', label: 'Table' },
   { id: 'hr', icon: '—', label: 'Horizontal Rule' },
   { id: 'math', icon: '∑', label: 'Math Formula' },
+  { id: 'footnote', icon: '¹', label: 'Footnote' },
 ];
 </script>
 

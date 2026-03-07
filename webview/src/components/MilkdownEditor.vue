@@ -13,6 +13,7 @@ import { math } from '@milkdown/plugin-math';
 import { highlight } from '@milkdown/plugin-highlight';
 import { prism } from '@milkdown/plugin-prism';
 import { diagram } from '@milkdown/plugin-diagram';
+import { footnote } from '../plugins/footnote';
 import { callCommand } from '@milkdown/utils';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
@@ -59,6 +60,7 @@ onMounted(async () => {
       .use(highlight)
       .use(prism)
       .use(diagram)
+      .use(footnote)
       .use(listener)
       .use(history)
       .create();
@@ -305,6 +307,9 @@ function insertNode(type: string): void {
       break;
     case 'math':
       insertMarkdown = '\n$$\nE = mc^2\n$$\n';
+      break;
+    case 'footnote':
+      insertMarkdown = '[^1]\n\n[^1]: 脚注内容\n';
       break;
     default:
       console.log('Unknown insert type:', type);
