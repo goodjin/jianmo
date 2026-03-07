@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
 import type { DocumentStore } from '@core/documentStore';
 import type { ExtensionMessage } from '@types';
+import { exportToPdf } from '@core/export/pdfExport';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
@@ -63,16 +66,36 @@ export function registerCommands(
         return;
       }
 
+      // 选择保存位置
+      const defaultUri = vscode.Uri.file(
+        editor.document.fileName.replace(/\.md$/, '.pdf')
+      );
+      const saveUri = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: {
+          'PDF': ['pdf'],
+        },
+      });
+
+      if (!saveUri) return;
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Exporting to PDF...',
+          title: '导出 PDF...',
           cancellable: false,
         },
         async () => {
-          // TODO: 实现 PDF 导出
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          vscode.window.showInformationMessage('PDF export completed!');
+          try {
+            const content = editor.document.getText();
+            await exportToPdf(content, saveUri.fsPath, {
+              includeToc: true,
+              displayHeaderFooter: true,
+            });
+            vscode.window.showInformationMessage(`PDF 已导出: ${path.basename(saveUri.fsPath)}`);
+          } catch (error) {
+            vscode.window.showErrorMessage(`导出失败: ${error}`);
+          }
         }
       );
     }
