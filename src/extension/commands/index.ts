@@ -5,6 +5,7 @@ import type { ModeController } from '@core/modeController';
 import type { DocumentStore } from '@core/documentStore';
 import type { ExtensionMessage } from '@types';
 import { exportToPdf } from '@core/export/pdfExport';
+import { exportToHtml } from '@core/export/htmlExport';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
@@ -111,16 +112,38 @@ export function registerCommands(
         return;
       }
 
+      // 选择保存位置
+      const defaultUri = vscode.Uri.file(
+        editor.document.fileName.replace(/\.md$/, '.html')
+      );
+      const saveUri = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: {
+          'HTML': ['html'],
+        },
+      });
+
+      if (!saveUri) return;
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Exporting to HTML...',
+          title: '导出 HTML...',
           cancellable: false,
         },
         async () => {
-          // TODO: 实现 HTML 导出
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          vscode.window.showInformationMessage('HTML export completed!');
+          try {
+            const content = editor.document.getText();
+            // 从文件名前提取标题
+            const title = path.basename(editor.document.fileName, '.md');
+            await exportToHtml(content, saveUri.fsPath, {
+              includeToc: true,
+              title,
+            });
+            vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
+          } catch (error) {
+            vscode.window.showErrorMessage(`导出失败: ${error}`);
+          }
         }
       );
     }

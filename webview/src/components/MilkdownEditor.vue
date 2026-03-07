@@ -3,15 +3,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { math } from '@milkdown/plugin-math';
-import { highlight } from '@milkdown/plugin-highlight';
-import { prism } from '@milkdown/plugin-prism';
+// 使用 Shiki 替代 Prism 做代码高亮
+import { shikiHighlight } from '../plugins/shiki-highlight';
 import { diagram } from '@milkdown/plugin-diagram';
 import { footnote } from '../plugins/footnote';
 import { callCommand } from '@milkdown/utils';
@@ -19,6 +19,7 @@ import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
 import type { ExtensionConfig } from '@types';
+import mermaid from 'mermaid';
 
 const props = defineProps<{
   content: string;
@@ -57,8 +58,13 @@ onMounted(async () => {
       .use(commonmark)
       .use(gfm)
       .use(math)
-      .use(highlight)
-      .use(prism)
+      // 使用 Shiki 代码高亮
+      .use(shikiHighlight({
+        themes: {
+          light: 'github-light',
+          dark: 'github-dark',
+        },
+      }))
       .use(diagram)
       .use(footnote)
       .use(listener)
@@ -67,6 +73,9 @@ onMounted(async () => {
 
     // 绑定图片点击事件
     bindImageEvents();
+    
+    // 初始化 mermaid
+    initMermaid();
   } catch (error) {
     console.error('Failed to create Milkdown editor:', error);
   }
@@ -78,6 +87,82 @@ onUnmounted(() => {
     editor = null;
   }
 });
+
+// 初始化 mermaid
+function initMermaid(): void {
+  // 确定主题
+  let theme = 'default';
+  const config = props.config;
+  if (config?.editor?.theme === 'dark') {
+    theme = 'dark';
+  } else if (config?.editor?.theme === 'auto') {
+    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+  }
+  
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: theme,
+    securityLevel: 'loose',
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+    },
+    sequence: {
+      useMaxWidth: true,
+      diagramMarginX: 50,
+      diagramMarginY: 10,
+      actorMargin: 50,
+      boxMargin: 10,
+      boxTextMargin: 5,
+      noteMargin: 10,
+      messageMargin: 35,
+    },
+  });
+  
+  // 渲染已有的 mermaid 代码块
+  nextTick(() => {
+    renderMermaidBlocks();
+  });
+}
+
+// 渲染 mermaid 代码块
+async function renderMermaidBlocks(): Promise<void> {
+  if (!editorRef.value) return;
+  
+  // 查找所有 mermaid 代码块
+  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid, pre[class*="language-mermaid"]');
+  
+  for (const pre of codeBlocks) {
+    // 检查是否已经渲染过
+    if (pre.dataset.mermaidRendered === 'true') continue;
+    
+    const code = pre.querySelector('code');
+    if (!code) continue;
+    
+    const mermaidCode = code.textContent || '';
+    if (!mermaidCode.trim()) continue;
+    
+    try {
+      // 生成唯一 ID
+      const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // 使用 mermaid 渲染
+      const { svg } = await mermaid.render(id, mermaidCode);
+      
+      // 创建容器
+      const container = document.createElement('div');
+      container.className = 'mermaid';
+      container.innerHTML = svg;
+      
+      // 替换原来的 pre 元素
+      pre.parentNode?.replaceChild(container, pre);
+    } catch (error) {
+      console.error('Mermaid render error:', error);
+      // 保留原始代码块显示错误
+      pre.dataset.mermaidRendered = 'error';
+    }
+  }
+}
 
 watch(
   () => props.content,
@@ -189,6 +274,11 @@ function setContent(content: string): void {
     tr.setSelection(TextSelection.create(tr.doc, newCursorPos, newCursorPos));
 
     editorView.dispatch(tr);
+
+    // 渲染 mermaid 代码块
+    nextTick(() => {
+      renderMermaidBlocks();
+    });
   } catch (e) {
     console.error('Failed to set content:', e);
   }
@@ -575,7 +665,36 @@ defineExpose({
   background: transparent;
 }
 
-/* 代码高亮样式 - Prism.js */
+/* Shiki 代码高亮样式 */
+.milkdown-editor .shiki-wrapper {
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.milkdown-editor .shiki {
+  background: transparent !important;
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Shiki 颜色变量 - 亮色主题 */
+.milkdown-editor .shiki {
+  color: var(--vscode-editor-foreground);
+}
+
+/* 确保代码块有正确的背景 */
+.milkdown-editor pre[class*="language-"],
+.milkdown-editor code[class*="language-"] {
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 6px;
+}
+
+/* 保留 Prism 样式作为后备 */
 .milkdown-editor code .token.comment,
 .milkdown-editor code .token.prolog,
 .milkdown-editor code .token.doctype,

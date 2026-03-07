@@ -7,32 +7,30 @@
       </div>
 
       <div class="preview-body">
-        <img :src="currentSrc" class="preview-image" @click.stop />
-      </div>
-
-      <div class="preview-footer" v-if="images.length > 1">
-        <button
-          class="nav-btn"
-          :disabled="currentIndex === 0"
-          @click="prevImage"
-        >
-          ← 上一张
-        </button>
-        <span class="image-counter">{{ currentIndex + 1 }} / {{ images.length }}</span>
-        <button
-          class="nav-btn"
-          :disabled="currentIndex === images.length - 1"
-          @click="nextImage"
-        >
-          下一张 →
-        </button>
+        <img
+          ref="imageRef"
+          :src="src"
+          class="preview-image"
+          @click.stop
+        />
+        <!-- 隐藏的图片列表供 viewerjs 使用 -->
+        <div style="display: none;">
+          <img
+            v-for="(img, idx) in images"
+            :key="idx"
+            :src="img"
+            :data-index="idx"
+          />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onUnmounted, nextTick } from 'vue';
+import Viewer from 'viewerjs';
+import 'viewerjs/dist/viewer.css';
 
 const props = defineProps<{
   visible: boolean;
@@ -45,38 +43,66 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-const currentIndex = ref(props.index);
-const currentSrc = ref(props.src);
+const imageRef = ref<HTMLImageElement | null>(null);
+let viewer: Viewer | null = null;
 
-watch(() => props.visible, (visible) => {
+watch(() => props.visible, async (visible) => {
   if (visible) {
-    currentIndex.value = props.index;
-    currentSrc.value = props.src;
+    await nextTick();
+    initViewer();
+  } else {
+    destroyViewer();
   }
 });
 
-watch(() => props.index, (index) => {
-  currentIndex.value = index;
-  currentSrc.value = props.src;
+watch(() => props.index, () => {
+  if (viewer && props.images.length > 0) {
+    viewer.update();
+  }
 });
 
+function initViewer() {
+  if (!imageRef.value || viewer) return;
+
+  viewer = new Viewer(imageRef.value, {
+    hidden: () => {
+      emit('close');
+    },
+    zoomable: true,
+    rotatable: true,
+    scalable: true,
+    keyboard: true,
+    title: false,
+    initialViewIndex: props.index,
+    toolbar: {
+      zoomIn: true,
+      zoomOut: true,
+      reset: true,
+      rotateLeft: true,
+      rotateRight: true,
+      flipHorizontal: true,
+      flipVertical: true,
+      prev: props.images.length > 1,
+      next: props.images.length > 1,
+    },
+  });
+}
+
+function destroyViewer() {
+  if (viewer) {
+    viewer.destroy();
+    viewer = null;
+  }
+}
+
 function close() {
+  destroyViewer();
   emit('close');
 }
 
-function prevImage() {
-  if (currentIndex.value > 0) {
-    currentIndex.value--;
-    currentSrc.value = props.images[currentIndex.value];
-  }
-}
-
-function nextImage() {
-  if (currentIndex.value < props.images.length - 1) {
-    currentIndex.value++;
-    currentSrc.value = props.images[currentIndex.value];
-  }
-}
+onUnmounted(() => {
+  destroyViewer();
+});
 </script>
 
 <style scoped>
@@ -109,6 +135,7 @@ function nextImage() {
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
+  flex-shrink: 0;
 }
 
 .preview-title {
@@ -142,7 +169,8 @@ function nextImage() {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 400px;
 }
 
 .preview-image {
@@ -151,36 +179,25 @@ function nextImage() {
   object-fit: contain;
 }
 
-.preview-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-top: 1px solid var(--vscode-editorWidget-border);
+/* Viewer.js 样式覆盖 */
+:deep(.viewer-container) {
+  background: rgba(0, 0, 0, 0.9);
 }
 
-.nav-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  background: var(--vscode-editor-background);
+:deep(.viewer-toolbar) {
+  background: var(--vscode-editorWidget-background);
+}
+
+:deep(.viewer-button) {
+  background: var(--vscode-editorWidget-background);
   color: var(--vscode-foreground);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.15s;
 }
 
-.nav-btn:hover:not(:disabled) {
+:deep(.viewer-button:hover) {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
-.nav-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.image-counter {
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground);
+:deep(.viewer-title) {
+  color: var(--vscode-foreground);
 }
 </style>
