@@ -79,6 +79,7 @@ import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
+import { formatTablesInContent } from './utils/tableFormatter';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
 
 const vscode = (window as any).vscode;
@@ -91,6 +92,10 @@ const editorReady = ref(false);
 const currentMode = ref<EditorMode>('preview');
 const editorRef = ref<InstanceType<typeof MilkdownEditor> | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+// Table formatting debounce
+let tableFormatTimeout: ReturnType<typeof setTimeout> | null = null;
+const TABLE_FORMAT_DELAY = 500; // ms
 
 // UI state
 const findReplaceVisible = ref(false);
@@ -150,6 +155,11 @@ function handleMessage(event: MessageEvent) {
     case 'SWITCH_MODE':
       switchMode(message.payload.mode);
       break;
+      
+    case 'SAVE':
+      // VS Code 触发的保存，也需要更新 TOC
+      saveWithTocUpdate();
+      break;
   }
 }
 
@@ -193,10 +203,53 @@ function handleChange(newContent: string) {
 }
 
 function handleSourceChange() {
+  // Clear any pending table format
+  if (tableFormatTimeout) {
+    clearTimeout(tableFormatTimeout);
+  }
+  
+  // Debounce table formatting for better UX
+  tableFormatTimeout = setTimeout(() => {
+    const currentContent = sourceContent.value;
+    // Quick check if content has table potential
+    if (currentContent.includes('|')) {
+      const formatted = formatTablesInContent(currentContent);
+      if (formatted !== currentContent) {
+        // Save cursor position
+        const cursorPos = textareaRef.value?.selectionStart || 0;
+        sourceContent.value = formatted;
+        // Try to restore cursor position (approximate)
+        nextTick(() => {
+          if (textareaRef.value) {
+            textareaRef.value.setSelectionRange(cursorPos, cursorPos);
+          }
+        });
+      }
+    }
+  }, TABLE_FORMAT_DELAY);
+  
   content.value = sourceContent.value;
   sendMessage({
     type: 'CONTENT_CHANGE',
     payload: { content: sourceContent.value },
+  });
+}
+
+// 保存文件时自动更新 TOC
+function saveWithTocUpdate() {
+  // 检查并更新 TOC
+  if (editorRef.value?.hasToc(content.value)) {
+    editorRef.value.updateToc();
+    // 获取更新后的内容
+    const updatedContent = editorRef.value.getContent();
+    content.value = updatedContent;
+    sourceContent.value = updatedContent;
+  }
+  
+  // 发送保存消息
+  sendMessage({
+    type: 'SAVE',
+    payload: { content: content.value },
   });
 }
 
@@ -245,11 +298,18 @@ function handleOutlineJump(pos: number) {
 
 // Keyboard shortcuts
 function handleKeyDown(e: KeyboardEvent) {
-  // 只在预览模式下处理快捷键
-  if (currentMode.value !== 'preview') return;
-
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+  // Cmd/Ctrl + S: 保存并更新 TOC
+  if (ctrlKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    saveWithTocUpdate();
+    return;
+  }
+  
+  // 只在预览模式下处理其他快捷键
+  if (currentMode.value !== 'preview') return;
 
   if (ctrlKey) {
     switch (e.key.toLowerCase()) {

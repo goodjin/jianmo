@@ -175,6 +175,7 @@ const insertButtons = [
   { id: 'codeBlock', icon: '{ }', label: 'Code Block' },
   { id: 'table', icon: '⊞', label: 'Table' },
   { id: 'hr', icon: '—', label: 'Horizontal Rule' },
+  { id: 'toc', icon: '📋', label: 'Table of Contents' },
   { id: 'math', icon: '∑', label: 'Math Formula' },
   { id: 'footnote', icon: '¹', label: 'Footnote' },
 ];

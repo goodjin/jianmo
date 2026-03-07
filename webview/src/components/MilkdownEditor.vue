@@ -14,12 +14,17 @@ import { math } from '@milkdown/plugin-math';
 import { shikiHighlight } from '../plugins/shiki-highlight';
 import { diagram } from '@milkdown/plugin-diagram';
 import { footnote } from '../plugins/footnote';
+import { listEdit } from '../plugins/listEdit';
 import { callCommand } from '@milkdown/utils';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
 import type { ExtensionConfig } from '@types';
 import mermaid from 'mermaid';
+
+// TOC 标记
+const TOC_PLACEHOLDER = '<!-- TOC -->';
+const TOC_REGEX = /<!--\s*TOC\s*-->/gi;
 
 const props = defineProps<{
   content: string;
@@ -30,6 +35,7 @@ const emit = defineEmits<{
   (e: 'change', content: string): void;
   (e: 'image-click', src: string, images: string[], index: number): void;
   (e: 'image-context-menu', src: string, x: number, y: number): void;
+  (e: 'toc-click', headingId: string): void;
 }>();
 
 const editorRef = ref<HTMLElement | null>(null);
@@ -38,6 +44,122 @@ let isInternalChange = false;
 let lastEmittedContent = '';
 let pendingUpdate: { content: string; cursorPos: number } | null = null;
 let updateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// 提取 Markdown 标题生成目录
+interface TocItem {
+  level: number;
+  text: string;
+  id: string;
+}
+
+function extractHeadings(markdown: string): TocItem[] {
+  const headings: TocItem[] = [];
+  const lines = markdown.split('\n');
+  
+  for (const line of lines) {
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].trim();
+      // 生成标题 ID
+      const id = generateHeadingId(text);
+      headings.push({ level, text, id });
+    }
+  }
+  
+  return headings;
+}
+
+// 生成标题 ID
+function generateHeadingId(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '') // 移除特殊字符，保留中文
+    .replace(/\s+/g, '-') // 空格替换为连字符
+    .replace(/-+/g, '-') // 多个连字符合并
+    .replace(/^-|-$/g, ''); // 移除首尾连字符
+}
+
+// 生成 TOC Markdown
+function generateTocMarkdown(headings: TocItem[]): string {
+  if (headings.length === 0) {
+    return '';
+  }
+  
+  let toc = '\n## Table of Contents\n\n';
+  
+  for (const heading of headings) {
+    const indent = '  '.repeat(heading.level - 1);
+    toc += `${indent}- [${heading.text}](#${heading.id})\n`;
+  }
+  
+  return toc;
+}
+
+// 为 Markdown 标题添加 ID（用于跳转）
+function addIdsToHeadings(markdown: string): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  
+  for (const line of lines) {
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const hashes = match[1];
+      const text = match[2].trim();
+      
+      // 检查是否已有 ID 锚点
+      if (/\{#[^}]+\}$/.test(text)) {
+        // 已有 ID，保留
+        result.push(line);
+      } else {
+        // 添加 ID
+        const id = generateHeadingId(text);
+        result.push(`${hashes} ${text} {#${id}}`);
+      }
+    } else {
+      result.push(line);
+    }
+  }
+  
+  return result.join('\n');
+}
+
+// 跳转到的标题 ID
+function scrollToHeading(headingId: string): void {
+  if (!editorRef.value) return;
+  
+  // 查找具有对应 ID 的标题元素
+  const heading = editorRef.value.querySelector(`[id="${headingId}"]`) as HTMLElement;
+  
+  if (heading) {
+    heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 添加高亮效果
+    heading.classList.add('toc-highlight');
+    setTimeout(() => {
+      heading.classList.remove('toc-highlight');
+    }, 2000);
+  }
+}
+
+// 检查文档中是否已有 TOC
+function hasToc(markdown: string): boolean {
+  return TOC_REGEX.test(markdown);
+}
+
+// 更新文档中的 TOC
+function updateTocInContent(markdown: string): string {
+  const headings = extractHeadings(markdown);
+  
+  if (headings.length === 0) {
+    // 如果没有标题，移除 TOC 标记
+    return markdown.replace(TOC_REGEX, '').trim();
+  }
+  
+  const tocMarkdown = generateTocMarkdown(headings);
+  
+  // 替换 TOC 标记
+  return markdown.replace(TOC_REGEX, tocMarkdown);
+}
 
 onMounted(async () => {
   if (!editorRef.value) return;
@@ -67,6 +189,7 @@ onMounted(async () => {
       }))
       .use(diagram)
       .use(footnote)
+      .use(listEdit)
       .use(listener)
       .use(history)
       .create();
@@ -401,6 +524,10 @@ function insertNode(type: string): void {
     case 'footnote':
       insertMarkdown = '[^1]\n\n[^1]: 脚注内容\n';
       break;
+    case 'toc':
+      // 插入 TOC 标记
+      insertMarkdown = `\n${TOC_PLACEHOLDER}\n`;
+      break;
     default:
       console.log('Unknown insert type:', type);
       return;
@@ -420,6 +547,21 @@ function bindImageEvents(): void {
 
   editorRef.value.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
+    
+    // 检查是否是 TOC 链接
+    const anchor = target.closest('a');
+    if (anchor) {
+      const href = anchor.getAttribute('href') || '';
+      // 检查是否是标题锚点链接
+      if (href.startsWith('#')) {
+        e.preventDefault();
+        const headingId = href.substring(1);
+        emit('toc-click', headingId);
+        scrollToHeading(headingId);
+        return;
+      }
+    }
+    
     if (target.tagName === 'IMG') {
       const src = target.getAttribute('src') || '';
       const images = Array.from(editorRef.value?.querySelectorAll('img') || [])
@@ -501,6 +643,18 @@ defineExpose({
   setContent,
   undo,
   redo,
+  // TOC 相关功能
+  insertToc: () => insertNode('toc'),
+  updateToc: () => {
+    const content = getContent();
+    if (hasToc(content)) {
+      const updatedContent = updateTocInContent(content);
+      setContent(updatedContent);
+    }
+  },
+  hasToc,
+  extractHeadings,
+  scrollToHeading,
 });
 </script>
 
@@ -788,5 +942,22 @@ defineExpose({
 .milkdown-editor ol {
   padding-left: 2em;
   margin: 0.5em 0;
+}
+
+/* TOC 高亮样式 */
+.milkdown-editor .toc-highlight {
+  background: rgba(255, 235, 59, 0.4);
+  transition: background 0.3s ease;
+}
+
+/* TOC 链接样式 */
+.milkdown-editor .toc-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.milkdown-editor .toc-link:hover {
+  text-decoration: underline;
 }
 </style>
