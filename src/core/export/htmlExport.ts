@@ -103,6 +103,41 @@ function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOpt
   const codeBg = darkMode ? '#161b22' : '#f6f8fa';
   const borderColor = darkMode ? '#30363d' : '#d0d7de';
 
+  // 当 darkMode: false 时，添加 prefers-color-scheme: light 强制使用浅色
+  // 阻止系统深色偏好影响
+  const systemPreferenceMedia = darkMode
+    ? `@media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #0d1117;
+        --text-color: #c9d1d9;
+        --code-bg: #161b22;
+        --border-color: #30363d;
+        --link-color: #58a6ff;
+        --link-hover: #79b8ff;
+      }
+    }`
+    : `@media (prefers-color-scheme: light) {
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #24292e;
+        --code-bg: #f6f8fa;
+        --border-color: #d0d7de;
+        --link-color: #0969da;
+        --link-hover: #0550ae;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #ffffff !important;
+        --text-color: #24292e !important;
+        --code-bg: #f6f8fa !important;
+        --border-color: #d0d7de !important;
+        --link-color: #0969da !important;
+        --link-hover: #0550ae !important;
+      }
+    }`;
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -119,16 +154,7 @@ function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOpt
       --link-hover: #0550ae;
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-color: #0d1117;
-        --text-color: #c9d1d9;
-        --code-bg: #161b22;
-        --border-color: #30363d;
-        --link-color: #58a6ff;
-        --link-hover: #79b8ff;
-      }
-    }
+    ${systemPreferenceMedia}
 
     * {
       box-sizing: border-box;
