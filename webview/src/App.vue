@@ -462,6 +462,11 @@ function handleKeyDown(e: KeyboardEvent) {
 
 }
 
+// Theme change listener reference
+const themeChangeListener = () => {
+  // Trigger recompute
+};
+
 // Lifecycle
 onMounted(() => {
   window.addEventListener('message', handleMessage);
@@ -469,14 +474,19 @@ onMounted(() => {
   sendMessage({ type: 'READY' });
 
   // 监听系统主题变化
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    // 触发重新计算
-  });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChangeListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener('message', handleMessage);
   window.removeEventListener('keydown', handleKeyDown);
+  window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', themeChangeListener);
+  
+  // Clear table format timeout
+  if (tableFormatTimeout) {
+    clearTimeout(tableFormatTimeout);
+    tableFormatTimeout = null;
+  }
 });
 </script>
 
