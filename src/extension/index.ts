@@ -68,7 +68,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // 注册命令
-  registerCommands(context, modeController, documentStore);
+  registerCommands(context, modeController);
 
   // 监听配置变化
   context.subscriptions.push(
