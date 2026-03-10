@@ -8,6 +8,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
   private readonly documentVersions = new Map<string, number>();
   private changeDocumentListener: vscode.Disposable | null = null;
+  private changeDisposable: vscode.Disposable | null = null;
+  private _listeners: Set<(e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void> | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -76,7 +78,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     registerWebview(uri, webviewPanel.webview);
 
     // 监听文档变化
-    const changeDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
+    this.changeDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === uri) {
         const doc = this.documentStore.getDocument(uri);
         if (doc) {
@@ -93,6 +95,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         }
       }
     });
+    this.context.subscriptions.push(this.changeDisposable);
 
     // 监听 WebView 关闭 - 合并为一个监听器
     webviewPanel.onDidDispose(() => {
@@ -100,7 +103,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       unregisterWebview(uri);
       // 清理 documentVersions 防止内存泄漏
       this.documentVersions.delete(uri);
-      changeDisposable.dispose();
     });
   }
 
@@ -145,9 +147,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
 
       case 'OPEN_IMAGE_PREVIEW':
         // 处理图片预览 - 使用 VSCode 内置图片预览
-        if (message.payload?.imagePath) {
+        if (message.payload?.src) {
           const imageUri = vscode.Uri.parse(uri).with({
-            path: vscode.Uri.parse(uri).path.replace(/[^/]+$/, message.payload.imagePath),
+            path: vscode.Uri.parse(uri).path.replace(/[^/]+$/, message.payload.src),
           });
           await vscode.commands.executeCommand('vscode.openWith', imageUri, 'imagePreview.default');
         }
@@ -155,10 +157,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
 
       case 'OPEN_IMAGE_EDITOR':
         // 处理图片编辑 - 打开系统默认图片编辑器
-        if (message.payload?.imagePath) {
+        if (message.payload?.src) {
           const docUri = vscode.Uri.parse(uri);
           const imageUri = docUri.with({
-            path: docUri.path.replace(/[^/]+$/, message.payload.imagePath),
+            path: docUri.path.replace(/[^/]+$/, message.payload.src),
           });
           await vscode.commands.executeCommand('editor.action.openImageEditor', imageUri);
         }
@@ -441,7 +443,6 @@ ${html}
       };
     };
   }
-  private _listeners: Set<(e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void> | null = null;
 
   private getWebviewHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
@@ -548,5 +549,11 @@ ${html}
     // 清理 changeDocumentListener
     this.changeDocumentListener?.dispose();
     this.changeDocumentListener = null;
+    // 清理 changeDisposable
+    this.changeDisposable?.dispose();
+    this.changeDisposable = null;
+    // 清理 _listeners
+    this._listeners?.clear();
+    this._listeners = null;
   }
 }

@@ -76,6 +76,7 @@ export type ExtensionMessage =
 
 export type WebViewMessage =
   | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition; version?: number } }
+  | { type: 'SAVE'; payload: { content: string } }
   | { type: 'SAVE_IMAGE'; payload: { data: string; filename: string } }
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
