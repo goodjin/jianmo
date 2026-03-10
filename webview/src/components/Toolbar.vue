@@ -6,7 +6,7 @@
         class="toolbar-btn mode-btn"
         :class="{ active: mode === 'source' }"
         title="Source Mode"
-        @click="$emit('toggle-mode')"
+        @click="$emit('switch-mode', 'source')"
       >
         <span class="mode-icon">{ }</span>
         <span class="mode-label">Source</span>
@@ -15,7 +15,7 @@
         class="toolbar-btn mode-btn"
         :class="{ active: mode === 'preview' }"
         title="Preview Mode"
-        @click="$emit('toggle-mode')"
+        @click="$emit('switch-mode', 'preview')"
       >
         <span class="mode-icon">👁</span>
         <span class="mode-label">Preview</span>
@@ -134,7 +134,7 @@ defineProps<{
 defineEmits<{
   (e: 'format', format: string): void;
   (e: 'insert', type: string): void;
-  (e: 'toggle-mode'): void;
+  (e: 'switch-mode', mode: EditorMode): void;
   (e: 'undo'): void;
   (e: 'redo'): void;
   (e: 'find-replace'): void;

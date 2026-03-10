@@ -5,6 +5,7 @@ import type { EditorMode, SourceCursorPosition, PreviewScrollPosition } from '@t
 export class ModeController implements vscode.Disposable {
   private currentMode: EditorMode = 'source';
   private isTransitioning = false;
+  private toggleLock = false;
   private lastSwitchTime = 0;
   private readonly SWITCH_DEBOUNCE = 100; // ms
 
@@ -15,6 +16,19 @@ export class ModeController implements vscode.Disposable {
   public readonly onModeChange = this.onModeChangeEmitter.event;
 
   constructor(private readonly documentStore: DocumentStore) {}
+
+  /**
+   * 获取与当前文档关联的编辑器
+   */
+  private getEditorForDocument(): vscode.TextEditor | undefined {
+    const document = this.documentStore.getCurrentDocument();
+    if (!document) {
+      return undefined;
+    }
+    return vscode.window.visibleTextEditors.find(
+      (editor) => editor.document.uri.toString() === document.uri.toString()
+    );
+  }
 
   getCurrentMode(): EditorMode {
     return this.currentMode;
@@ -68,30 +82,52 @@ export class ModeController implements vscode.Disposable {
   }
 
   async toggle(): Promise<void> {
-    const targetMode = this.currentMode === 'source' ? 'preview' : 'source';
-    await this.switchTo(targetMode);
+    // 防止快速切换竞态条件
+    if (this.toggleLock) {
+      return;
+    }
+    this.toggleLock = true;
+
+    try {
+      const targetMode = this.currentMode === 'source' ? 'preview' : 'source';
+      await this.switchTo(targetMode);
+    } finally {
+      this.toggleLock = false;
+    }
   }
 
   private async saveCurrentState(): Promise<void> {
     if (this.currentMode === 'source') {
       // 保存源码模式光标位置
-      const editor = vscode.window.activeTextEditor;
+      const editor = this.getEditorForDocument();
       if (editor) {
         this.sourceCursor = {
           lineNumber: editor.selection.active.line,
           column: editor.selection.active.character,
         };
       }
-    } else {
-      // 预览模式的滚动位置由 WebView 保存
-      // 通过消息传递获取
+    } else if (this.currentMode === 'preview') {
+      // 保存预览模式滚动位置
+      // 滚动位置由 WebView 在切换前通过 setPreviewScroll 设置
+      // 如果没有预先设置，则从当前活动的 WebView 获取
+      if (!this.previewScroll) {
+        const document = this.documentStore.getCurrentDocument();
+        if (document) {
+          const webview = this.documentStore.getWebview(document.uri.toString());
+          if (webview) {
+            // 请求 WebView 当前滚动位置
+            // 这里假设 WebView 会响应消息并调用 setPreviewScroll
+            webview.postMessage({ type: 'getScrollPosition' });
+          }
+        }
+      }
     }
   }
 
   private async restoreState(): Promise<void> {
     if (this.currentMode === 'source' && this.sourceCursor) {
       // 恢复源码模式光标位置
-      const editor = vscode.window.activeTextEditor;
+      const editor = this.getEditorForDocument();
       if (editor) {
         const position = new vscode.Position(
           this.sourceCursor.lineNumber,
@@ -103,8 +139,20 @@ export class ModeController implements vscode.Disposable {
           vscode.TextEditorRevealType.InCenter
         );
       }
+    } else if (this.currentMode === 'preview' && this.previewScroll) {
+      // 恢复预览模式滚动位置
+      const document = this.documentStore.getCurrentDocument();
+      if (document) {
+        const webview = this.documentStore.getWebview(document.uri.toString());
+        if (webview) {
+          webview.postMessage({
+            type: 'setScrollPosition',
+            scrollTop: this.previewScroll.scrollTop,
+            scrollLeft: this.previewScroll.scrollLeft,
+          });
+        }
+      }
     }
-    // 预览模式的滚动位置由 WebView 恢复
   }
 
   setPreviewScroll(scroll: PreviewScrollPosition): void {
@@ -113,6 +161,10 @@ export class ModeController implements vscode.Disposable {
 
   getPreviewScroll(): PreviewScrollPosition | null {
     return this.previewScroll;
+  }
+
+  clearPreviewScroll(): void {
+    this.previewScroll = null;
   }
 
   setSourceCursor(cursor: SourceCursorPosition): void {

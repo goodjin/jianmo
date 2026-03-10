@@ -27,26 +27,35 @@ export interface ModeState {
   previewScroll?: PreviewScrollPosition;
 }
 
+// 数值范围约束类型
+type Range<T extends number, L extends number, H extends number> = T extends L ? T : T extends H ? T : number & { __brand: `Range_${L}_${H}` };
+
+// 配置数值约束
+type FontSize = Range<number, 8, 72>; // 8-72px
+type CompressThreshold = Range<number, 0, 100>; // 0-100%
+type CompressQuality = Range<number, 0, 100>; // 0-100%
+type MarginValue = Range<number, 0, 100>; // 0-100mm
+
 // 配置
 export interface EditorConfig {
   theme: 'auto' | 'light' | 'dark';
-  fontSize: number;
+  fontSize: FontSize;
   fontFamily: string;
 }
 
 export interface ImageConfig {
   saveDirectory: string;
-  compressThreshold: number;
-  compressQuality: number;
+  compressThreshold: CompressThreshold;
+  compressQuality: CompressQuality;
 }
 
 export interface PdfConfig {
   format: 'A4' | 'A3' | 'Letter' | 'Legal';
   margin: {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
+    top: MarginValue;
+    right: MarginValue;
+    bottom: MarginValue;
+    left: MarginValue;
   };
 }
 
@@ -71,12 +80,9 @@ export type WebViewMessage =
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' } }
-  | { type: 'READY' };
+  | { type: 'READY'; payload?: undefined };
 
-// 导出结果
-export interface ExportResult {
-  success: boolean;
-  filePath?: string;
-  error?: string;
-  size?: number;
-}
+// 导出结果 - 使用联合类型区分成功/失败
+export type ExportResult =
+  | { success: true; filePath: string; size: number; error?: undefined }
+  | { success: false; error: string; filePath?: undefined; size?: undefined };

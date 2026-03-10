@@ -22,8 +22,8 @@ function taskListInputRule(ctx: Ctx) {
     return null;
   }
   
-  // 匹配 - [ ] 或 * [ ] 或 - [x] 等
-  return new InputRule(/^[-*]\s\[\s?\]\s$/, (state, _match, start, end) => {
+  // 匹配 - [ ] 或 * [ ] 或 - [x] 等（修复：去掉 ] 后面的空格要求）
+  return new InputRule(/^[-*]\s\[\s?\]$/, (state, _match, start, end) => {
     const tr = state.tr;
     
     // 删除输入的内容（- [ ]）

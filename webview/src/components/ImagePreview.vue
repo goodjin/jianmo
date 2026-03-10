@@ -2,21 +2,15 @@
   <div class="image-preview-overlay" v-if="visible" @click="close">
     <div class="image-preview-container" @click.stop>
       <div class="preview-header">
-        <span class="preview-title">图片预览</span>
+        <span class="preview-title">图片预览 ({{ currentIndex + 1 }}/{{ allImages.length }})</span>
         <button class="close-btn" @click="close">×</button>
       </div>
 
       <div class="preview-body">
-        <img
-          ref="imageRef"
-          :src="src"
-          class="preview-image"
-          @click.stop
-        />
-        <!-- 隐藏的图片列表供 viewerjs 使用 -->
-        <div style="display: none;">
+        <!-- ViewerJS 容器：包含所有图片 -->
+        <div ref="viewerContainerRef" class="viewer-container">
           <img
-            v-for="(img, idx) in images"
+            v-for="(img, idx) in allImages"
             :key="idx"
             :src="img"
             :data-index="idx"
@@ -28,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import Viewer from 'viewerjs';
 import 'viewerjs/dist/viewer.css';
 
@@ -43,8 +37,28 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-const imageRef = ref<HTMLImageElement | null>(null);
+const viewerContainerRef = ref<HTMLDivElement | null>(null);
 let viewer: Viewer | null = null;
+
+// 合并 src 和 images，形成完整的图片列表
+const allImages = computed(() => {
+  const list = props.images.length > 0 ? [...props.images] : [];
+  // 如果 src 不在 images 中，添加到开头
+  if (props.src && !list.includes(props.src)) {
+    list.unshift(props.src);
+  }
+  return list;
+});
+
+// 计算当前显示的图片索引
+const currentIndex = computed(() => {
+  if (props.index !== undefined && props.index > 0) {
+    return props.index;
+  }
+  // 如果 src 在列表中，找不到则默认 0
+  const idx = allImages.value.indexOf(props.src);
+  return idx >= 0 ? idx : 0;
+});
 
 watch(() => props.visible, async (visible) => {
   if (visible) {
@@ -55,16 +69,35 @@ watch(() => props.visible, async (visible) => {
   }
 });
 
-watch(() => props.index, () => {
-  if (viewer && props.images.length > 0) {
+// 监听 src 变化，更新 viewer
+watch(() => props.src, () => {
+  if (viewer && props.visible) {
+    // 切换到对应的图片
     viewer.update();
+    viewer.view(currentIndex.value);
   }
 });
 
-function initViewer() {
-  if (!imageRef.value || viewer) return;
+// 监听 index 变化
+watch(() => props.index, () => {
+  if (viewer && props.visible) {
+    viewer.update();
+    viewer.view(currentIndex.value);
+  }
+});
 
-  viewer = new Viewer(imageRef.value, {
+// 监听 images 变化
+watch(() => props.images, () => {
+  if (viewer && props.visible) {
+    viewer.update();
+    viewer.view(currentIndex.value);
+  }
+}, { deep: true });
+
+function initViewer() {
+  if (!viewerContainerRef.value || viewer) return;
+
+  viewer = new Viewer(viewerContainerRef.value, {
     hidden: () => {
       emit('close');
     },
@@ -73,7 +106,7 @@ function initViewer() {
     scalable: true,
     keyboard: true,
     title: false,
-    initialViewIndex: props.index,
+    initialViewIndex: currentIndex.value,
     toolbar: {
       zoomIn: true,
       zoomOut: true,
@@ -82,8 +115,12 @@ function initViewer() {
       rotateRight: true,
       flipHorizontal: true,
       flipVertical: true,
-      prev: props.images.length > 1,
-      next: props.images.length > 1,
+      prev: allImages.value.length > 1,
+      next: allImages.value.length > 1,
+    },
+    ready() {
+      // 初始化完成后跳转到指定图片
+      viewer?.view(currentIndex.value);
     },
   });
 }
@@ -173,10 +210,8 @@ onUnmounted(() => {
   min-height: 400px;
 }
 
-.preview-image {
-  max-width: 100%;
-  max-height: 70vh;
-  object-fit: contain;
+.viewer-container {
+  display: none;
 }
 
 /* Viewer.js 样式覆盖 */

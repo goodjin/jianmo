@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
@@ -29,7 +29,30 @@ const TOC_REGEX = /<!--\s*TOC\s*-->/gi;
 const props = defineProps<{
   content: string;
   config: ExtensionConfig;
+  baseUrl?: string; // 用于解析相对图片路径
 }>();
+
+// 防御性 computed：为 config 提供默认值（优化：避免每次创建新对象）
+const defaultConfig = {
+  editor: {
+    fontFamily: 'SF Mono, Consolas, monospace',
+    fontSize: 14,
+    theme: 'light',
+    lineNumbers: false,
+    wordWrap: 'on',
+  }
+};
+
+const safeConfig = computed(() => {
+  if (!props.config) return defaultConfig;
+  // 合并默认值，避免创建新对象
+  return {
+    editor: {
+      ...defaultConfig.editor,
+      ...(props.config.editor || {}),
+    },
+  };
+});
 
 const emit = defineEmits<{
   (e: 'change', content: string): void;
@@ -215,7 +238,7 @@ onUnmounted(() => {
 function initMermaid(): void {
   // 确定主题
   let theme = 'default';
-  const config = props.config;
+  const config = safeConfig.value;
   if (config?.editor?.theme === 'dark') {
     theme = 'dark';
   } else if (config?.editor?.theme === 'auto') {
@@ -252,13 +275,12 @@ function initMermaid(): void {
 async function renderMermaidBlocks(): Promise<void> {
   if (!editorRef.value) return;
   
-  // 查找所有 mermaid 代码块
-  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid, pre[class*="language-mermaid"]');
+  // 只查找未渲染的 mermaid 代码块
+  // 注意：渲染后的 mermaid 会变成 div.mermaid，不再是 pre.language-mermaid
+  // 所以直接查询 pre.language-mermaid 即可，无需依赖 dataset 标记
+  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid');
   
   for (const pre of codeBlocks) {
-    // 检查是否已经渲染过
-    if (pre.dataset.mermaidRendered === 'true') continue;
-    
     const code = pre.querySelector('code');
     if (!code) continue;
     
@@ -275,13 +297,14 @@ async function renderMermaidBlocks(): Promise<void> {
       // 创建容器
       const container = document.createElement('div');
       container.className = 'mermaid';
+      container.dataset.mermaidRendered = 'true'; // 标记已渲染
       container.innerHTML = svg;
       
       // 替换原来的 pre 元素
       pre.parentNode?.replaceChild(container, pre);
     } catch (error) {
       console.error('Mermaid render error:', error);
-      // 保留原始代码块显示错误
+      // 标记渲染失败
       pre.dataset.mermaidRendered = 'error';
     }
   }
@@ -542,6 +565,30 @@ function insertNode(type: string): void {
   }
 }
 
+// 解析图片 URL（处理相对路径）
+function resolveImageUrl(src: string): string {
+  if (!src) return '';
+  
+  // 如果已经是绝对 URL，直接返回
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:') || src.startsWith('file://')) {
+    return src;
+  }
+  
+  // 使用 baseUrl 解析相对路径
+  const baseUrl = props.baseUrl || '';
+  if (baseUrl) {
+    return new URL(src, baseUrl).href;
+  }
+  
+  // 如果没有 baseUrl，但有 base 标签，使用 document.baseURI
+  if (document.baseURI) {
+    return new URL(src, document.baseURI).href;
+  }
+  
+  return src;
+}
+
+// 绑定图片和链接事件
 function bindImageEvents(): void {
   if (!editorRef.value) return;
 
@@ -564,10 +611,13 @@ function bindImageEvents(): void {
     
     if (target.tagName === 'IMG') {
       const src = target.getAttribute('src') || '';
+      // 解析相对路径为完整 URL
+      const resolvedSrc = resolveImageUrl(src);
+      
       const images = Array.from(editorRef.value?.querySelectorAll('img') || [])
-        .map((img) => img.getAttribute('src') || '');
-      const index = images.indexOf(src);
-      emit('image-click', src, images, index);
+        .map((img) => resolveImageUrl(img.getAttribute('src') || ''));
+      const index = images.indexOf(resolvedSrc);
+      emit('image-click', resolvedSrc, images, index);
     }
   });
 
@@ -576,7 +626,9 @@ function bindImageEvents(): void {
     if (target.tagName === 'IMG') {
       e.preventDefault();
       const src = target.getAttribute('src') || '';
-      emit('image-context-menu', src, e.clientX, e.clientY);
+      // 解析相对路径为完整 URL
+      const resolvedSrc = resolveImageUrl(src);
+      emit('image-context-menu', resolvedSrc, e.clientX, e.clientY);
     }
   });
 }
@@ -669,8 +721,8 @@ defineExpose({
 
 /* ProseMirror 编辑器样式 */
 .milkdown-editor .editor {
-  font-family: v-bind('config.editor.fontFamily');
-  font-size: v-bind('config.editor.fontSize * 1.5 + "px"');
+  font-family: v-bind('safeConfig.editor.fontFamily');
+  font-size: v-bind('safeConfig.editor.fontSize * 1.5 + "px"');
   line-height: 1.6;
   outline: none;
   min-height: 100%;

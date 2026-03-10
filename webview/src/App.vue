@@ -5,7 +5,7 @@
       :mode="currentMode"
       @format="handleFormat"
       @insert="handleInsert"
-      @toggle-mode="toggleMode"
+      @switch-mode="switchMode"
       @undo="handleUndo"
       @redo="handleRedo"
       @find-replace="findReplaceVisible = true"
@@ -22,6 +22,9 @@
       :visible="findReplaceVisible"
       :content="content"
       @close="findReplaceVisible = false"
+      @find="handleFind"
+      @replace="handleReplace"
+      @replace-all="handleReplaceAll"
     />
 
     <!-- 图片预览弹窗 -->
@@ -160,6 +163,10 @@ function handleMessage(event: MessageEvent) {
       // VS Code 触发的保存，也需要更新 TOC
       saveWithTocUpdate();
       break;
+
+    default:
+      // Unknown message type - ignore silently
+      break;
   }
 }
 
@@ -207,32 +214,45 @@ function handleSourceChange() {
   if (tableFormatTimeout) {
     clearTimeout(tableFormatTimeout);
   }
-  
-  // Debounce table formatting for better UX
+
+  // Immediately update content and notify (no debounce for content sync)
+  const currentInput = sourceContent.value;
+  content.value = currentInput;
+  sendMessage({
+    type: 'CONTENT_CHANGE',
+    payload: { content: currentInput },
+  });
+
+  // Debounce table formatting only - don't block content updates
   tableFormatTimeout = setTimeout(() => {
-    const currentContent = sourceContent.value;
     // Quick check if content has table potential
-    if (currentContent.includes('|')) {
-      const formatted = formatTablesInContent(currentContent);
-      if (formatted !== currentContent) {
-        // Save cursor position
+    if (currentInput.includes('|')) {
+      const formatted = formatTablesInContent(currentInput);
+      if (formatted !== currentInput) {
+        // Calculate cursor offset based on character difference
         const cursorPos = textareaRef.value?.selectionStart || 0;
+        const oldLength = currentInput.length;
+        const newLength = formatted.length;
+        const offset = newLength - oldLength;
+
+        // Update content with formatted result
         sourceContent.value = formatted;
-        // Try to restore cursor position (approximate)
+        content.value = formatted;
+        sendMessage({
+          type: 'CONTENT_CHANGE',
+          payload: { content: formatted },
+        });
+
+        // Restore cursor position with offset adjustment
         nextTick(() => {
           if (textareaRef.value) {
-            textareaRef.value.setSelectionRange(cursorPos, cursorPos);
+            const newPos = Math.min(cursorPos + offset, formatted.length);
+            textareaRef.value.setSelectionRange(newPos, newPos);
           }
         });
       }
     }
   }, TABLE_FORMAT_DELAY);
-  
-  content.value = sourceContent.value;
-  sendMessage({
-    type: 'CONTENT_CHANGE',
-    payload: { content: sourceContent.value },
-  });
 }
 
 // 保存文件时自动更新 TOC
@@ -240,41 +260,94 @@ function saveWithTocUpdate() {
   // 检查并更新 TOC
   if (editorRef.value?.hasToc(content.value)) {
     editorRef.value.updateToc();
-    // 获取更新后的内容
-    const updatedContent = editorRef.value.getContent();
-    content.value = updatedContent;
-    sourceContent.value = updatedContent;
   }
+  
+  // 直接使用 content.value，而不是 getContent()（可能返回过期数据）
+  const updatedContent = content.value;
+  sourceContent.value = updatedContent;
   
   // 发送保存消息
   sendMessage({
     type: 'SAVE',
-    payload: { content: content.value },
+    payload: { content: updatedContent },
   });
 }
 
 function handleFormat(format: string) {
-  if (currentMode.value === 'preview') {
+  if (currentMode.value === 'source') {
+    // 源码模式下，先切换到预览模式
+    switchMode('preview');
+    // 等待切换完成后执行
+    nextTick(() => {
+      editorRef.value?.applyFormat(format);
+    });
+  } else {
     editorRef.value?.applyFormat(format);
   }
 }
 
 function handleInsert(type: string) {
-  if (currentMode.value === 'preview') {
+  if (currentMode.value === 'source') {
+    // 源码模式下，先切换到预览模式
+    switchMode('preview');
+    // 等待切换完成后执行
+    nextTick(() => {
+      editorRef.value?.insertNode(type);
+    });
+  } else {
     editorRef.value?.insertNode(type);
   }
 }
 
 function handleUndo() {
-  if (currentMode.value === 'preview') {
+  if (currentMode.value === 'source') {
+    // 源码模式下，先切换到预览模式
+    switchMode('preview');
+    nextTick(() => {
+      editorRef.value?.undo();
+    });
+  } else {
     editorRef.value?.undo();
   }
 }
 
 function handleRedo() {
-  if (currentMode.value === 'preview') {
+  if (currentMode.value === 'source') {
+    // 源码模式下，先切换到预览模式
+    switchMode('preview');
+    nextTick(() => {
+      editorRef.value?.redo();
+    });
+  } else {
     editorRef.value?.redo();
   }
+}
+
+// 查找替换处理函数
+function handleFind(
+  text: string,
+  options: { caseSensitive: boolean; useRegex: boolean; direction: 'next' | 'prev' }
+) {
+  // TODO: 实现编辑器内查找高亮
+  console.log('Find:', text, options);
+}
+
+function handleReplace(
+  findText: string,
+  replaceText: string,
+  options: { caseSensitive: boolean; useRegex: boolean }
+) {
+  // TODO: 实现单处替换
+  console.log('Replace:', findText, '->', replaceText, options);
+}
+
+function handleReplaceAll(
+  findText: string,
+  replaceText: string,
+  options: { caseSensitive: boolean; useRegex: boolean }
+) {
+  // TODO: 实现全部替换
+  console.log('Replace All:', findText, '->', replaceText, options);
 }
 
 function handleImageClick(src: string, images: string[], index: number) {
@@ -292,8 +365,37 @@ function handleImageContextMenu(src: string, x: number, y: number) {
 }
 
 function handleOutlineJump(pos: number) {
-  // 大纲跳转暂不实现，需要编辑器支持
-  console.log('Jump to position:', pos);
+  if (currentMode.value === 'source') {
+    // 源码模式：跳转到文本位置
+    const lines = sourceContent.value.split('\n');
+    let charCount = 0;
+    let targetLine = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (charCount + lines[i].length >= pos) {
+        targetLine = i;
+        break;
+      }
+      charCount += lines[i].length + 1; // +1 for newline
+    }
+
+    nextTick(() => {
+      if (textareaRef.value) {
+        textareaRef.value.focus();
+        textareaRef.value.setSelectionRange(charCount, charCount);
+        // Scroll to line
+        const lineHeight = 1.6 * 21; // line-height * font-size
+        textareaRef.value.scrollTop = targetLine * lineHeight;
+      }
+    });
+  } else {
+    // 预览模式：通过编辑器跳转
+    if (editorRef.value?.scrollToHeading) {
+      editorRef.value.scrollToHeading(pos);
+    } else {
+      console.log('Jump to heading:', pos);
+    }
+  }
 }
 
 // Keyboard shortcuts
@@ -421,7 +523,7 @@ onUnmounted(() => {
   background: var(--vscode-editor-background);
   color: var(--vscode-editor-foreground);
   font-family: var(--vscode-editor-font-family, 'SF Mono', Consolas, monospace);
-  font-size: v-bind('(config?.editor.fontSize || 14) * 1.5 + "px"');
+  font-size: 21px;
   line-height: 1.6;
   tab-size: 2;
   box-sizing: border-box;

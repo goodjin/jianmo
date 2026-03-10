@@ -94,6 +94,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     });
 
     webviewPanel.onDidDispose(() => {
+      // 修复：清理 documentVersions 防止内存泄漏
+      this.documentVersions.delete(uri);
       changeDisposable.dispose();
     });
   }
@@ -158,9 +160,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
 
     if (editor) {
       const edit = new vscode.WorkspaceEdit();
+      // 修复：使用 content 的长度而不是编辑器当前内容的长度
       const fullRange = new vscode.Range(
         editor.document.positionAt(0),
-        editor.document.positionAt(editor.document.getText().length)
+        editor.document.positionAt(content.length)
       );
       edit.replace(docUri, fullRange, content);
       await vscode.workspace.applyEdit(edit);
@@ -305,7 +308,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       flex-direction: column;
     }
   </style>
-  <title>简墨 Markdown</title>
+  <title>Markly</title>
 </head>
 <body>
   <div id="app"></div>

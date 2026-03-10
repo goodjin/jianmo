@@ -1,9 +1,10 @@
 {
-  "name": "jianmo-markdown",
-  "displayName": "简墨",
-  "description": "简洁轻量，智能好用 - 为用户体验而生的 Markdown 编辑器",
+  "name": "markly",
+  "displayName": "Markly",
+  "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
   "version": "0.1.0",
   "publisher": "jianmo",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -11,36 +12,36 @@
     "Other"
   ],
   "activationEvents": [
-    "onCustomEditor:md-editor.preview",
+    "onCustomEditor:markly.preview",
     "onLanguage:markdown"
   ],
   "main": "./dist/extension/index.js",
   "contributes": {
     "commands": [
       {
-        "command": "mdEditor.toggleMode",
+        "command": "markly.toggleMode",
         "title": "Toggle Edit Mode",
         "icon": "$(refresh)"
       },
       {
-        "command": "mdEditor.export.pdf",
+        "command": "markly.export.pdf",
         "title": "Export as PDF",
         "icon": "$(file-pdf)"
       },
       {
-        "command": "mdEditor.export.html",
+        "command": "markly.export.html",
         "title": "Export as HTML",
         "icon": "$(file-code)"
       },
       {
-        "command": "mdEditor.export.image",
+        "command": "markly.export.image",
         "title": "Export as Image",
         "icon": "$(file-media)"
       }
     ],
     "keybindings": [
       {
-        "command": "mdEditor.toggleMode",
+        "command": "markly.toggleMode",
         "key": "cmd+\\",
         "mac": "cmd+\\",
         "when": "editorLangId == markdown"
@@ -49,36 +50,36 @@
     "menus": {
       "editor/title": [
         {
-          "command": "mdEditor.toggleMode",
+          "command": "markly.toggleMode",
           "group": "navigation@1",
           "when": "editorLangId == markdown"
         },
         {
-          "command": "mdEditor.export.pdf",
+          "command": "markly.export.pdf",
           "group": "navigation@2",
           "when": "editorLangId == markdown"
         }
       ]
     },
     "configuration": {
-      "title": "Markdown Editor",
+      "title": "Markly",
       "properties": {
-        "mdEditor.image.saveDirectory": {
+        "markly.image.saveDirectory": {
           "type": "string",
           "default": "./assets",
           "description": "Directory to save images (relative to document)"
         },
-        "mdEditor.image.compressThreshold": {
+        "markly.image.compressThreshold": {
           "type": "number",
           "default": 512000,
           "description": "Image compression threshold in bytes (500KB default)"
         },
-        "mdEditor.image.compressQuality": {
+        "markly.image.compressQuality": {
           "type": "number",
           "default": 0.8,
           "description": "Image compression quality (0-1)"
         },
-        "mdEditor.editor.theme": {
+        "markly.editor.theme": {
           "type": "string",
           "default": "auto",
           "enum": [
@@ -88,22 +89,22 @@
           ],
           "description": "Editor theme"
         },
-        "mdEditor.editor.fontSize": {
+        "markly.editor.fontSize": {
           "type": "number",
           "default": 14,
           "description": "Editor font size"
         },
-        "mdEditor.editor.fontFamily": {
+        "markly.editor.fontFamily": {
           "type": "string",
           "default": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           "description": "Editor font family"
         },
-        "mdEditor.editor.defaultForMarkdown": {
+        "markly.editor.defaultForMarkdown": {
           "type": "boolean",
           "default": true,
-          "description": "Use JianMo as the default editor for Markdown files"
+          "description": "Use Markly as the default editor for Markdown files"
         },
-        "mdEditor.export.pdf.format": {
+        "markly.export.pdf.format": {
           "type": "string",
           "default": "A4",
           "enum": [
@@ -114,7 +115,7 @@
           ],
           "description": "PDF page format"
         },
-        "mdEditor.export.pdf.margin": {
+        "markly.export.pdf.margin": {
           "type": "object",
           "default": {
             "top": 25,
@@ -128,8 +129,8 @@
     },
     "customEditors": [
       {
-        "viewType": "md-editor.preview",
-        "displayName": "Markdown Editor Preview",
+        "viewType": "markly.preview",
+        "displayName": "Markly Preview",
         "selector": [
           {
             "filenamePattern": "*.md"

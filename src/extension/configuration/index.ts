@@ -3,13 +3,20 @@ import type { ExtensionConfig } from '@types';
 
 export class ConfigurationStore implements vscode.Disposable {
   private config: ExtensionConfig;
+  private disposable: vscode.Disposable;
 
   constructor() {
     this.config = this.loadConfig();
+    
+    // 监听配置变化
+    this.disposable = vscode.workspace.onDidChangeConfiguration(() => {
+      this.reload();
+    });
   }
 
   getConfig(): ExtensionConfig {
-    return this.config;
+    // 返回深拷贝，防止外部修改内部状态
+    return JSON.parse(JSON.stringify(this.config));
   }
 
   reload(): void {
@@ -17,7 +24,7 @@ export class ConfigurationStore implements vscode.Disposable {
   }
 
   private loadConfig(): ExtensionConfig {
-    const vsConfig = vscode.workspace.getConfiguration('mdEditor');
+    const vsConfig = vscode.workspace.getConfiguration('markly');
 
     return {
       editor: {
@@ -45,6 +52,6 @@ export class ConfigurationStore implements vscode.Disposable {
   }
 
   dispose(): void {
-    // Cleanup if needed
+    this.disposable?.dispose();
   }
 }
