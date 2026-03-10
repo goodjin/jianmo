@@ -7,10 +7,18 @@ import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
 
 // 存储所有 WebView 的引用
-export const webviews = new Map<string, vscode.Webview>();
+const webviews = new Map<string, vscode.Webview>();
 
 export function registerWebview(uri: string, webview: vscode.Webview): void {
   webviews.set(uri, webview);
+}
+
+export function getWebview(uri: string): vscode.Webview | undefined {
+  return webviews.get(uri);
+}
+
+export function getAllWebviews(): Map<string, vscode.Webview> {
+  return webviews;
 }
 
 export function unregisterWebview(uri: string): void {

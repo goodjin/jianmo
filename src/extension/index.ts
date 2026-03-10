@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { ModeController } from '@core/modeController';
+import { ModeController, type WebviewProvider } from '@core/modeController';
 import { DocumentStore } from '@core/documentStore';
 import { ConfigurationStore } from './configuration';
 import { MarkdownEditorProvider } from './provider/customEditor';
-import { registerCommands } from './commands';
+import { registerCommands, getWebview } from './commands';
 import type { ExtensionConfig } from '@types';
 
 let modeController: ModeController | undefined;
@@ -49,8 +49,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 初始化文档存储
   documentStore = new DocumentStore();
 
+  // 创建 WebView provider
+  const webviewProvider: WebviewProvider = {
+    getWebview: (uri: string) => getWebview(uri),
+  };
+
   // 初始化模式控制器
-  modeController = new ModeController(documentStore);
+  modeController = new ModeController(documentStore, webviewProvider);
 
   // 注册自定义编辑器
   const provider = new MarkdownEditorProvider(context, documentStore, config);

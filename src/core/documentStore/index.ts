@@ -38,13 +38,20 @@ export class DocumentStore implements vscode.Disposable {
     
     // Wait for any existing lock to be released
     while (this.locks.has(normalizedUri)) {
-      await this.locks.get(normalizedUri);
+      const existingLock = this.locks.get(normalizedUri);
+      if (existingLock) {
+        await existingLock;
+      }
     }
     
     // Create a new lock (resolved when release is called)
     let releaseFn: () => void;
     const lockPromise = new Promise<void>((resolve) => {
-      releaseFn = resolve;
+      releaseFn = () => {
+        resolve();
+        // Delete the lock from the Map to prevent memory leak
+        this.locks.delete(normalizedUri);
+      };
     });
     
     this.locks.set(normalizedUri, lockPromise);

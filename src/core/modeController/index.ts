@@ -2,9 +2,15 @@ import * as vscode from 'vscode';
 import type { DocumentStore } from '../documentStore';
 import type { EditorMode, SourceCursorPosition, PreviewScrollPosition } from '@types';
 
-// 导入全局 webviews Map（由 commands/index.ts 注册）
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const webviews: Map<string, vscode.Webview> | undefined;
+// WebView 提供者接口
+export interface WebviewProvider {
+  getWebview(uri: string): vscode.Webview | undefined;
+}
+
+// 默认的 WebviewProvider 实现（返回 undefined）
+const defaultWebviewProvider: WebviewProvider = {
+  getWebview: () => undefined,
+};
 
 export class ModeController implements vscode.Disposable {
   private currentMode: EditorMode = 'source';
@@ -22,9 +28,25 @@ export class ModeController implements vscode.Disposable {
   private readonly onModeChangeEmitter = new vscode.EventEmitter<EditorMode>();
   public readonly onModeChange = this.onModeChangeEmitter.event;
 
-  constructor(private readonly documentStore: DocumentStore) {
+  // WebView provider（可选，用于获取 webview 实例）
+  private webviewProvider: WebviewProvider = defaultWebviewProvider;
+
+  constructor(
+    private readonly documentStore: DocumentStore,
+    webviewProvider?: WebviewProvider
+  ) {
+    if (webviewProvider) {
+      this.webviewProvider = webviewProvider;
+    }
     // 设置 WebView 消息监听器来处理 scroll position 响应
     this.setupWebviewMessageListener();
+  }
+
+  /**
+   * 设置 WebView provider（在 extension 初始化时调用）
+   */
+  setWebviewProvider(provider: WebviewProvider): void {
+    this.webviewProvider = provider;
   }
 
   /**
@@ -65,10 +87,10 @@ export class ModeController implements vscode.Disposable {
    */
   private getWebviewForCurrentDocument(): vscode.Webview | undefined {
     const uri = this.getCurrentDocumentUri();
-    if (!uri || typeof webviews === 'undefined') {
+    if (!uri) {
       return undefined;
     }
-    return webviews.get(uri);
+    return this.webviewProvider.getWebview(uri);
   }
 
   /**

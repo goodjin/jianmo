@@ -80,7 +80,10 @@ export type WebViewMessage =
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' } }
-  | { type: 'READY'; payload?: undefined };
+  | { type: 'READY'; payload?: undefined }
+  | { type: 'getScrollPosition'; requestId: string }
+  | { type: 'setScrollPosition'; scrollTop: number; scrollLeft: number }
+  | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
 
 // 导出结果 - 使用联合类型区分成功/失败
 export type ExportResult =
