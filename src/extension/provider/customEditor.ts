@@ -200,8 +200,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
    * 由 extension/index.ts 在收到消息时调用
    */
   public handleScrollPositionResponse(requestId: string, scrollTop: number, scrollLeft: number): void {
-    // 发送响应回 WebView
-    this.postMessage(requestId.split('-')[0], {
+    // requestId 就是 URI，直接使用
+    this.postMessage(requestId, {
       type: 'scrollPositionResponse',
       requestId,
       scrollTop,
