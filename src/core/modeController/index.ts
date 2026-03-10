@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import type { DocumentStore } from '../documentStore';
 import type { EditorMode, SourceCursorPosition, PreviewScrollPosition } from '@types';
 
+// 导入全局 webviews Map（由 commands/index.ts 注册）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const webviews: Map<string, vscode.Webview> | undefined;
+
 export class ModeController implements vscode.Disposable {
   private currentMode: EditorMode = 'source';
   private isTransitioning = false;
@@ -12,22 +16,111 @@ export class ModeController implements vscode.Disposable {
   private sourceCursor: SourceCursorPosition | null = null;
   private previewScroll: PreviewScrollPosition | null = null;
 
+  // 待处理的 scroll position 请求
+  private pendingScrollRequests = new Map<string, (position: PreviewScrollPosition) => void>();
+
   private readonly onModeChangeEmitter = new vscode.EventEmitter<EditorMode>();
   public readonly onModeChange = this.onModeChangeEmitter.event;
 
-  constructor(private readonly documentStore: DocumentStore) {}
+  constructor(private readonly documentStore: DocumentStore) {
+    // 设置 WebView 消息监听器来处理 scroll position 响应
+    this.setupWebviewMessageListener();
+  }
+
+  /**
+   * 设置 WebView 消息监听器
+   */
+  private setupWebviewMessageListener(): void {
+    vscode.workspace.onDidChangeTextDocument(() => {
+      // 监听文档变化（如果需要）
+    });
+  }
+
+  /**
+   * 获取当前活动的文本编辑器对应的文档 URI
+   */
+  private getCurrentDocumentUri(): string | undefined {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      return undefined;
+    }
+    return editor.document.uri.toString();
+  }
 
   /**
    * 获取与当前文档关联的编辑器
    */
   private getEditorForDocument(): vscode.TextEditor | undefined {
-    const document = this.documentStore.getCurrentDocument();
-    if (!document) {
+    const uri = this.getCurrentDocumentUri();
+    if (!uri) {
       return undefined;
     }
     return vscode.window.visibleTextEditors.find(
-      (editor) => editor.document.uri.toString() === document.uri.toString()
+      (editor) => editor.document.uri.toString() === uri
     );
+  }
+
+  /**
+   * 获取当前文档的 WebView
+   */
+  private getWebviewForCurrentDocument(): vscode.Webview | undefined {
+    const uri = this.getCurrentDocumentUri();
+    if (!uri || typeof webviews === 'undefined') {
+      return undefined;
+    }
+    return webviews.get(uri);
+  }
+
+  /**
+   * 请求 WebView 的滚动位置（返回 Promise）
+   */
+  private requestScrollPosition(): Promise<PreviewScrollPosition> {
+    return new Promise((resolve) => {
+      const uri = this.getCurrentDocumentUri();
+      if (!uri) {
+        resolve({ scrollTop: 0, scrollLeft: 0 });
+        return;
+      }
+
+      // 生成唯一请求 ID
+      const requestId = `${uri}-${Date.now()}`;
+      
+      // 设置超时
+      const timeout = setTimeout(() => {
+        this.pendingScrollRequests.delete(requestId);
+        resolve({ scrollTop: 0, scrollLeft: 0 });
+      }, 2000);
+
+      // 存储待处理的回调
+      this.pendingScrollRequests.set(requestId, (position) => {
+        clearTimeout(timeout);
+        this.pendingScrollRequests.delete(requestId);
+        resolve(position);
+      });
+
+      // 发送请求到 WebView
+      const webview = this.getWebviewForCurrentDocument();
+      if (webview) {
+        webview.postMessage({ 
+          type: 'getScrollPosition', 
+          requestId 
+        } as { type: string; requestId: string });
+      } else {
+        clearTimeout(timeout);
+        this.pendingScrollRequests.delete(requestId);
+        resolve({ scrollTop: 0, scrollLeft: 0 });
+      }
+    });
+  }
+
+  /**
+   * 处理 WebView 发来的滚动位置响应
+   */
+  public handleScrollPositionResponse(requestId: string, position: PreviewScrollPosition): void {
+    const callback = this.pendingScrollRequests.get(requestId);
+    if (callback) {
+      callback(position);
+    }
   }
 
   getCurrentMode(): EditorMode {
@@ -123,15 +216,8 @@ export class ModeController implements vscode.Disposable {
       // 滚动位置由 WebView 在切换前通过 setPreviewScroll 设置
       // 如果没有预先设置，则从当前活动的 WebView 获取
       if (!this.previewScroll) {
-        const document = this.documentStore.getCurrentDocument();
-        if (document) {
-          const webview = this.documentStore.getWebview(document.uri.toString());
-          if (webview) {
-            // 请求 WebView 当前滚动位置
-            // 这里假设 WebView 会响应消息并调用 setPreviewScroll
-            webview.postMessage({ type: 'getScrollPosition' });
-          }
-        }
+        // 使用 Promise 等待 WebView 响应
+        this.previewScroll = await this.requestScrollPosition();
       }
     }
   }
@@ -153,16 +239,13 @@ export class ModeController implements vscode.Disposable {
       }
     } else if (this.currentMode === 'preview' && this.previewScroll) {
       // 恢复预览模式滚动位置
-      const document = this.documentStore.getCurrentDocument();
-      if (document) {
-        const webview = this.documentStore.getWebview(document.uri.toString());
-        if (webview) {
-          webview.postMessage({
-            type: 'setScrollPosition',
-            scrollTop: this.previewScroll.scrollTop,
-            scrollLeft: this.previewScroll.scrollLeft,
-          });
-        }
+      const webview = this.getWebviewForCurrentDocument();
+      if (webview) {
+        webview.postMessage({
+          type: 'setScrollPosition',
+          scrollTop: this.previewScroll.scrollTop,
+          scrollLeft: this.previewScroll.scrollLeft,
+        });
       }
     }
   }
