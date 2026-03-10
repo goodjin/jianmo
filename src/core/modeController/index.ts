@@ -31,6 +31,9 @@ export class ModeController implements vscode.Disposable {
   // WebView provider（可选，用于获取 webview 实例）
   private webviewProvider: WebviewProvider = defaultWebviewProvider;
 
+  // WebView 消息处理器
+  private webviewMessageHandler: ((message: any) => void) | null = null;
+
   constructor(
     private readonly documentStore: DocumentStore,
     webviewProvider?: WebviewProvider
@@ -50,12 +53,52 @@ export class ModeController implements vscode.Disposable {
   }
 
   /**
+   * 注册 WebView 消息处理器
+   * 在创建 WebviewPanel 或 WebviewView 后调用此方法
+   * @param handler 处理 WebView 消息的回调函数
+   */
+  setWebviewMessageHandler(handler: (message: any) => void): void {
+    this.webviewMessageHandler = handler;
+  }
+
+  /**
    * 设置 WebView 消息监听器
+   * 初始化消息处理（实际的消息接收由 setWebviewMessageHandler 设置的处理器完成）
    */
   private setupWebviewMessageListener(): void {
-    vscode.workspace.onDidChangeTextDocument(() => {
-      // 监听文档变化（如果需要）
-    });
+    console.log('[ModeController] WebView message listener initialized');
+  }
+
+  /**
+   * 处理从 WebView 收到的消息
+   * 由外部注册的 handler 调用
+   */
+  private handleWebviewMessage(message: any): void {
+    if (!message || !message.type) {
+      return;
+    }
+
+    switch (message.type) {
+      case 'scrollPositionResponse':
+        // 处理滚动位置响应
+        this.handleScrollPositionResponse(message.requestId, {
+          scrollTop: message.scrollTop || 0,
+          scrollLeft: message.scrollLeft || 0,
+        });
+        break;
+      // 可以添加其他消息类型的处理
+      default:
+        console.log(`[ModeController] Unknown message type: ${message.type}`);
+    }
+  }
+
+  /**
+   * 派发从 WebView 收到的消息
+   * 在 WebviewPanel/WebviewView 的 onDidReceiveMessage 回调中调用
+   * @param message 从 WebView 收到的消息
+   */
+  public dispatchWebviewMessage(message: any): void {
+    this.handleWebviewMessage(message);
   }
 
   /**
