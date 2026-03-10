@@ -68,6 +68,10 @@ let lastEmittedContent = '';
 let pendingUpdate: { content: string; cursorPos: number } | null = null;
 let updateTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// 图片事件处理函数引用（用于清理）
+let imageClickHandler: ((e: MouseEvent) => void) | null = null;
+let imageContextMenuHandler: ((e: MouseEvent) => void) | null = null;
+
 // 提取 Markdown 标题生成目录
 interface TocItem {
   level: number;
@@ -228,6 +232,15 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  // 清除 updateTimeout
+  if (updateTimeout) {
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  }
+  
+  // 移除图片事件监听器
+  unbindImageEvents();
+  
   if (editor) {
     editor.destroy();
     editor = null;
@@ -592,7 +605,8 @@ function resolveImageUrl(src: string): string {
 function bindImageEvents(): void {
   if (!editorRef.value) return;
 
-  editorRef.value.addEventListener('click', (e) => {
+  // 创建事件处理函数并保存引用
+  imageClickHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     
     // 检查是否是 TOC 链接
@@ -619,9 +633,9 @@ function bindImageEvents(): void {
       const index = images.indexOf(resolvedSrc);
       emit('image-click', resolvedSrc, images, index);
     }
-  });
+  };
 
-  editorRef.value.addEventListener('contextmenu', (e) => {
+  imageContextMenuHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
       e.preventDefault();
@@ -630,7 +644,24 @@ function bindImageEvents(): void {
       const resolvedSrc = resolveImageUrl(src);
       emit('image-context-menu', resolvedSrc, e.clientX, e.clientY);
     }
-  });
+  };
+
+  editorRef.value.addEventListener('click', imageClickHandler);
+  editorRef.value.addEventListener('contextmenu', imageContextMenuHandler);
+}
+
+// 移除图片事件监听
+function unbindImageEvents(): void {
+  if (editorRef.value) {
+    if (imageClickHandler) {
+      editorRef.value.removeEventListener('click', imageClickHandler);
+      imageClickHandler = null;
+    }
+    if (imageContextMenuHandler) {
+      editorRef.value.removeEventListener('contextmenu', imageContextMenuHandler);
+      imageContextMenuHandler = null;
+    }
+  }
 }
 
 function undo(): void {
