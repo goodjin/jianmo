@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { DocumentStore } from '@core/documentStore';
 import type { ExtensionConfig, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
+import { exportToPdf } from '@core/export/pdfExport';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -163,6 +164,22 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         }
         break;
 
+      case 'SAVE':
+        // 处理保存 - 保存当前文档内容
+        if (message.payload?.content !== undefined) {
+          await this.saveDocument(uri, message.payload.content);
+          // 更新版本号
+          const newVersion = (this.documentVersions.get(uri) || 0) + 1;
+          this.documentVersions.set(uri, newVersion);
+          this.documentStore.updateContent(uri, message.payload.content);
+          // 通知 WebView 保存完成
+          this.postMessage(uri, {
+            type: 'SAVE_SUCCESS',
+            payload: { version: newVersion },
+          });
+        }
+        break;
+
       case 'EXPORT':
         // 处理导出 - 导出为不同格式
         await this.exportDocument(uri, message.payload);
@@ -256,8 +273,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     if (payload.format === 'html') {
       content = this.markdownToHtml(doc.content);
     } else if (payload.format === 'pdf') {
-      // PDF 导出使用 vscode.commands.executeCommand
-      await vscode.commands.executeCommand('markdown.exportPdf', docUri);
+      // PDF 导出使用项目自己的 exportToPdf 函数
+      await exportToPdf(doc.content, saveUri.fsPath, {
+        includeToc: true,
+        displayHeaderFooter: true,
+      });
+      vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
       return;
     }
 
