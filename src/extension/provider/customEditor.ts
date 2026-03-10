@@ -6,6 +6,7 @@ import { registerWebview, unregisterWebview } from '../commands';
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
   private readonly documentVersions = new Map<string, number>();
+  private changeDocumentListener: vscode.Disposable | null = null;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -70,12 +71,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       this.context.subscriptions
     );
 
-    // 监听 WebView 关闭
-    webviewPanel.onDidDispose(() => {
-      this.webviews.delete(uri);
-      unregisterWebview(uri);
-    });
-
     // 注册 WebView 到命令系统
     registerWebview(uri, webviewPanel.webview);
 
@@ -98,8 +93,11 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       }
     });
 
+    // 监听 WebView 关闭 - 合并为一个监听器
     webviewPanel.onDidDispose(() => {
-      // 修复：清理 documentVersions 防止内存泄漏
+      this.webviews.delete(uri);
+      unregisterWebview(uri);
+      // 清理 documentVersions 防止内存泄漏
       this.documentVersions.delete(uri);
       changeDisposable.dispose();
     });
@@ -389,8 +387,9 @@ ${html}
   }
 
   get onDidChangeCustomDocument(): vscode.Event<vscode.CustomDocumentEditEvent<vscode.CustomDocument>> {
-    return (listener: (e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void) => {
-      const subscription = vscode.workspace.onDidChangeTextDocument((e) => {
+    // 使用缓存避免重复创建监听器
+    if (!this.changeDocumentListener) {
+      this.changeDocumentListener = vscode.workspace.onDidChangeTextDocument((e) => {
         const uri = e.document.uri.toString();
         const doc = this.documentStore.getDocument(uri);
         if (doc) {
@@ -398,16 +397,30 @@ ${html}
           this.documentVersions.set(uri, newVersion);
           // 创建自定义文档事件
           const customDoc = { uri: e.document.uri, dispose: () => {} };
-          listener({
-            document: customDoc,
-            undo: () => {},
-            redo: () => {},
+          // 通知所有订阅者
+          this._listeners?.forEach((listener) => {
+            listener({
+              document: customDoc,
+              undo: () => {},
+              redo: () => {},
+            });
           });
         }
       });
-      return subscription;
+    }
+    return (listener: (e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void) => {
+      if (!this._listeners) {
+        this._listeners = new Set();
+      }
+      this._listeners.add(listener);
+      return {
+        dispose: () => {
+          this._listeners?.delete(listener);
+        },
+      };
     };
   }
+  private _listeners: Set<(e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void> | null = null;
 
   private getWebviewHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
@@ -509,5 +522,10 @@ ${html}
   dispose(): void {
     this.webviews.forEach((webview) => webview.dispose());
     this.webviews.clear();
+    // 清理 documentVersions
+    this.documentVersions.clear();
+    // 清理 changeDocumentListener
+    this.changeDocumentListener?.dispose();
+    this.changeDocumentListener = null;
   }
 }
