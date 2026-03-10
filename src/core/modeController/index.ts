@@ -43,6 +43,11 @@ export class ModeController implements vscode.Disposable {
   }
 
   async switchTo(mode: EditorMode): Promise<void> {
+    // 输入验证
+    if (mode !== 'source' && mode !== 'preview') {
+      throw new Error(`Invalid mode: ${mode}. Expected 'source' or 'preview'.`);
+    }
+
     if (this.currentMode === mode) {
       return;
     }
@@ -61,12 +66,14 @@ export class ModeController implements vscode.Disposable {
     this.isTransitioning = true;
     this.lastSwitchTime = now;
 
+    // 保存当前模式以便失败时恢复
+    const previousMode = this.currentMode;
+
     try {
       // 保存当前模式状态
       await this.saveCurrentState();
 
       // 切换模式
-      const previousMode = this.currentMode;
       this.currentMode = mode;
 
       // 恢复目标模式状态
@@ -76,6 +83,11 @@ export class ModeController implements vscode.Disposable {
       this.onModeChangeEmitter.fire(mode);
 
       console.log(`Mode switched: ${previousMode} -> ${mode}`);
+    } catch (error) {
+      // 切换失败，恢复到之前的状态
+      console.error(`Mode switch failed: ${previousMode} -> ${mode}`, error);
+      this.currentMode = previousMode;
+      throw error;
     } finally {
       this.isTransitioning = false;
     }
