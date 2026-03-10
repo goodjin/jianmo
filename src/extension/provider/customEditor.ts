@@ -10,7 +10,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly documentStore: DocumentStore,
-    private readonly config: ExtensionConfig
+    private config: ExtensionConfig
   ) {}
 
   async openCustomDocument(
@@ -21,16 +21,21 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     const content = await vscode.workspace.fs.readFile(uri);
     const text = Buffer.from(content).toString('utf-8');
 
+    // 初始化版本号
+    const initialVersion = openContext.backupId ? parseInt(openContext.backupId, 10) : 1;
+    this.documentVersions.set(uri.toString(), initialVersion);
+
     this.documentStore.setDocument(uri.toString(), {
       uri: uri.toString(),
       content: text,
-      version: 0,
+      version: initialVersion,
       isDirty: false,
     });
 
     return {
       uri,
       dispose: () => {
+        this.documentVersions.delete(uri.toString());
         this.documentStore.deleteDocument(uri.toString());
       },
     };
@@ -106,12 +111,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   ): Promise<void> {
     switch (message.type) {
       case 'READY':
-        // WebView 准备就绪，发送初始内容
+        // WebView 准备就绪，发送初始内容（包括版本号）
         const doc = this.documentStore.getDocument(uri);
+        const version = this.documentVersions.get(uri) || 1;
         if (doc) {
           this.postMessage(uri, {
             type: 'INIT',
-            payload: { content: doc.content, config: this.config },
+            payload: { content: doc.content, config: this.config, version },
           });
         }
         break;
@@ -139,35 +145,37 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
 
       case 'OPEN_IMAGE_PREVIEW':
-        // 处理图片预览
+        // 处理图片预览 - 使用 VSCode 内置图片预览
+        if (message.payload?.imagePath) {
+          const imageUri = vscode.Uri.parse(uri).with({
+            path: vscode.Uri.parse(uri).path.replace(/[^/]+$/, message.payload.imagePath),
+          });
+          await vscode.commands.executeCommand('vscode.openWith', imageUri, 'imagePreview.default');
+        }
         break;
 
       case 'OPEN_IMAGE_EDITOR':
-        // 处理图片编辑
+        // 处理图片编辑 - 打开系统默认图片编辑器
+        if (message.payload?.imagePath) {
+          const docUri = vscode.Uri.parse(uri);
+          const imageUri = docUri.with({
+            path: docUri.path.replace(/[^/]+$/, message.payload.imagePath),
+          });
+          await vscode.commands.executeCommand('editor.action.openImageEditor', imageUri);
+        }
         break;
 
       case 'EXPORT':
-        // 处理导出
+        // 处理导出 - 导出为不同格式
+        await this.exportDocument(uri, message.payload);
         break;
     }
   }
 
   private async saveDocument(uri: string, content: string): Promise<void> {
     const docUri = vscode.Uri.parse(uri);
-    const editor = vscode.window.visibleTextEditors.find(
-      (e) => e.document.uri.toString() === uri
-    );
-
-    if (editor) {
-      const edit = new vscode.WorkspaceEdit();
-      // 修复：使用 content 的长度而不是编辑器当前内容的长度
-      const fullRange = new vscode.Range(
-        editor.document.positionAt(0),
-        editor.document.positionAt(content.length)
-      );
-      edit.replace(docUri, fullRange, content);
-      await vscode.workspace.applyEdit(edit);
-    }
+    const buffer = Buffer.from(content, 'utf-8');
+    await vscode.workspace.fs.writeFile(docUri, buffer);
   }
 
   private async saveImage(
@@ -203,6 +211,86 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     }
   }
 
+  private async exportDocument(uri: string, payload: any): Promise<void> {
+    if (!payload?.format) {
+      return;
+    }
+
+    const docUri = vscode.Uri.parse(uri);
+    const doc = this.documentStore.getDocument(uri);
+    if (!doc) {
+      return;
+    }
+
+    // 显示保存对话框
+    const defaultName = docUri.fsPath.replace(/\.\w+$/, `.${payload.format}`);
+    const saveUri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.parse(defaultName),
+      filters: this.getExportFilters(payload.format),
+    });
+
+    if (!saveUri) {
+      return;
+    }
+
+    // 转换内容到目标格式
+    let content = doc.content;
+    if (payload.format === 'html') {
+      content = this.markdownToHtml(doc.content);
+    } else if (payload.format === 'pdf') {
+      // PDF 导出使用 vscode.commands.executeCommand
+      await vscode.commands.executeCommand('markdown.exportPdf', docUri);
+      return;
+    }
+
+    // 写入文件
+    const buffer = Buffer.from(content, 'utf-8');
+    await vscode.workspace.fs.writeFile(saveUri, buffer);
+  }
+
+  private getExportFilters(format: string): { [key: string]: string[] } {
+    const filters: { [key: string]: string[] } = {
+      markdown: ['md', 'markdown'],
+      html: ['html'],
+      pdf: ['pdf'],
+      json: ['json'],
+    };
+    return { [format.toUpperCase()]: filters[format] || ['*'] };
+  }
+
+  private markdownToHtml(markdown: string): string {
+    // 简单的 Markdown 到 HTML 转换
+    // 实际项目中可以使用 marked 或其他库
+    let html = markdown
+      // 标题
+      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+      // 粗体
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // 斜体
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      // 代码
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // 链接
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      // 图片
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+      // 换行
+      .replace(/\n/g, '<br>');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Exported</title>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+  }
+
   postMessage(uri: string, message: ExtensionMessage): void {
     const webview = this.webviews.get(uri);
     if (webview) {
@@ -218,6 +306,87 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         payload: { config },
       });
     });
+  }
+
+  // VSCode CustomEditorProvider 接口实现
+  async saveCustomDocument(
+    document: vscode.CustomDocument,
+    cancellation: vscode.CancellationToken
+  ): Promise<void> {
+    const uri = document.uri.toString();
+    const doc = this.documentStore.getDocument(uri);
+    if (doc) {
+      await this.saveDocument(uri, doc.content);
+    }
+  }
+
+  async saveCustomDocumentAs(
+    document: vscode.CustomDocument,
+    destination: vscode.Uri,
+    cancellation: vscode.CancellationToken
+  ): Promise<void> {
+    const uri = document.uri.toString();
+    const doc = this.documentStore.getDocument(uri);
+    if (doc) {
+      const buffer = Buffer.from(doc.content, 'utf-8');
+      await vscode.workspace.fs.writeFile(destination, buffer);
+    }
+  }
+
+  async revertCustomDocument(
+    document: vscode.CustomDocument,
+    cancellation: vscode.CancellationToken
+  ): Promise<void> {
+    const uri = document.uri.toString();
+    const content = await vscode.workspace.fs.readFile(document.uri);
+    const text = Buffer.from(content).toString('utf-8');
+    this.documentStore.updateContent(uri, text);
+    const version = (this.documentVersions.get(uri) || 0) + 1;
+    this.documentVersions.set(uri, version);
+    this.postMessage(uri, {
+      type: 'CONTENT_UPDATE',
+      payload: { content: text, version },
+    });
+  }
+
+  async backupCustomDocument(
+    document: vscode.CustomDocument,
+    context: vscode.CustomDocumentBackupContext,
+    cancellation: vscode.CancellationToken
+  ): Promise<vscode.CustomDocumentBackup> {
+    const uri = document.uri.toString();
+    const doc = this.documentStore.getDocument(uri);
+    if (doc) {
+      const buffer = Buffer.from(doc.content, 'utf-8');
+      await vscode.workspace.fs.writeFile(context.destination, buffer);
+    }
+    return {
+      id: (this.documentVersions.get(uri) || 1).toString(),
+      delete: async () => {
+        // 备份由 VSCode 管理
+      },
+    };
+  }
+
+  get onDidChangeCustomDocument(): vscode.Event<vscode.CustomDocumentEditEvent<vscode.CustomDocument>> {
+    return (listener: (e: vscode.CustomDocumentEditEvent<vscode.CustomDocument>) => void) => {
+      const subscription = vscode.workspace.onDidChangeTextDocument((e) => {
+        const uri = e.document.uri.toString();
+        const doc = this.documentStore.getDocument(uri);
+        if (doc) {
+          const newVersion = (this.documentVersions.get(uri) || 0) + 1;
+          this.documentVersions.set(uri, newVersion);
+          // 创建自定义文档事件
+          const customDoc = { uri: e.document.uri, dispose: () => {} };
+          listener({
+            document: customDoc,
+            undo: () => {},
+            redo: () => {},
+          });
+        }
+      });
+      return subscription;
+    };
   }
 
   private getWebviewHtml(webview: vscode.Webview): string {

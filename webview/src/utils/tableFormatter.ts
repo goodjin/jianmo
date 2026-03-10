@@ -77,8 +77,13 @@ function formatTable(tableLines: string[]): string[] {
   const rows = tableLines.map(line => {
     // Remove leading/trailing | and split
     const cells = line.trim().split('|').filter((_, i, arr) => {
-      // Keep empty strings for empty cells
-      return i > 0 && i < arr.length - 1 || arr[i].trim() !== '';
+      // Skip first and last elements (they are the leading/trailing | separators)
+      // Only keep them if they have actual content (handles tables without outer |)
+      if (i === 0 || i === arr.length - 1) {
+        return arr[i].trim() !== '';
+      }
+      // Keep all middle cells (including empty ones) to preserve column structure
+      return true;
     });
     return cells.map(cell => cell.trim());
   });
