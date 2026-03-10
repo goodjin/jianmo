@@ -169,7 +169,27 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         // 处理导出 - 导出为不同格式
         await this.exportDocument(uri, message.payload);
         break;
+
+      case 'getScrollPosition':
+        // 处理获取滚动位置的请求
+        // WebView 会在另一侧处理此消息并返回响应
+        // 这里不需要特殊处理，因为响应会通过 scrollPositionResponse 发送
+        break;
     }
+  }
+
+  /**
+   * 处理来自 WebView 的滚动位置响应
+   * 由 extension/index.ts 在收到消息时调用
+   */
+  public handleScrollPositionResponse(requestId: string, scrollTop: number, scrollLeft: number): void {
+    // 发送响应回 WebView
+    this.postMessage(requestId.split('-')[0], {
+      type: 'scrollPositionResponse',
+      requestId,
+      scrollTop,
+      scrollLeft,
+    });
   }
 
   private async saveDocument(uri: string, content: string): Promise<void> {

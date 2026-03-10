@@ -30,6 +30,18 @@ const defaultOptions: PdfExportOptions = {
   includeToc: true,
 };
 
+// HTML 转义函数，防止 XSS
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
 export async function exportToPdf(
   markdownContent: string,
   outputPath: string,
@@ -95,7 +107,7 @@ function generateToc(markdown: string): string {
   let tocHtml = '<div class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${h.text}</a></li>`;
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
   }
   tocHtml += '</ul></div><div class="page-break"></div>';
 
@@ -115,7 +127,7 @@ async function markdownToHtml(markdown: string): Promise<string> {
   // 添加锚点到标题（使用统一函数生成锚点）
   return html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
     const anchor = generateAnchor(text);
-    return `<h${level} id="${anchor}">${text}</h${level}>`;
+    return `<h${level} id="${anchor}">${escapeHtml(text)}</h${level}>`;
   });
 }
 
