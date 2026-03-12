@@ -16,6 +16,7 @@ import { diagram } from '@milkdown/plugin-diagram';
 import { footnote } from '../plugins/footnote';
 import { listEdit } from '../plugins/listEdit';
 import { callCommand } from '@milkdown/utils';
+import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
@@ -667,13 +668,7 @@ function unbindImageEvents(): void {
 function undo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const editorView = ctx.get(editorViewCtx);
-    const { state, dispatch } = editorView;
-    // history 插件会自动注册 undo 命令
-    import('@milkdown/plugin-history').then(({ undo }) => {
-      undo(state, dispatch);
-    });
+    callCommand(undoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to undo:', e);
   }
@@ -682,12 +677,7 @@ function undo(): void {
 function redo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const editorView = ctx.get(editorViewCtx);
-    const { state, dispatch } = editorView;
-    import('@milkdown/plugin-history').then(({ redo }) => {
-      redo(state, dispatch);
-    });
+    callCommand(redoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to redo:', e);
   }
