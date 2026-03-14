@@ -152,6 +152,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "test:vscode": "node node_modules/@vscode/test-electron/out/cli.js",
     "lint": "eslint src --ext .ts,.tsx",
     "package": "vsce package"
   },
