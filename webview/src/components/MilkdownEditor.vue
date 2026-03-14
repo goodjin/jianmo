@@ -18,6 +18,7 @@ import { listEdit } from '../plugins/listEdit';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
+import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
 import type { ExtensionConfig } from '../../src/types';
@@ -522,6 +523,18 @@ function applyFormat(format: string): void {
       // 任务列表通过 insertNode 处理，这里调用它
       insertNode('taskList');
       return;
+    case 'indent':
+      // 缩进：使用 sinkListItem
+      if (nodes.list_item) {
+        command = sinkListItem(nodes.list_item);
+      }
+      break;
+    case 'outdent':
+      // 取消缩进：使用 liftListItem
+      if (nodes.list_item) {
+        command = liftListItem(nodes.list_item);
+      }
+      break;
     case 'clearFormat':
       clearFormat();
       return;
