@@ -84,7 +84,7 @@ function validateConfig(config: ExtensionConfig): ValidationResult {
   const marginKeys: (keyof typeof margin)[] = ['top', 'right', 'bottom', 'left'];
   for (const key of marginKeys) {
     if (typeof margin[key] !== 'number' || margin[key] < 0 || margin[key] > 100) {
-      errors.push(`export.pdf.margin.${key} 必须在 0-100 之间，当前值: ${margin[key]}`);
+      errors.push(`export.pdf.margin.${String(key)} 必须在 0-100 之间，当前值: ${margin[key]}`);
     }
   }
 

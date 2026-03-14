@@ -100,6 +100,33 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 let tableFormatTimeout: ReturnType<typeof setTimeout> | null = null;
 const TABLE_FORMAT_DELAY = 500; // ms
 
+// 等待编辑器准备好的辅助函数
+function waitForEditorReady(): Promise<void> {
+  return new Promise((resolve) => {
+    // 如果编辑器已经准备好，立即解决
+    if (editorReady.value && editorRef.value?.getContent !== undefined) {
+      resolve();
+      return;
+    }
+    
+    // 否则等待一小段时间让编辑器完成初始化
+    // 使用轮询方式，最多等待 2 秒
+    let attempts = 0;
+    const maxAttempts = 20;
+    const interval = setInterval(() => {
+      attempts++;
+      if (editorReady.value && editorRef.value?.getContent !== undefined) {
+        clearInterval(interval);
+        resolve();
+      } else if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        console.warn('waitForEditorReady: timeout, editor may not be ready');
+        resolve();
+      }
+    }, 100);
+  });
+}
+
 // UI state
 const findReplaceVisible = ref(false);
 const imagePreviewVisible = ref(false);
@@ -277,8 +304,8 @@ function handleFormat(format: string) {
   if (currentMode.value === 'source') {
     // 源码模式下，先切换到预览模式
     switchMode('preview');
-    // 等待切换完成后执行
-    nextTick(() => {
+    // 等待 Milkdown 编辑器完全初始化后再执行格式操作
+    waitForEditorReady().then(() => {
       editorRef.value?.applyFormat(format);
     });
   } else {
@@ -290,8 +317,8 @@ function handleInsert(type: string) {
   if (currentMode.value === 'source') {
     // 源码模式下，先切换到预览模式
     switchMode('preview');
-    // 等待切换完成后执行
-    nextTick(() => {
+    // 等待 Milkdown 编辑器完全初始化后再执行插入操作
+    waitForEditorReady().then(() => {
       editorRef.value?.insertNode(type);
     });
   } else {
@@ -303,7 +330,7 @@ function handleUndo() {
   if (currentMode.value === 'source') {
     // 源码模式下，先切换到预览模式
     switchMode('preview');
-    nextTick(() => {
+    waitForEditorReady().then(() => {
       editorRef.value?.undo();
     });
   } else {
@@ -315,7 +342,7 @@ function handleRedo() {
   if (currentMode.value === 'source') {
     // 源码模式下，先切换到预览模式
     switchMode('preview');
-    nextTick(() => {
+    waitForEditorReady().then(() => {
       editorRef.value?.redo();
     });
   } else {

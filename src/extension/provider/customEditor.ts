@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { DocumentStore } from '@core/documentStore';
+import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
@@ -14,7 +15,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly documentStore: DocumentStore,
-    private config: ExtensionConfig
+    private config: ExtensionConfig,
+    private readonly modeController: ModeController
   ) {}
 
   async openCustomDocument(
@@ -193,6 +195,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         // 这里不需要特殊处理，因为响应会通过 scrollPositionResponse 发送
         break;
     }
+
+    // 转发消息给 ModeController 处理模式相关逻辑
+    this.modeController.dispatchWebviewMessage(message);
   }
 
   /**

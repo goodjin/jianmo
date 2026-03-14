@@ -20,7 +20,7 @@ import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
-import type { ExtensionConfig } from '@types';
+import type { ExtensionConfig } from '../../src/types';
 import mermaid from 'mermaid';
 
 // TOC 标记
@@ -279,9 +279,12 @@ function initMermaid(): void {
     },
   });
   
-  // 渲染已有的 mermaid 代码块
+  // 延迟渲染 mermaid 代码块，确保 DOM 已准备好
+  // 使用双 nextTick 确保编辑器 DOM 完全渲染
   nextTick(() => {
-    renderMermaidBlocks();
+    nextTick(() => {
+      renderMermaidBlocks();
+    });
   });
 }
 

@@ -58,7 +58,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   modeController = new ModeController(documentStore, webviewProvider);
 
   // 注册自定义编辑器
-  const provider = new MarkdownEditorProvider(context, documentStore, config);
+  const provider = new MarkdownEditorProvider(context, documentStore, config, modeController);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       'markly.preview',
