@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension Tests",
+      "name": "Run Extension Tests (F5)",
       "type": "extensionHost",
       "request": "launch",
       "args": [
@@ -15,7 +15,7 @@
       "preLaunchTask": "npm: build"
     },
     {
-      "name": "Extension Tests",
+      "name": "Extension Tests (Vitest)",
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
