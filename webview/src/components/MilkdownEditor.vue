@@ -60,6 +60,7 @@ const emit = defineEmits<{
   (e: 'image-click', src: string, images: string[], index: number): void;
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
+  (e: 'ready', success: boolean): void;
 }>();
 
 const editorRef = ref<HTMLElement | null>(null);
@@ -227,8 +228,13 @@ onMounted(async () => {
     
     // 初始化 mermaid
     initMermaid();
+    
+    // 通知父组件编辑器已准备好
+    emit('ready', true);
   } catch (error) {
     console.error('Failed to create Milkdown editor:', error);
+    // 通知父组件编辑器初始化失败
+    emit('ready', false);
   }
 });
 

@@ -57,6 +57,7 @@
           @change="handleChange"
           @image-click="handleImageClick"
           @image-context-menu="handleImageContextMenu"
+          @ready="handleEditorReady"
         />
 
         <div v-if="!editorReady" class="loading">
@@ -199,6 +200,14 @@ function handleMessage(event: MessageEvent) {
 
 function sendMessage(message: any) {
   vscode.postMessage(message);
+}
+
+// 编辑器准备好后的回调
+function handleEditorReady(success: boolean) {
+  if (!success) {
+    console.error('Editor initialization failed');
+    // 可以在这里显示错误提示或重试逻辑
+  }
 }
 
 // Mode switching

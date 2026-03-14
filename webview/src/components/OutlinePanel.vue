@@ -41,6 +41,16 @@ const emit = defineEmits<{
 const outline = ref<OutlineItem[]>([]);
 const activeHeadingId = ref<string>('');
 
+// 生成标题 ID（与 MilkdownEditor 保持一致）
+function generateHeadingId(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '') // 移除特殊字符，保留中文
+    .replace(/\s+/g, '-') // 空格替换为连字符
+    .replace(/-+/g, '-') // 多个连字符合并
+    .replace(/^-|-$/g, ''); // 移除首尾连字符
+}
+
 // 解析内容生成大纲
 function parseOutline(content: string): OutlineItem[] {
   const items: OutlineItem[] = [];
@@ -54,10 +64,12 @@ function parseOutline(content: string): OutlineItem[] {
     if (match) {
       const level = match[1].length;
       const text = match[2].trim();
+      // 移除已有的 ID 锚点
+      const cleanText = text.replace(/\{#[^}]+\}$/, '').trim();
       items.push({
-        id: `heading-${i}`,
+        id: generateHeadingId(cleanText),
         level,
-        text,
+        text: cleanText,
         pos,
       });
     }
