@@ -180,7 +180,12 @@ function handleMessage(event: MessageEvent) {
       break;
 
     case 'CONFIG_CHANGE':
-      config.value = { ...config.value, ...message.payload.config } as ExtensionConfig;
+      // 防御性编程：确保 config.value 不为 null
+      if (config.value) {
+        config.value = { ...config.value, ...message.payload.config } as ExtensionConfig;
+      } else {
+        config.value = message.payload.config as ExtensionConfig;
+      }
       break;
 
     case 'SWITCH_MODE':
