@@ -503,9 +503,13 @@ function handleKeyDown(e: KeyboardEvent) {
 
 }
 
-// Theme change listener reference
+// Theme change listener - 主题变化时触发重新计算
 const themeChangeListener = () => {
-  // Trigger recompute
+  // 强制触发 isDark computed 重新计算
+  // 通过触发一个空的状态变化来让 Vue 重新渲染
+  if (config.value) {
+    config.value = { ...config.value };
+  }
 };
 
 // Lifecycle
