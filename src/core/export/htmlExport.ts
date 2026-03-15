@@ -15,6 +15,18 @@ const defaultOptions: HtmlExportOptions = {
   darkMode: false,
 };
 
+// HTML 转义函数，防止 XSS
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
 export async function exportToHtml(
   markdownContent: string,
   outputPath: string,
@@ -57,7 +69,8 @@ function generateToc(markdown: string): string {
   let tocHtml = '<nav class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${h.text}</a></li>`;
+    // 使用 escapeHtml 防止 XSS
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
   }
   tocHtml += '</ul></nav>';
 
@@ -71,10 +84,15 @@ async function markdownToHtml(markdown: string): Promise<string> {
     breaks: true,
   });
 
-  // 添加锚点到标题
-  return html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
+  // 添加锚点到标题（修复：处理带属性的标题）
+  return String(html).replace(/<h([1-6])([^>]*)>(.+?)<\/h[1-6]>/g, (match, level, attrs, text) => {
+    // 如果已经有 id 属性，则保留
+    if (/id=["']/.test(attrs)) {
+      return match;
+    }
     const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-    return `<h${level} id="${anchor}">${text}</h${level}>`;
+    // 使用 escapeHtml 防止 XSS
+    return `<h${level} id="${anchor}"${attrs}>${escapeHtml(text)}</h${level}>`;
   });
 }
 
@@ -84,6 +102,41 @@ function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOpt
   const textColor = darkMode ? '#c9d1d9' : '#24292e';
   const codeBg = darkMode ? '#161b22' : '#f6f8fa';
   const borderColor = darkMode ? '#30363d' : '#d0d7de';
+
+  // 当 darkMode: false 时，添加 prefers-color-scheme: light 强制使用浅色
+  // 阻止系统深色偏好影响
+  const systemPreferenceMedia = darkMode
+    ? `@media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #0d1117;
+        --text-color: #c9d1d9;
+        --code-bg: #161b22;
+        --border-color: #30363d;
+        --link-color: #58a6ff;
+        --link-hover: #79b8ff;
+      }
+    }`
+    : `@media (prefers-color-scheme: light) {
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #24292e;
+        --code-bg: #f6f8fa;
+        --border-color: #d0d7de;
+        --link-color: #0969da;
+        --link-hover: #0550ae;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #ffffff !important;
+        --text-color: #24292e !important;
+        --code-bg: #f6f8fa !important;
+        --border-color: #d0d7de !important;
+        --link-color: #0969da !important;
+        --link-hover: #0550ae !important;
+      }
+    }`;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -101,16 +154,7 @@ function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOpt
       --link-hover: #0550ae;
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-color: #0d1117;
-        --text-color: #c9d1d9;
-        --code-bg: #161b22;
-        --border-color: #30363d;
-        --link-color: #58a6ff;
-        --link-hover: #79b8ff;
-      }
-    }
+    ${systemPreferenceMedia}
 
     * {
       box-sizing: border-box;

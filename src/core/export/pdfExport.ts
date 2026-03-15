@@ -30,6 +30,18 @@ const defaultOptions: PdfExportOptions = {
   includeToc: true,
 };
 
+// HTML 转义函数，防止 XSS
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
 export async function exportToPdf(
   markdownContent: string,
   outputPath: string,
@@ -85,7 +97,7 @@ function generateToc(markdown: string): string {
     if (match) {
       const level = match[1].length;
       const text = match[2].trim();
-      const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+      const anchor = generateAnchor(text);  // 使用统一函数
       headings.push({ level, text, anchor });
     }
   }
@@ -95,7 +107,7 @@ function generateToc(markdown: string): string {
   let tocHtml = '<div class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${h.text}</a></li>`;
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
   }
   tocHtml += '</ul></div><div class="page-break"></div>';
 
@@ -103,19 +115,25 @@ function generateToc(markdown: string): string {
 }
 
 async function markdownToHtml(markdown: string): Promise<string> {
-  // 使用 marked 转换 Markdown
-  const html = await marked.parse(markdown, {
+  // 使用 marked.use() 配置选项（已废弃 gfm/breaks 参数）
+  marked.use({
     gfm: true,
     breaks: true,
   });
 
-  // 添加锚点到标题
-  let headingCount = 0;
+  // 使用 marked 转换 Markdown
+  const html = await marked.parse(markdown);
+
+  // 添加锚点到标题（使用统一函数生成锚点）
   return html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
-    headingCount++;
-    const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-    return `<h${level} id="${anchor}">${text}</h${level}>`;
+    const anchor = generateAnchor(text);
+    return `<h${level} id="${anchor}">${escapeHtml(text)}</h${level}>`;
   });
+}
+
+// 统一的锚点生成函数
+function generateAnchor(text: string): string {
+  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
 }
 
 function buildHtmlDocument(content: string, tocHtml: string): string {
@@ -125,10 +143,6 @@ function buildHtmlDocument(content: string, tocHtml: string): string {
   <meta charset="UTF-8">
   <title>导出文档</title>
   <style>
-    @page {
-      margin: 0;
-    }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;
@@ -270,7 +284,7 @@ function buildHtmlDocument(content: string, tocHtml: string): string {
 
 function getDefaultHeaderTemplate(): string {
   return `<div style="font-size: 9px; width: 100%; padding: 10px 40px; color: #666;">
-    <span>简墨 Markdown 导出</span>
+    <span>Markly Export</span>
   </div>`;
 }
 

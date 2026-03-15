@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
-import type { DocumentStore } from '@core/documentStore';
 import type { ExtensionMessage } from '@types';
 import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
@@ -14,52 +13,65 @@ export function registerWebview(uri: string, webview: vscode.Webview): void {
   webviews.set(uri, webview);
 }
 
+export function getWebview(uri: string): vscode.Webview | undefined {
+  return webviews.get(uri);
+}
+
+export function getAllWebviews(): Map<string, vscode.Webview> {
+  return webviews;
+}
+
 export function unregisterWebview(uri: string): void {
   webviews.delete(uri);
 }
 
 export function registerCommands(
   context: vscode.ExtensionContext,
-  modeController: ModeController,
-  documentStore: DocumentStore
+  modeController: ModeController
 ): void {
   // 切换模式 - 发送消息到 WebView
   const toggleModeCmd = vscode.commands.registerCommand(
-    'mdEditor.toggleMode',
+    'markly.toggleMode',
     async () => {
-      const editor = vscode.window.activeTextEditor;
-      const activeUri = editor?.document.uri.toString();
+      try {
+        const editor = vscode.window.activeTextEditor;
+        const activeUri = editor?.document.uri.toString();
 
-      if (activeUri && webviews.has(activeUri)) {
-        // 如果当前文档使用我们的编辑器，发送消息到 WebView
-        const webview = webviews.get(activeUri)!;
-        const currentMode = modeController.getCurrentMode();
-        const newMode = currentMode === 'source' ? 'preview' : 'source';
-        webview.postMessage({
-          type: 'SWITCH_MODE',
-          payload: { mode: newMode },
-        } as ExtensionMessage);
-        modeController.switchTo(newMode);
-      } else {
-        // 如果使用的是 VSCode 默认编辑器，打开我们的预览编辑器
-        if (editor && editor.document.languageId === 'markdown') {
-          await vscode.commands.executeCommand(
-            'vscode.openWith',
-            editor.document.uri,
-            'md-editor.preview'
-          );
+        if (activeUri && webviews.has(activeUri)) {
+          // 如果当前文档使用我们的编辑器，发送消息到 WebView
+          const webview = webviews.get(activeUri)!;
+          const currentMode = modeController.getCurrentMode();
+          const newMode = currentMode === 'source' ? 'preview' : 'source';
+          webview.postMessage({
+            type: 'SWITCH_MODE',
+            payload: { mode: newMode },
+          } as ExtensionMessage);
+          modeController.switchTo(newMode);
         } else {
-          vscode.window.showInformationMessage(
-            'Please open a Markdown file first'
-          );
+          // 如果使用的是 VSCode 默认编辑器，打开我们的预览编辑器
+          if (editor && editor.document.languageId === 'markdown') {
+            await vscode.commands.executeCommand(
+              'vscode.openWith',
+              editor.document.uri,
+              'markly.preview'
+            );
+          } else {
+            vscode.window.showInformationMessage(
+              'Please open a Markdown file first'
+            );
+          }
         }
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `切换模式失败: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
   );
 
   // 导出 PDF
   const exportPdfCmd = vscode.commands.registerCommand(
-    'mdEditor.export.pdf',
+    'markly.export.pdf',
     async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
@@ -69,7 +81,7 @@ export function registerCommands(
 
       // 选择保存位置
       const defaultUri = vscode.Uri.file(
-        editor.document.fileName.replace(/\.md$/, '.pdf')
+        editor.document.fileName.replace(/(\.md)$/, '.pdf')
       );
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
@@ -95,7 +107,7 @@ export function registerCommands(
             });
             vscode.window.showInformationMessage(`PDF 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
-            vscode.window.showErrorMessage(`导出失败: ${error}`);
+            vscode.window.showErrorMessage(`导出失败: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       );
@@ -104,7 +116,7 @@ export function registerCommands(
 
   // 导出 HTML
   const exportHtmlCmd = vscode.commands.registerCommand(
-    'mdEditor.export.html',
+    'markly.export.html',
     async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
@@ -114,7 +126,7 @@ export function registerCommands(
 
       // 选择保存位置
       const defaultUri = vscode.Uri.file(
-        editor.document.fileName.replace(/\.md$/, '.html')
+        editor.document.fileName.replace(/(\.md)$/, '.html')
       );
       const saveUri = await vscode.window.showSaveDialog({
         defaultUri,
@@ -142,7 +154,7 @@ export function registerCommands(
             });
             vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
-            vscode.window.showErrorMessage(`导出失败: ${error}`);
+            vscode.window.showErrorMessage(`导出失败: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       );
@@ -151,7 +163,7 @@ export function registerCommands(
 
   // 导出图片
   const exportImageCmd = vscode.commands.registerCommand(
-    'mdEditor.export.image',
+    'markly.export.image',
     async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {

@@ -1,105 +1,25 @@
 <template>
   <div class="toolbar">
-    <!-- 第一行：模式切换和基本操作 -->
-    <div class="toolbar-row">
-      <!-- 模式切换 -->
-      <div class="toolbar-group mode-switch">
-        <button
-          class="toolbar-btn mode-btn"
-          :class="{ active: mode === 'source' }"
-          title="Source Mode"
-          @click="$emit('toggle-mode')"
-        >
-          <span class="mode-icon">{ }</span>
-          <span class="mode-label">Source</span>
-        </button>
-        <button
-          class="toolbar-btn mode-btn"
-          :class="{ active: mode === 'preview' }"
-          title="Preview Mode"
-          @click="$emit('toggle-mode')"
-        >
-          <span class="mode-icon">👁</span>
-          <span class="mode-label">Preview</span>
-        </button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <!-- 大纲视图开关 -->
-      <div class="toolbar-group">
-        <button
-          class="toolbar-btn"
-          :class="{ active: props.showOutline }"
-          title="Toggle Outline"
-          @click="$emit('toggle-outline')"
-        >
-          ☰
-        </button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <!-- 撤销/重做 -->
-      <div class="toolbar-group">
-        <button
-          class="toolbar-btn"
-          title="Undo (Ctrl+Z)"
-          @click="$emit('undo')"
-        >
-          ↩
-        </button>
-        <button
-          class="toolbar-btn"
-          title="Redo (Ctrl+Y)"
-          @click="$emit('redo')"
-        >
-          ↪
-        </button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <!-- 标题 -->
-      <div class="toolbar-group">
-        <button
-          v-for="btn in headingButtons"
-          :key="btn.id"
-          class="toolbar-btn"
-          :title="btn.label"
-          @click="$emit('format', btn.id)"
-        >
-          {{ btn.icon }}
-        </button>
-      </div>
-
-      <div class="toolbar-divider"></div>
-
-      <!-- 格式 -->
-      <div class="toolbar-group">
-        <button
-          v-for="btn in formatButtons"
-          :key="btn.id"
-          class="toolbar-btn"
-          :title="btn.label"
-          @click="$emit('format', btn.id)"
-        >
-          {{ btn.icon }}
-        </button>
-      </div>
-
-      <div class="toolbar-spacer"></div>
-
-      <!-- 查找替换 -->
-      <div class="toolbar-group">
-        <button
-          class="toolbar-btn"
-          title="Find and Replace (Ctrl+H)"
-          @click="$emit('find-replace')"
-        >
-          🔍
-        </button>
-      </div>
+    <!-- 模式切换 -->
+    <div class="toolbar-group mode-switch">
+      <button
+        class="toolbar-btn mode-btn"
+        :class="{ active: mode === 'source' }"
+        title="Source Mode"
+        @click="$emit('switch-mode', 'source')"
+      >
+        <span class="mode-icon">{ }</span>
+        <span class="mode-label">Source</span>
+      </button>
+      <button
+        class="toolbar-btn mode-btn"
+        :class="{ active: mode === 'preview' }"
+        title="Preview Mode"
+        @click="$emit('switch-mode', 'preview')"
+      >
+        <span class="mode-icon">👁</span>
+        <span class="mode-label">Preview</span>
+      </button>
     </div>
 
     <!-- 第二行：列表和插入操作 -->
@@ -153,7 +73,7 @@ const props = defineProps<{
 defineEmits<{
   (e: 'format', format: string): void;
   (e: 'insert', type: string): void;
-  (e: 'toggle-mode'): void;
+  (e: 'switch-mode', mode: EditorMode): void;
   (e: 'undo'): void;
   (e: 'redo'): void;
   (e: 'find-replace'): void;

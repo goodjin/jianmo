@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
@@ -16,10 +16,12 @@ import { diagram } from '@milkdown/plugin-diagram';
 import { footnote } from '../plugins/footnote';
 import { listEdit } from '../plugins/listEdit';
 import { callCommand } from '@milkdown/utils';
+import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
+import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import { TextSelection } from '@milkdown/prose/state';
 import { schema } from '@milkdown/preset-commonmark';
-import type { ExtensionConfig } from '@types';
+import type { ExtensionConfig } from '../../src/types';
 import mermaid from 'mermaid';
 
 // TOC 标记
@@ -29,13 +31,37 @@ const TOC_REGEX = /<!--\s*TOC\s*-->/gi;
 const props = defineProps<{
   content: string;
   config: ExtensionConfig;
+  baseUrl?: string; // 用于解析相对图片路径
 }>();
+
+// 防御性 computed：为 config 提供默认值（优化：避免每次创建新对象）
+const defaultConfig = {
+  editor: {
+    fontFamily: 'SF Mono, Consolas, monospace',
+    fontSize: 14,
+    theme: 'light',
+    lineNumbers: false,
+    wordWrap: 'on',
+  }
+};
+
+const safeConfig = computed(() => {
+  if (!props.config) return defaultConfig;
+  // 合并默认值，避免创建新对象
+  return {
+    editor: {
+      ...defaultConfig.editor,
+      ...(props.config.editor || {}),
+    },
+  };
+});
 
 const emit = defineEmits<{
   (e: 'change', content: string): void;
   (e: 'image-click', src: string, images: string[], index: number): void;
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
+  (e: 'ready', success: boolean): void;
 }>();
 
 const editorRef = ref<HTMLElement | null>(null);
@@ -44,6 +70,10 @@ let isInternalChange = false;
 let lastEmittedContent = '';
 let pendingUpdate: { content: string; cursorPos: number } | null = null;
 let updateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// 图片事件处理函数引用（用于清理）
+let imageClickHandler: ((e: MouseEvent) => void) | null = null;
+let imageContextMenuHandler: ((e: MouseEvent) => void) | null = null;
 
 // 提取 Markdown 标题生成目录
 interface TocItem {
@@ -204,13 +234,26 @@ onMounted(async () => {
     
     // 初始化 mermaid
     initMermaid();
-    console.log('Milkdown editor created successfully');
+    
+    // 通知父组件编辑器已准备好
+    emit('ready', true);
   } catch (error) {
     console.error('Failed to create Milkdown editor:', error);
+    // 通知父组件编辑器初始化失败
+    emit('ready', false);
   }
 });
 
 onUnmounted(() => {
+  // 清除 updateTimeout
+  if (updateTimeout) {
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  }
+  
+  // 移除图片事件监听器
+  unbindImageEvents();
+  
   if (editor) {
     editor.destroy();
     editor = null;
@@ -221,7 +264,7 @@ onUnmounted(() => {
 function initMermaid(): void {
   // 确定主题
   let theme = 'default';
-  const config = props.config;
+  const config = safeConfig.value;
   if (config?.editor?.theme === 'dark') {
     theme = 'dark';
   } else if (config?.editor?.theme === 'auto') {
@@ -248,9 +291,12 @@ function initMermaid(): void {
     },
   });
   
-  // 渲染已有的 mermaid 代码块
+  // 延迟渲染 mermaid 代码块，确保 DOM 已准备好
+  // 使用双 nextTick 确保编辑器 DOM 完全渲染
   nextTick(() => {
-    renderMermaidBlocks();
+    nextTick(() => {
+      renderMermaidBlocks();
+    });
   });
 }
 
@@ -258,13 +304,12 @@ function initMermaid(): void {
 async function renderMermaidBlocks(): Promise<void> {
   if (!editorRef.value) return;
   
-  // 查找所有 mermaid 代码块
-  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid, pre[class*="language-mermaid"]');
+  // 只查找未渲染的 mermaid 代码块
+  // 注意：渲染后的 mermaid 会变成 div.mermaid，不再是 pre.language-mermaid
+  // 所以直接查询 pre.language-mermaid 即可，无需依赖 dataset 标记
+  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid');
   
   for (const pre of codeBlocks) {
-    // 检查是否已经渲染过
-    if (pre.dataset.mermaidRendered === 'true') continue;
-    
     const code = pre.querySelector('code');
     if (!code) continue;
     
@@ -281,13 +326,14 @@ async function renderMermaidBlocks(): Promise<void> {
       // 创建容器
       const container = document.createElement('div');
       container.className = 'mermaid';
+      container.dataset.mermaidRendered = 'true'; // 标记已渲染
       container.innerHTML = svg;
       
       // 替换原来的 pre 元素
       pre.parentNode?.replaceChild(container, pre);
     } catch (error) {
       console.error('Mermaid render error:', error);
-      // 保留原始代码块显示错误
+      // 标记渲染失败
       pre.dataset.mermaidRendered = 'error';
     }
   }
@@ -482,6 +528,18 @@ function applyFormat(format: string): void {
       // 任务列表通过 insertNode 处理，这里调用它
       insertNode('taskList');
       return;
+    case 'indent':
+      // 缩进：使用 sinkListItem
+      if (nodes.list_item) {
+        command = sinkListItem(nodes.list_item);
+      }
+      break;
+    case 'outdent':
+      // 取消缩进：使用 liftListItem
+      if (nodes.list_item) {
+        command = liftListItem(nodes.list_item);
+      }
+      break;
     case 'clearFormat':
       clearFormat();
       return;
@@ -548,10 +606,35 @@ function insertNode(type: string): void {
   }
 }
 
+// 解析图片 URL（处理相对路径）
+function resolveImageUrl(src: string): string {
+  if (!src) return '';
+  
+  // 如果已经是绝对 URL，直接返回
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:') || src.startsWith('file://')) {
+    return src;
+  }
+  
+  // 使用 baseUrl 解析相对路径
+  const baseUrl = props.baseUrl || '';
+  if (baseUrl) {
+    return new URL(src, baseUrl).href;
+  }
+  
+  // 如果没有 baseUrl，但有 base 标签，使用 document.baseURI
+  if (document.baseURI) {
+    return new URL(src, document.baseURI).href;
+  }
+  
+  return src;
+}
+
+// 绑定图片和链接事件
 function bindImageEvents(): void {
   if (!editorRef.value) return;
 
-  editorRef.value.addEventListener('click', (e) => {
+  // 创建事件处理函数并保存引用
+  imageClickHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     
     // 检查是否是 TOC 链接
@@ -570,33 +653,49 @@ function bindImageEvents(): void {
     
     if (target.tagName === 'IMG') {
       const src = target.getAttribute('src') || '';
+      // 解析相对路径为完整 URL
+      const resolvedSrc = resolveImageUrl(src);
+      
       const images = Array.from(editorRef.value?.querySelectorAll('img') || [])
-        .map((img) => img.getAttribute('src') || '');
-      const index = images.indexOf(src);
-      emit('image-click', src, images, index);
+        .map((img) => resolveImageUrl(img.getAttribute('src') || ''));
+      const index = images.indexOf(resolvedSrc);
+      emit('image-click', resolvedSrc, images, index);
     }
-  });
+  };
 
-  editorRef.value.addEventListener('contextmenu', (e) => {
+  imageContextMenuHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'IMG') {
       e.preventDefault();
       const src = target.getAttribute('src') || '';
-      emit('image-context-menu', src, e.clientX, e.clientY);
+      // 解析相对路径为完整 URL
+      const resolvedSrc = resolveImageUrl(src);
+      emit('image-context-menu', resolvedSrc, e.clientX, e.clientY);
     }
-  });
+  };
+
+  editorRef.value.addEventListener('click', imageClickHandler);
+  editorRef.value.addEventListener('contextmenu', imageContextMenuHandler);
+}
+
+// 移除图片事件监听
+function unbindImageEvents(): void {
+  if (editorRef.value) {
+    if (imageClickHandler) {
+      editorRef.value.removeEventListener('click', imageClickHandler);
+      imageClickHandler = null;
+    }
+    if (imageContextMenuHandler) {
+      editorRef.value.removeEventListener('contextmenu', imageContextMenuHandler);
+      imageContextMenuHandler = null;
+    }
+  }
 }
 
 function undo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const editorView = ctx.get(editorViewCtx);
-    const { state, dispatch } = editorView;
-    // history 插件会自动注册 undo 命令
-    import('@milkdown/plugin-history').then(({ undo }) => {
-      undo(state, dispatch);
-    });
+    callCommand(undoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to undo:', e);
   }
@@ -605,12 +704,7 @@ function undo(): void {
 function redo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const editorView = ctx.get(editorViewCtx);
-    const { state, dispatch } = editorView;
-    import('@milkdown/plugin-history').then(({ redo }) => {
-      redo(state, dispatch);
-    });
+    callCommand(redoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to redo:', e);
   }
@@ -675,8 +769,8 @@ defineExpose({
 
 /* ProseMirror 编辑器样式 */
 .milkdown-editor .editor {
-  font-family: v-bind('config.editor.fontFamily');
-  font-size: v-bind('config.editor.fontSize * 1.5 + "px"');
+  font-family: v-bind('safeConfig.editor.fontFamily');
+  font-size: v-bind('safeConfig.editor.fontSize * 1.5 + "px"');
   line-height: 1.6;
   outline: none;
   min-height: 100%;

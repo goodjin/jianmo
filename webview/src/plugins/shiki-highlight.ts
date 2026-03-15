@@ -93,10 +93,26 @@ export function shikiHighlight(options: ShikiHighlightOptions = {}) {
       try {
         const hl = await getHighlighter();
         
-        // 创建 parser，使用默认主题
-        const parser = createParser(hl, {
+        // 创建 parser，使用默认主题，添加错误处理
+        const baseParser = createParser(hl, {
           theme: themes.light,
         });
+        
+        // 包装 parser 以处理不支持的语言
+        const parser = (text: string, language: string) => {
+          try {
+            // 检查语言是否支持
+            if (language && !isLanguageSupported(language)) {
+              console.warn(`Language "${language}" is not supported, falling back to plaintext`);
+              language = 'plaintext';
+            }
+            return baseParser(text, language);
+          } catch (error) {
+            // 优雅降级：返回未高亮的纯文本
+            console.warn(`Failed to highlight code block with language "${language}":`, error);
+            return baseParser(text, 'plaintext');
+          }
+        };
         
         // 更新配置
         ctx.set(highlightPluginConfig.key, { parser });
@@ -121,3 +137,11 @@ export function shikiHighlight(options: ShikiHighlightOptions = {}) {
 
 // 导出支持的语言列表
 export const supportedLanguages = defaultLangs;
+
+/**
+ * 检查语言是否支持
+ * @param lang - 语言标识符
+ */
+export function isLanguageSupported(lang: string): boolean {
+  return defaultLangs.includes(lang.toLowerCase());
+}
