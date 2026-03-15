@@ -41,6 +41,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    console.log('resolveCustomEditor called for:', document.uri.toString());
     const uri = document.uri.toString();
     this.webviews.set(uri, webviewPanel);
 
@@ -224,13 +225,23 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'index.css')
     );
+    console.log('getWebviewHtml - scriptUri:', scriptUri.toString());
+    console.log('getWebviewHtml - styleUri:', styleUri.toString());
+
+    // 宽松的 CSP，允许所有必要的资源
+    const csp = `default-src 'self'; img-src 'self' ${webview.cspSource} https: data: blob:; script-src 'self' ${webview.cspSource} https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' ${webview.cspSource} https: 'unsafe-inline'; font-src 'self' ${webview.cspSource} https: data:; connect-src 'self' ${webview.cspSource} https:;`;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data: blob:; script-src ${webview.cspSource} 'unsafe-inline'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} https:;">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      document.body.innerHTML = '<div style="color:red;padding:20px;"><h3>Error:</h3><p>' + msg + '</p><p>URL: ' + url + '</p><p>Line: ' + line + '</p></div>';
+    };
+  </script>
   <link href="${styleUri}" rel="stylesheet">
   <style>
     /* VSCode 默认样式 */
@@ -309,7 +320,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
 </head>
 <body>
   <div id="app"></div>
-  <script src="${scriptUri}"></script>
+  <script type="module" crossorigin src="${scriptUri}"></script>
 </body>
 </html>`;
   }

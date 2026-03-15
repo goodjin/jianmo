@@ -162,9 +162,14 @@ function updateTocInContent(markdown: string): string {
 }
 
 onMounted(async () => {
-  if (!editorRef.value) return;
+  console.log('MilkdownEditor onMounted, content:', props.content?.substring(0, 100));
+  if (!editorRef.value) {
+    console.error('MilkdownEditor: editorRef is null');
+    return;
+  }
 
   try {
+    console.log('Creating Milkdown editor...');
     editor = await Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, editorRef.value);
@@ -199,6 +204,7 @@ onMounted(async () => {
     
     // 初始化 mermaid
     initMermaid();
+    console.log('Milkdown editor created successfully');
   } catch (error) {
     console.error('Failed to create Milkdown editor:', error);
   }

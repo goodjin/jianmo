@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+src/
+.webview/
+webview/src/
+webview/node_modules/
+
+# Development files
+.vscode/
+.vscode-test*/
+.git/
+.idea/
+*.code-workspace
+.local/
+
+# Docs and tests
+docs/
+tests/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Config files
+tsconfig*.json
+*.eslint*
+*.prettier*
+vitest.config.*
+vite.config.*
+
+# Misc
+*.log
+.gitignore
+.env*
+.DS_Store
+Thumbs.db

@@ -1,125 +1,143 @@
 <template>
   <div class="toolbar">
-    <!-- 模式切换 -->
-    <div class="toolbar-group mode-switch">
-      <button
-        class="toolbar-btn mode-btn"
-        :class="{ active: mode === 'source' }"
-        title="Source Mode"
-        @click="$emit('toggle-mode')"
-      >
-        <span class="mode-icon">{ }</span>
-        <span class="mode-label">Source</span>
-      </button>
-      <button
-        class="toolbar-btn mode-btn"
-        :class="{ active: mode === 'preview' }"
-        title="Preview Mode"
-        @click="$emit('toggle-mode')"
-      >
-        <span class="mode-icon">👁</span>
-        <span class="mode-label">Preview</span>
-      </button>
+    <!-- 第一行：模式切换和基本操作 -->
+    <div class="toolbar-row">
+      <!-- 模式切换 -->
+      <div class="toolbar-group mode-switch">
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: mode === 'source' }"
+          title="Source Mode"
+          @click="$emit('toggle-mode')"
+        >
+          <span class="mode-icon">{ }</span>
+          <span class="mode-label">Source</span>
+        </button>
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: mode === 'preview' }"
+          title="Preview Mode"
+          @click="$emit('toggle-mode')"
+        >
+          <span class="mode-icon">👁</span>
+          <span class="mode-label">Preview</span>
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 大纲视图开关 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn"
+          :class="{ active: props.showOutline }"
+          title="Toggle Outline"
+          @click="$emit('toggle-outline')"
+        >
+          ☰
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 撤销/重做 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn"
+          title="Undo (Ctrl+Z)"
+          @click="$emit('undo')"
+        >
+          ↩
+        </button>
+        <button
+          class="toolbar-btn"
+          title="Redo (Ctrl+Y)"
+          @click="$emit('redo')"
+        >
+          ↪
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 标题 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in headingButtons"
+          :key="btn.id"
+          class="toolbar-btn"
+          :title="btn.label"
+          @click="$emit('format', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 格式 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in formatButtons"
+          :key="btn.id"
+          class="toolbar-btn"
+          :title="btn.label"
+          @click="$emit('format', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
+
+      <div class="toolbar-spacer"></div>
+
+      <!-- 查找替换 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn"
+          title="Find and Replace (Ctrl+H)"
+          @click="$emit('find-replace')"
+        >
+          🔍
+        </button>
+      </div>
     </div>
 
-    <div class="toolbar-divider"></div>
+    <!-- 第二行：列表和插入操作 -->
+    <div class="toolbar-row">
+      <!-- 列表 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in listButtons"
+          :key="btn.id"
+          class="toolbar-btn"
+          :title="btn.label"
+          @click="$emit('format', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
 
-    <!-- 撤销/重做 -->
-    <div class="toolbar-group">
-      <button
-        class="toolbar-btn"
-        title="Undo (Ctrl+Z)"
-        @click="$emit('undo')"
-      >
-        ↩
-      </button>
-      <button
-        class="toolbar-btn"
-        title="Redo (Ctrl+Y)"
-        @click="$emit('redo')"
-      >
-        ↪
-      </button>
-    </div>
+      <div class="toolbar-divider"></div>
 
-    <div class="toolbar-divider"></div>
+      <!-- 插入 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in insertButtons"
+          :key="btn.id"
+          class="toolbar-btn"
+          :title="btn.label"
+          @click="$emit('insert', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
 
-    <!-- 标题 -->
-    <div class="toolbar-group">
-      <button
-        v-for="btn in headingButtons"
-        :key="btn.id"
-        class="toolbar-btn"
-        :title="btn.label"
-        @click="$emit('format', btn.id)"
-      >
-        {{ btn.icon }}
-      </button>
-    </div>
+      <div class="toolbar-spacer"></div>
 
-    <div class="toolbar-divider"></div>
-
-    <!-- 格式 -->
-    <div class="toolbar-group">
-      <button
-        v-for="btn in formatButtons"
-        :key="btn.id"
-        class="toolbar-btn"
-        :title="btn.label"
-        @click="$emit('format', btn.id)"
-      >
-        {{ btn.icon }}
-      </button>
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- 列表 -->
-    <div class="toolbar-group">
-      <button
-        v-for="btn in listButtons"
-        :key="btn.id"
-        class="toolbar-btn"
-        :title="btn.label"
-        @click="$emit('format', btn.id)"
-      >
-        {{ btn.icon }}
-      </button>
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- 插入 -->
-    <div class="toolbar-group">
-      <button
-        v-for="btn in insertButtons"
-        :key="btn.id"
-        class="toolbar-btn"
-        :title="btn.label"
-        @click="$emit('insert', btn.id)"
-      >
-        {{ btn.icon }}
-      </button>
-    </div>
-
-    <div class="toolbar-spacer"></div>
-
-    <!-- 查找替换 -->
-    <div class="toolbar-group">
-      <button
-        class="toolbar-btn"
-        title="Find and Replace (Ctrl+H)"
-        @click="$emit('find-replace')"
-      >
-        🔍
-      </button>
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- 快捷键提示 -->
-    <div class="toolbar-hint">
-      <kbd>Cmd + \\</kbd> Toggle Mode
+      <!-- 快捷键提示 -->
+      <div class="toolbar-hint">
+        <kbd>Cmd + \</kbd> Toggle
+      </div>
     </div>
   </div>
 </template>
@@ -127,8 +145,9 @@
 <script setup lang="ts">
 import type { EditorMode } from '../../../src/types';
 
-defineProps<{
+const props = defineProps<{
   mode: EditorMode;
+  showOutline?: boolean;
 }>();
 
 defineEmits<{
@@ -138,6 +157,7 @@ defineEmits<{
   (e: 'undo'): void;
   (e: 'redo'): void;
   (e: 'find-replace'): void;
+  (e: 'toggle-outline'): void;
 }>();
 
 const headingButtons = [
@@ -185,14 +205,23 @@ const insertButtons = [
 .toolbar {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 12px 18px;
+  padding: 8px 12px;
   background: var(--vscode-editorWidget-background);
   border-bottom: 1px solid var(--vscode-editorWidget-border);
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
-  min-height: 66px;
+  min-height: auto;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
 }
 
 .toolbar-group {
@@ -206,9 +235,9 @@ const insertButtons = [
 
 .toolbar-divider {
   width: 1px;
-  height: 30px;
+  height: 24px;
   background: var(--vscode-editorWidget-border);
-  margin: 0 9px;
+  margin: 0 6px;
   flex-shrink: 0;
 }
 
@@ -221,16 +250,16 @@ const insertButtons = [
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 42px;
-  width: 42px;
-  height: 42px;
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--vscode-foreground);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   transition: background-color 0.15s;
   flex-shrink: 0;
@@ -252,7 +281,7 @@ const insertButtons = [
 .mode-btn {
   min-width: auto;
   width: auto;
-  padding: 6px 12px;
+  padding: 4px 10px;
   gap: 4px;
 }
 
@@ -266,18 +295,18 @@ const insertButtons = [
 }
 
 .mode-icon {
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .mode-label {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 500;
 }
 
 .toolbar-hint {
-  font-size: 15px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground);
-  margin-left: 12px;
+  margin-left: 8px;
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -285,9 +314,9 @@ const insertButtons = [
 .toolbar-hint kbd {
   background: var(--vscode-keybindingLabel-background);
   border: 1px solid var(--vscode-keybindingLabel-border);
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 3px;
+  padding: 1px 4px;
   font-family: var(--vscode-editor-font-family);
-  font-size: 13px;
+  font-size: 11px;
 }
 </style>

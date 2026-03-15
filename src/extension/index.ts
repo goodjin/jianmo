@@ -13,78 +13,93 @@ let configStore: ConfigurationStore | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('Markdown Editor is now active');
 
-  // 首次激活提示：询问是否设为默认编辑器
-  if (!context.globalState.get('hasShownDefaultEditorPrompt')) {
-    const choice = await vscode.window.showInformationMessage(
-      '是否将简墨设置为 Markdown 文件的默认编辑器？',
-      '是',
-      '否'
-    );
+  try {
+    // 首次激活提示：询问是否设为默认编辑器
+    if (!context.globalState.get('hasShownDefaultEditorPrompt')) {
+      const choice = await vscode.window.showInformationMessage(
+        '是否将简墨设置为 Markdown 文件的默认编辑器？',
+        '是',
+        '否'
+      );
 
-    if (choice === '是') {
-      try {
-        const config = vscode.workspace.getConfiguration('workbench');
-        const associations = config.get<Record<string, string>>('editorAssociations') || {};
-        associations['*.md'] = 'md-editor.preview';
-        await config.update('editorAssociations', associations, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('已将简墨设置为 Markdown 文件的默认编辑器');
-      } catch (error) {
-        console.error('Failed to set default editor:', error);
+      if (choice === '是') {
+        try {
+          const config = vscode.workspace.getConfiguration('workbench');
+          const associations = config.get<Record<string, string>>('editorAssociations') || {};
+          associations['*.md'] = 'md-editor.preview';
+          await config.update('editorAssociations', associations, vscode.ConfigurationTarget.Global);
+          vscode.window.showInformationMessage('已将简墨设置为 Markdown 文件的默认编辑器');
+        } catch (error) {
+          console.error('Failed to set default editor:', error);
+        }
       }
+
+      await context.globalState.update('hasShownDefaultEditorPrompt', true);
     }
 
-    await context.globalState.update('hasShownDefaultEditorPrompt', true);
+    console.log('Initializing configuration...');
+    // 初始化配置
+    configStore = new ConfigurationStore();
+    const config = configStore.getConfig();
+    console.log('Configuration initialized');
+
+    console.log('Initializing document store...');
+    // 初始化文档存储
+    documentStore = new DocumentStore();
+    console.log('Document store initialized');
+
+    console.log('Initializing mode controller...');
+    // 初始化模式控制器
+    modeController = new ModeController(documentStore);
+    console.log('Mode controller initialized');
+
+    console.log('Registering custom editor provider...');
+    // 注册自定义编辑器
+    const provider = new MarkdownEditorProvider(context, documentStore, config);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(
+        'md-editor.preview',
+        provider,
+        {
+          webviewOptions: {
+            retainContextWhenHidden: true,
+          },
+          supportsMultipleEditorsPerDocument: false,
+        }
+      )
+    );
+    console.log('Custom editor provider registered');
+
+    // 注册命令
+    registerCommands(context, modeController, documentStore);
+    console.log('Commands registered');
+
+    // 监听配置变化
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('mdEditor')) {
+          configStore?.reload();
+          // 通知 WebView 配置变化
+          provider.notifyConfigChange(configStore.getConfig());
+        }
+      })
+    );
+
+    // 显示状态栏
+    const statusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Right,
+      100
+    );
+    statusBarItem.command = 'mdEditor.toggleMode';
+    statusBarItem.text = '$(markdown) MD Editor';
+    statusBarItem.tooltip = 'Toggle Edit Mode';
+    statusBarItem.show();
+    context.subscriptions.push(statusBarItem);
+    console.log('All initialization complete');
+  } catch (error) {
+    console.error('Error during activation:', error);
+    vscode.window.showErrorMessage(`Extension activation error: ${error}`);
   }
-
-  // 初始化配置
-  configStore = new ConfigurationStore();
-  const config = configStore.getConfig();
-
-  // 初始化文档存储
-  documentStore = new DocumentStore();
-
-  // 初始化模式控制器
-  modeController = new ModeController(documentStore);
-
-  // 注册自定义编辑器
-  const provider = new MarkdownEditorProvider(context, documentStore, config);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(
-      'md-editor.preview',
-      provider,
-      {
-        webviewOptions: {
-          retainContextWhenHidden: true,
-        },
-        supportsMultipleEditorsPerDocument: false,
-      }
-    )
-  );
-
-  // 注册命令
-  registerCommands(context, modeController, documentStore);
-
-  // 监听配置变化
-  context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('mdEditor')) {
-        configStore?.reload();
-        // 通知 WebView 配置变化
-        provider.notifyConfigChange(configStore.getConfig());
-      }
-    })
-  );
-
-  // 显示状态栏
-  const statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
-  statusBarItem.command = 'mdEditor.toggleMode';
-  statusBarItem.text = '$(markdown) MD Editor';
-  statusBarItem.tooltip = 'Toggle Edit Mode';
-  statusBarItem.show();
-  context.subscriptions.push(statusBarItem);
 }
 
 export function deactivate(): void {

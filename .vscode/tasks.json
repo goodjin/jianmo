@@ -3,6 +3,20 @@
   "tasks": [
     {
       "type": "npm",
+      "script": "build",
+      "problemMatcher": [],
+      "isBackground": false,
+      "presentation": {
+        "reveal": "silent"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "label": "Build All"
+    },
+    {
+      "type": "npm",
       "script": "build:extension",
       "problemMatcher": ["$tsc"],
       "isBackground": false,

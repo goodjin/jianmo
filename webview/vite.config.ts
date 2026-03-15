@@ -4,6 +4,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [vue()],
+  base: './',
   build: {
     outDir: '../dist/webview',
     emptyOutDir: true,
@@ -18,6 +19,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@types': resolve(__dirname, '../src/types'),
     },
   },
 });

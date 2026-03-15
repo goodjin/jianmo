@@ -10,6 +10,7 @@
   "dependencies": {
     "@milkdown/core": "^7.3.6",
     "@milkdown/plugin-diagram": "^7.7.0",
+    "remark-footnotes": "^4.0.1",
     "@milkdown/plugin-highlight": "^7.19.0",
     "@milkdown/plugin-history": "^7.3.6",
     "@milkdown/plugin-listener": "^7.3.6",

@@ -3,12 +3,14 @@
     <Toolbar
       v-if="editorReady"
       :mode="currentMode"
+      :show-outline="showOutline"
       @format="handleFormat"
       @insert="handleInsert"
       @toggle-mode="toggleMode"
       @undo="handleUndo"
       @redo="handleRedo"
       @find-replace="findReplaceVisible = true"
+      @toggle-outline="showOutline = !showOutline"
     />
     <!-- 字数统计 -->
     <div class="word-count" v-if="editorReady">
@@ -63,7 +65,7 @@
 
       <!-- 大纲视图 -->
       <OutlinePanel
-        v-if="currentMode === 'preview' && editorReady"
+        v-if="currentMode === 'preview' && editorReady && showOutline"
         :content="content"
         :current-mode="currentMode"
         @jump="handleOutlineJump"
@@ -103,6 +105,7 @@ const imagePreviewVisible = ref(false);
 const currentImages = ref<string[]>([]);
 const currentImageIndex = ref(0);
 const currentImageSrc = ref('');
+const showOutline = ref(true); // 大纲视图开关
 
 // Word count
 const wordCount = computed(() => {
