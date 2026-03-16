@@ -90,7 +90,8 @@ watch(
 
 function handleClick(item: OutlineItem) {
   activeHeadingId.value = item.id;
-  emit('jump', item.pos);
+  // 发送标题 ID 而不是字符位置，便于 Milkdown 编辑器跳转
+  emit('jump', item.id);
 }
 
 const currentMode = computed(() => props.currentMode);

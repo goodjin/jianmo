@@ -10,8 +10,8 @@
           title="Source Mode"
           @click="$emit('switch-mode', 'source')"
         >
-          <span class="mode-icon">{ }</span>
-          <span class="mode-label">Source</span>
+          <span class="btn-icon">{ }</span>
+          <span class="btn-label">源码</span>
         </button>
         <button
           class="toolbar-btn mode-btn"
@@ -19,8 +19,8 @@
           title="Preview Mode"
           @click="$emit('switch-mode', 'preview')"
         >
-          <span class="mode-icon">👁</span>
-          <span class="mode-label">Preview</span>
+          <span class="btn-icon">👁</span>
+          <span class="btn-label">预览</span>
         </button>
       </div>
 
@@ -35,7 +35,8 @@
           :title="btn.label"
           @click="$emit('format', btn.id)"
         >
-          {{ btn.icon }}
+          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-label">{{ btn.shortLabel }}</span>
         </button>
       </div>
 
@@ -50,7 +51,8 @@
           :title="btn.label"
           @click="$emit('format', btn.id)"
         >
-          {{ btn.icon }}
+          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-label">{{ btn.shortLabel }}</span>
         </button>
       </div>
 
@@ -63,14 +65,16 @@
           title="Export PDF"
           @click="$emit('export', 'pdf')"
         >
-          📄 PDF
+          <span class="btn-icon">📄</span>
+          <span class="btn-label">PDF</span>
         </button>
         <button
           class="toolbar-btn export-btn"
           title="Export HTML"
           @click="$emit('export', 'html')"
         >
-          🌐 HTML
+          <span class="btn-icon">🌐</span>
+          <span class="btn-label">HTML</span>
         </button>
       </div>
     </div>
@@ -86,7 +90,8 @@
           :title="btn.label"
           @click="$emit('format', btn.id)"
         >
-          {{ btn.icon }}
+          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-label">{{ btn.shortLabel }}</span>
         </button>
       </div>
 
@@ -101,7 +106,8 @@
           :title="btn.label"
           @click="$emit('insert', btn.id)"
         >
-          {{ btn.icon }}
+          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-label">{{ btn.shortLabel }}</span>
         </button>
       </div>
 
@@ -114,14 +120,16 @@
           title="Undo"
           @click="$emit('undo')"
         >
-          ↩️
+          <span class="btn-icon">↩️</span>
+          <span class="btn-label">撤销</span>
         </button>
         <button
           class="toolbar-btn"
           title="Redo"
           @click="$emit('redo')"
         >
-          ↪️
+          <span class="btn-icon">↪️</span>
+          <span class="btn-label">重做</span>
         </button>
       </div>
 
@@ -135,7 +143,8 @@
           title="Toggle Outline"
           @click="$emit('toggle-outline')"
         >
-          📋
+          <span class="btn-icon">📋</span>
+          <span class="btn-label">大纲</span>
         </button>
       </div>
 
@@ -169,43 +178,43 @@ defineEmits<{
 }>();
 
 const headingButtons = [
-  { id: 'h1', icon: 'H1', label: 'Heading 1' },
-  { id: 'h2', icon: 'H2', label: 'Heading 2' },
-  { id: 'h3', icon: 'H3', label: 'Heading 3' },
-  { id: 'h4', icon: 'H4', label: 'Heading 4' },
-  { id: 'h5', icon: 'H5', label: 'Heading 5' },
-  { id: 'h6', icon: 'H6', label: 'Heading 6' },
+  { id: 'h1', icon: 'H1', shortLabel: 'H1', label: 'Heading 1' },
+  { id: 'h2', icon: 'H2', shortLabel: 'H2', label: 'Heading 2' },
+  { id: 'h3', icon: 'H3', shortLabel: 'H3', label: 'Heading 3' },
+  { id: 'h4', icon: 'H4', shortLabel: 'H4', label: 'Heading 4' },
+  { id: 'h5', icon: 'H5', shortLabel: 'H5', label: 'Heading 5' },
+  { id: 'h6', icon: 'H6', shortLabel: 'H6', label: 'Heading 6' },
 ];
 
 const formatButtons = [
-  { id: 'bold', icon: 'B', label: 'Bold' },
-  { id: 'italic', icon: 'I', label: 'Italic' },
-  { id: 'strike', icon: 'S', label: 'Strikethrough' },
-  { id: 'code', icon: '</>', label: 'Inline Code' },
-  { id: 'highlight', icon: '🖍', label: 'Highlight' },
-  { id: 'subscript', icon: 'X₂', label: 'Subscript' },
-  { id: 'superscript', icon: 'X²', label: 'Superscript' },
-  { id: 'clearFormat', icon: '✕', label: 'Clear Format' },
+  { id: 'bold', icon: 'B', shortLabel: '粗体', label: 'Bold' },
+  { id: 'italic', icon: 'I', shortLabel: '斜体', label: 'Italic' },
+  { id: 'strike', icon: 'S', shortLabel: '删除', label: 'Strikethrough' },
+  { id: 'code', icon: '</>', shortLabel: '代码', label: 'Inline Code' },
+  { id: 'highlight', icon: '🖍', shortLabel: '高亮', label: 'Highlight' },
+  { id: 'subscript', icon: 'X₂', shortLabel: '下标', label: 'Subscript' },
+  { id: 'superscript', icon: 'X²', shortLabel: '上标', label: 'Superscript' },
+  { id: 'clearFormat', icon: '✕', shortLabel: '清除', label: 'Clear Format' },
 ];
 
 const listButtons = [
-  { id: 'bulletList', icon: '•', label: 'Bullet List' },
-  { id: 'orderedList', icon: '1.', label: 'Ordered List' },
-  { id: 'taskList', icon: '☐', label: 'Task List' },
-  { id: 'quote', icon: '"', label: 'Quote' },
-  { id: 'indent', icon: '→', label: 'Indent' },
-  { id: 'outdent', icon: '←', label: 'Outdent' },
+  { id: 'bulletList', icon: '•', shortLabel: '无序', label: 'Bullet List' },
+  { id: 'orderedList', icon: '1.', shortLabel: '有序', label: 'Ordered List' },
+  { id: 'taskList', icon: '☐', shortLabel: '任务', label: 'Task List' },
+  { id: 'quote', icon: '"', shortLabel: '引用', label: 'Quote' },
+  { id: 'indent', icon: '→', shortLabel: '缩进', label: 'Indent' },
+  { id: 'outdent', icon: '←', shortLabel: '取消', label: 'Outdent' },
 ];
 
 const insertButtons = [
-  { id: 'link', icon: '🔗', label: 'Link' },
-  { id: 'image', icon: '🖼', label: 'Image' },
-  { id: 'codeBlock', icon: '{ }', label: 'Code Block' },
-  { id: 'table', icon: '⊞', label: 'Table' },
-  { id: 'hr', icon: '—', label: 'Horizontal Rule' },
-  { id: 'toc', icon: '📋', label: 'Table of Contents' },
-  { id: 'math', icon: '∑', label: 'Math Formula' },
-  { id: 'footnote', icon: '¹', label: 'Footnote' },
+  { id: 'link', icon: '🔗', shortLabel: '链接', label: 'Link' },
+  { id: 'image', icon: '🖼', shortLabel: '图片', label: 'Image' },
+  { id: 'codeBlock', icon: '{ }', shortLabel: '代码块', label: 'Code Block' },
+  { id: 'table', icon: '⊞', shortLabel: '表格', label: 'Table' },
+  { id: 'hr', icon: '—', shortLabel: '分隔线', label: 'Horizontal Rule' },
+  { id: 'toc', icon: '📋', shortLabel: '目录', label: 'Table of Contents' },
+  { id: 'math', icon: '∑', shortLabel: '公式', label: 'Math Formula' },
+  { id: 'footnote', icon: '¹', shortLabel: '脚注', label: 'Footnote' },
 ];
 </script>
 
@@ -256,21 +265,30 @@ const insertButtons = [
 
 .toolbar-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  width: 32px;
-  height: 32px;
-  padding: 0;
+  min-width: 46px;
+  width: 46px;
+  height: 46px;
+  padding: 2px 4px;
   border: none;
   background: transparent;
   color: var(--vscode-foreground);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   transition: background-color 0.15s;
   flex-shrink: 0;
+  gap: 1px;
+}
+
+.toolbar-btn .btn-label {
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0.8;
 }
 
 .toolbar-btn:hover {
@@ -289,8 +307,14 @@ const insertButtons = [
 .mode-btn {
   min-width: auto;
   width: auto;
-  padding: 4px 10px;
+  padding: 4px 12px;
   gap: 4px;
+  flex-direction: row;
+}
+
+.mode-btn .btn-label {
+  font-size: 12px;
+  opacity: 1;
 }
 
 .mode-btn.active {
@@ -300,15 +324,6 @@ const insertButtons = [
 
 .mode-btn.active:hover {
   background: var(--vscode-button-hoverBackground);
-}
-
-.mode-icon {
-  font-size: 14px;
-}
-
-.mode-label {
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .toolbar-hint {
@@ -330,17 +345,38 @@ const insertButtons = [
 
 /* Heading buttons */
 .heading-btn {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 /* Export buttons */
 .export-btn {
   width: auto;
-  min-width: 60px;
-  padding: 0 8px;
+  min-width: 70px;
+  padding: 2px 8px;
   font-size: 12px;
   font-weight: 500;
-  gap: 4px;
+  gap: 2px;
+}
+
+.export-btn .btn-label {
+  font-size: 10px;
+}
+
+/* Button icon and label */
+.btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.btn-label {
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 </style>

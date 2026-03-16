@@ -528,18 +528,27 @@ function applyFormat(format: string): void {
       command = toggleMark(marks.code_inline!);
       break;
     case 'highlight':
-      if (marks.highlight) {
+      if (marks?.highlight) {
         command = toggleMark(marks.highlight);
+      } else {
+        console.warn('Highlight mark not available');
+        return;
       }
       break;
     case 'subscript':
-      if (marks.subscript) {
+      if (marks?.subscript) {
         command = toggleMark(marks.subscript);
+      } else {
+        console.warn('Subscript mark not available');
+        return;
       }
       break;
     case 'superscript':
-      if (marks.superscript) {
+      if (marks?.superscript) {
         command = toggleMark(marks.superscript);
+      } else {
+        console.warn('Superscript mark not available');
+        return;
       }
       break;
     case 'h1':
@@ -608,34 +617,58 @@ function insertNode(type: string): void {
 
   let insertMarkdown = '';
 
+  // 计算插入后的光标位置（用于选中占位符文本）
+  let selectFrom = 0;
+  let selectTo = 0;
+
   switch (type) {
     case 'link':
-      insertMarkdown = '[链接文字](https://example.com)';
+      // 插入占位符，并计算选区
+      insertMarkdown = '[链接文字](url)';
+      selectFrom = 1;  // 选中 "链接文字"
+      selectTo = 5;
       break;
     case 'image':
       insertMarkdown = '![图片描述](图片地址)';
+      selectFrom = 2;  // 选中 "图片描述"
+      selectTo = 6;
       break;
     case 'codeBlock':
       insertMarkdown = '\n```\n代码内容\n```\n';
+      selectFrom = 5;  // 选中 "代码内容"
+      selectTo = 9;
       break;
     case 'table':
       insertMarkdown = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
+      selectFrom = 0;  // 不选中特定文本
+      selectTo = 0;
       break;
     case 'hr':
       insertMarkdown = '\n---\n';
+      selectFrom = 0;
+      selectTo = 0;
       break;
     case 'taskList':
       insertMarkdown = '- [ ] 任务项\n';
+      selectFrom = 6;  // 选中 "任务项"
+      selectTo = 9;
       break;
     case 'math':
-      insertMarkdown = '\n$$\nE = mc^2\n$$\n';
+      // 插入行内数学公式，光标放在公式内部
+      insertMarkdown = '$公式$';
+      selectFrom = 1;  // 选中 "公式"
+      selectTo = 3;
       break;
     case 'footnote':
       insertMarkdown = '[^1]\n\n[^1]: 脚注内容\n';
+      selectFrom = 0;
+      selectTo = 0;
       break;
     case 'toc':
       // 插入 TOC 标记
       insertMarkdown = `\n${TOC_PLACEHOLDER}\n`;
+      selectFrom = 0;
+      selectTo = 0;
       break;
     default:
       console.log('Unknown insert type:', type);
@@ -647,7 +680,18 @@ function insertNode(type: string): void {
   if (doc) {
     const { from, to } = state.selection;
     const tr = state.tr.replaceWith(from, to, doc.content);
+
+    // 如果有选区，设置选区
+    if (selectFrom !== selectTo) {
+      const insertEnd = from + doc.content.size;
+      const contentStart = from;
+      tr.setSelection(TextSelection.create(tr.doc, contentStart + selectFrom, contentStart + selectTo));
+    }
+
     dispatch(tr);
+
+    // 聚焦编辑器
+    view.focus();
   }
 }
 
@@ -740,7 +784,10 @@ function unbindImageEvents(): void {
 function undo(): void {
   if (!editor) return;
   try {
-    callCommand(undoCommand)(editor.ctx);
+    const ctx = editor.ctx;
+    const view = ctx.get(editorViewCtx);
+    const { state, dispatch } = view;
+    undoCommand(state, dispatch);
   } catch (e) {
     console.error('Failed to undo:', e);
   }
@@ -749,7 +796,10 @@ function undo(): void {
 function redo(): void {
   if (!editor) return;
   try {
-    callCommand(redoCommand)(editor.ctx);
+    const ctx = editor.ctx;
+    const view = ctx.get(editorViewCtx);
+    const { state, dispatch } = view;
+    redoCommand(state, dispatch);
   } catch (e) {
     console.error('Failed to redo:', e);
   }

@@ -412,36 +412,65 @@ function handleImageContextMenu(src: string, x: number, y: number) {
   });
 }
 
-function handleOutlineJump(pos: number) {
+function handleOutlineJump(headingId: string) {
+  console.log('[App] Jumping to heading:', headingId);
+
   if (currentMode.value === 'source') {
-    // 源码模式：跳转到文本位置
+    // 源码模式：查找标题所在行并跳转
     const lines = sourceContent.value.split('\n');
     let charCount = 0;
     let targetLine = 0;
+    let found = false;
 
     for (let i = 0; i < lines.length; i++) {
-      if (charCount + lines[i].length >= pos) {
-        targetLine = i;
-        break;
+      const line = lines[i];
+      // 匹配标题行
+      const match = line.match(/^(#{1,6})\s+(.+)$/);
+      if (match) {
+        const text = match[2].trim().replace(/\{#[^}]+\}$/, '').trim();
+        const id = text
+          .toLowerCase()
+          .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+
+        if (id === headingId) {
+          targetLine = i;
+          found = true;
+          break;
+        }
       }
-      charCount += lines[i].length + 1; // +1 for newline
+      charCount += line.length + 1; // +1 for newline
     }
 
-    nextTick(() => {
-      if (textareaRef.value) {
-        textareaRef.value.focus();
-        textareaRef.value.setSelectionRange(charCount, charCount);
-        // Scroll to line
-        const lineHeight = 1.6 * 21; // line-height * font-size
-        textareaRef.value.scrollTop = targetLine * lineHeight;
-      }
-    });
+    if (found) {
+      nextTick(() => {
+        if (textareaRef.value) {
+          textareaRef.value.focus();
+          // 计算目标行的起始位置
+          let targetPos = 0;
+          for (let i = 0; i < targetLine; i++) {
+            targetPos += lines[i].length + 1;
+          }
+          textareaRef.value.setSelectionRange(targetPos, targetPos);
+          // 滚动到行
+          const lineHeight = 1.6 * 21;
+          textareaRef.value.scrollTop = targetLine * lineHeight;
+        }
+      });
+    }
   } else {
-    // 预览模式：通过编辑器跳转
+    // 预览模式：通过编辑器跳转到标题
     if (editorRef.value?.scrollToHeading) {
-      editorRef.value.scrollToHeading(pos);
+      editorRef.value.scrollToHeading(headingId);
     } else {
-      console.log('Jump to heading:', pos);
+      console.log('[App] scrollToHeading not available, trying DOM scroll');
+      // 备选方案：直接操作 DOM 滚动
+      const element = document.querySelector(`[id="${headingId}"]`) as HTMLElement;
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   }
 }
