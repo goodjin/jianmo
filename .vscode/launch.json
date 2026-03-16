@@ -2,12 +2,24 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Extension Tests (F5)",
+      "name": "Run Extension (F5)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js"
+      ],
+      "preLaunchTask": "Build All"
+    },
+    {
+      "name": "Run Extension Tests",
       "type": "extensionHost",
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "--extensionTestsPath=${workspaceFolder}/e2e"
+        "--extensionTestsPath=${workspaceFolder}/e2e/suite"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"

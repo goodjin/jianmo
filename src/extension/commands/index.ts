@@ -98,16 +98,45 @@ export function registerCommands(
           title: '导出 PDF...',
           cancellable: false,
         },
-        async () => {
+        async (progress) => {
           try {
+            progress.report({ message: '正在准备内容...' });
             const content = editor.document.getText();
+
+            progress.report({ message: '正在生成 PDF...' });
+            console.log('[PDF Export] Starting export to:', saveUri.fsPath);
+
             await exportToPdf(content, saveUri.fsPath, {
               includeToc: true,
               displayHeaderFooter: true,
             });
-            vscode.window.showInformationMessage(`PDF 已导出: ${path.basename(saveUri.fsPath)}`);
+
+            // 验证文件是否生成
+            const fs = require('fs');
+            if (fs.existsSync(saveUri.fsPath)) {
+              const stats = fs.statSync(saveUri.fsPath);
+              console.log('[PDF Export] Success! File size:', stats.size, 'bytes');
+              vscode.window.showInformationMessage(
+                `PDF 导出成功! (${(stats.size / 1024).toFixed(1)} KB)`,
+                '打开文件'
+              ).then(selection => {
+                if (selection === '打开文件') {
+                  vscode.env.openExternal(vscode.Uri.file(saveUri.fsPath));
+                }
+              });
+            } else {
+              throw new Error('文件未生成');
+            }
           } catch (error) {
-            vscode.window.showErrorMessage(`导出失败: ${error instanceof Error ? error.message : String(error)}`);
+            console.error('[PDF Export] Error:', error);
+            vscode.window.showErrorMessage(
+              `PDF 导出失败: ${error instanceof Error ? error.message : String(error)}`,
+              '查看日志'
+            ).then(selection => {
+              if (selection === '查看日志') {
+                vscode.commands.executeCommand('workbench.action.toggleDevTools');
+              }
+            });
           }
         }
       );
