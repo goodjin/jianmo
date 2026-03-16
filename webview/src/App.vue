@@ -168,13 +168,16 @@ const isDark = computed(() => {
 // Message handling
 function handleMessage(event: MessageEvent) {
   const message: ExtensionMessage = event.data;
+  console.log('[Webview] Received message:', message.type, message);
 
   switch (message.type) {
     case 'INIT':
+      console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       content.value = message.payload.content;
       sourceContent.value = message.payload.content;
       config.value = message.payload.config;
       editorReady.value = true;
+      console.log('[Webview] editorReady set to true');
       break;
 
     case 'CONTENT_UPDATE':

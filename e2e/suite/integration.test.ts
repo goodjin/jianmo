@@ -1,6 +1,6 @@
 /**
  * Markly VS Code Extension Integration Tests
- * 
+ *
  * 使用 @vscode/test-electron 进行集成测试
  * 这些测试会在真实的 VS Code 环境中运行
  */
@@ -8,7 +8,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { runInContext } from 'vm';
+import * as assert from 'assert';
 
 // 测试配置
 const TEST_TIMEOUT = 60000;
@@ -36,11 +36,11 @@ suite('Markly Extension Integration Tests', () => {
   test('Extension should be activated', async () => {
     // 等待扩展激活
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     // 检查扩展是否可用
     const extension = vscode.extensions.getExtension('jianmo.markly');
-    expect(extension).toBeDefined();
-    expect(extension?.isActive).toBe(true);
+    assert.ok(extension, 'Extension should be defined');
+    assert.ok(extension?.isActive, 'Extension should be active');
   });
 
   /**
@@ -48,11 +48,11 @@ suite('Markly Extension Integration Tests', () => {
    */
   test('Should open markdown file', async () => {
     const doc = await vscode.workspace.openTextDocument(testFilePath);
-    expect(doc).toBeDefined();
-    expect(doc.languageId).toBe('markdown');
-    
+    assert.ok(doc, 'Document should be defined');
+    assert.strictEqual(doc.languageId, 'markdown', 'Language should be markdown');
+
     const editor = await vscode.window.showTextDocument(doc);
-    expect(editor).toBeDefined();
+    assert.ok(editor, 'Editor should be defined');
   });
 
   /**
@@ -61,13 +61,13 @@ suite('Markly Extension Integration Tests', () => {
   test('Should toggle mode', async () => {
     const doc = await vscode.workspace.openTextDocument(testFilePath);
     await vscode.window.showTextDocument(doc);
-    
+
     // 执行切换命令
     await vscode.commands.executeCommand('markly.toggleMode');
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     // 命令执行成功就算通过
-    expect(true).toBe(true);
+    assert.ok(true);
   });
 
   /**
@@ -76,7 +76,7 @@ suite('Markly Extension Integration Tests', () => {
   test('Should export PDF', async () => {
     const doc = await vscode.workspace.openTextDocument(testFilePath);
     await vscode.window.showTextDocument(doc);
-    
+
     // 注意：PDF 导出需要 Puppeteer，可能需要更长时间
     try {
       await vscode.commands.executeCommand('markly.export.pdf');
@@ -84,8 +84,8 @@ suite('Markly Extension Integration Tests', () => {
     } catch (e) {
       // 忽略错误，可能是环境问题
     }
-    
-    expect(true).toBe(true);
+
+    assert.ok(true);
   });
 
   /**
@@ -94,15 +94,15 @@ suite('Markly Extension Integration Tests', () => {
   test('Should export HTML', async () => {
     const doc = await vscode.workspace.openTextDocument(testFilePath);
     await vscode.window.showTextDocument(doc);
-    
+
     try {
       await vscode.commands.executeCommand('markly.export.html');
       await new Promise(resolve => setTimeout(resolve, 3000));
     } catch (e) {
       // 忽略错误
     }
-    
-    expect(true).toBe(true);
+
+    assert.ok(true);
   });
 });
 
@@ -121,9 +121,9 @@ suite('Utility Functions', () => {
         .replace(/^-|-$/g, '');
     };
 
-    expect(generateId('Hello World')).toBe('hello-world');
-    expect(generateId('你好世界')).toBe('你好世界');
-    expect(generateId('Test 123')).toBe('test-123');
+    assert.strictEqual(generateId('Hello World'), 'hello-world');
+    assert.strictEqual(generateId('你好世界'), '你好世界');
+    assert.strictEqual(generateId('Test 123'), 'test-123');
   });
 
   test('Should validate config', () => {
@@ -132,11 +132,11 @@ suite('Utility Functions', () => {
       return typeof size === 'number' && size >= 8 && size <= 72;
     };
 
-    expect(validateFontSize(14)).toBe(true);
-    expect(validateFontSize(8)).toBe(true);
-    expect(validateFontSize(72)).toBe(true);
-    expect(validateFontSize(7)).toBe(false);
-    expect(validateFontSize(73)).toBe(false);
-    expect(validateFontSize(NaN)).toBe(false);
+    assert.strictEqual(validateFontSize(14), true);
+    assert.strictEqual(validateFontSize(8), true);
+    assert.strictEqual(validateFontSize(72), true);
+    assert.strictEqual(validateFontSize(7), false);
+    assert.strictEqual(validateFontSize(73), false);
+    assert.strictEqual(validateFontSize(NaN), false);
   });
 });

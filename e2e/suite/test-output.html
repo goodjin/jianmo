@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>test-output</title>
+  <style>
+    :root {
+      --bg-color: #ffffff;
+      --text-color: #24292e;
+      --code-bg: #f6f8fa;
+      --border-color: #d0d7de;
+      --link-color: #0969da;
+      --link-hover: #0550ae;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #24292e;
+        --code-bg: #f6f8fa;
+        --border-color: #d0d7de;
+        --link-color: #0969da;
+        --link-hover: #0550ae;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: #ffffff !important;
+        --text-color: #24292e !important;
+        --code-bg: #f6f8fa !important;
+        --border-color: #d0d7de !important;
+        --link-color: #0969da !important;
+        --link-hover: #0550ae !important;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text-color);
+      background-color: var(--bg-color);
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    /* TOC 样式 */
+    .toc {
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 40px;
+    }
+
+    .toc h2 {
+      font-size: 1.5em;
+      margin-top: 0;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .toc ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .toc li {
+      margin: 6px 0;
+    }
+
+    .toc a {
+      color: var(--link-color);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      color: var(--link-hover);
+      text-decoration: underline;
+    }
+
+    /* 标题样式 */
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 2em;
+      padding-bottom: 0.3em;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h2 {
+      font-size: 1.5em;
+      padding-bottom: 0.3em;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    h3 { font-size: 1.25em; }
+    h4 { font-size: 1em; }
+    h5 { font-size: 0.875em; }
+    h6 { font-size: 0.85em; }
+
+    /* 段落和列表 */
+    p {
+      margin: 0 0 16px 0;
+    }
+
+    ul, ol {
+      padding-left: 2em;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    /* 代码 */
+    code {
+      background-color: var(--code-bg);
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 85%;
+    }
+
+    pre {
+      background-color: var(--code-bg);
+      padding: 16px;
+      overflow: auto;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border-color);
+    }
+
+    pre code {
+      background: transparent;
+      padding: 0;
+      font-size: 14px;
+    }
+
+    /* 引用 */
+    blockquote {
+      margin: 0 0 16px 0;
+      padding: 0 1em;
+      color: #6a737d;
+      border-left: 0.25em solid var(--border-color);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      blockquote {
+        color: #8b949e;
+      }
+    }
+
+    /* 表格 */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+
+    table th, table td {
+      border: 1px solid var(--border-color);
+      padding: 8px 12px;
+    }
+
+    table th {
+      background-color: var(--code-bg);
+      font-weight: 600;
+    }
+
+    table tr:nth-child(even) {
+      background-color: var(--code-bg);
+    }
+
+    /* 链接 */
+    a {
+      color: var(--link-color);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+      color: var(--link-hover);
+    }
+
+    /* 图片 */
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+
+    /* 分割线 */
+    hr {
+      height: 2px;
+      background-color: var(--border-color);
+      border: none;
+      margin: 24px 0;
+    }
+
+    /* 任务列表 */
+    .task-list-item {
+      list-style-type: none;
+      margin-left: -1.5em;
+    }
+
+    .task-list-item input {
+      margin-right: 0.5em;
+    }
+
+    /* 脚注 */
+    .footnote {
+      font-size: 0.9em;
+      color: #6a737d;
+      border-top: 1px solid var(--border-color);
+      margin-top: 40px;
+      padding-top: 20px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .footnote {
+        color: #8b949e;
+      }
+    }
+
+    /* 打印样式 */
+    @media print {
+      body {
+        max-width: 100%;
+        padding: 0;
+      }
+
+      .toc {
+        page-break-after: always;
+      }
+
+      pre, blockquote {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="toc"><h2>目录</h2><ul><li style="margin-left: 0px"><a href="#new-title">New Title</a></li><li style="margin-left: 0px"><a href="#test">Test</a></li></ul></nav>
+  <div class="content">
+    <h1 id="new-title">New Title</h1>
+<h1 id="test">Test</h1>
+
+  </div>
+</body>
+</html>

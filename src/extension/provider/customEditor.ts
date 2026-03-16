@@ -24,27 +24,35 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     openContext: vscode.CustomDocumentOpenContext,
     _token: vscode.CancellationToken
   ): Promise<vscode.CustomDocument> {
-    const content = await vscode.workspace.fs.readFile(uri);
-    const text = Buffer.from(content).toString('utf-8');
+    console.log('openCustomDocument called for:', uri.toString());
+    try {
+      const content = await vscode.workspace.fs.readFile(uri);
+      const text = Buffer.from(content).toString('utf-8');
+      console.log('File read successfully, length:', text.length);
 
-    // 初始化版本号
-    const initialVersion = openContext.backupId ? parseInt(openContext.backupId, 10) : 1;
-    this.documentVersions.set(uri.toString(), initialVersion);
+      // 初始化版本号
+      const initialVersion = openContext.backupId ? parseInt(openContext.backupId, 10) : 1;
+      this.documentVersions.set(uri.toString(), initialVersion);
 
-    this.documentStore.setDocument(uri.toString(), {
-      uri: uri.toString(),
-      content: text,
-      version: initialVersion,
-      isDirty: false,
-    });
+      this.documentStore.setDocument(uri.toString(), {
+        uri: uri.toString(),
+        content: text,
+        version: initialVersion,
+        isDirty: false,
+      });
+      console.log('Document stored successfully');
 
-    return {
-      uri,
-      dispose: () => {
-        this.documentVersions.delete(uri.toString());
-        this.documentStore.deleteDocument(uri.toString());
-      },
-    };
+      return {
+        uri,
+        dispose: () => {
+          this.documentVersions.delete(uri.toString());
+          this.documentStore.deleteDocument(uri.toString());
+        },
+      };
+    } catch (error) {
+      console.error('Error in openCustomDocument:', error);
+      throw error;
+    }
   }
 
   async resolveCustomEditor(
