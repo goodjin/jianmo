@@ -191,19 +191,39 @@ function updateTocInContent(markdown: string): string {
   return markdown.replace(TOC_REGEX, tocMarkdown);
 }
 
-onMounted(async () => {
-  console.log('MilkdownEditor onMounted, content:', props.content?.substring(0, 100));
+onMounted(() => {
+  console.log('[MilkdownEditor] onMounted called');
+  console.log('[MilkdownEditor] editorRef:', editorRef.value);
+  console.log('[MilkdownEditor] content length:', props.content?.length);
+
   if (!editorRef.value) {
-    console.error('MilkdownEditor: editorRef is null');
+    console.error('[MilkdownEditor] editorRef is null, cannot initialize');
+    emit('ready', false);
     return;
   }
 
+  // 使用 Promise 链而不是 async/await，避免 Vue 生命周期问题
+  initEditor();
+});
+
+async function initEditor(): Promise<void> {
   try {
-    console.log('Creating Milkdown editor...');
-    editor = await Editor.make()
+    console.log('[MilkdownEditor] Starting editor initialization...');
+
+    // 检查必要的依赖是否加载
+    if (!Editor || !commonmark || !gfm) {
+      console.error('[MilkdownEditor] Required Milkdown modules not loaded');
+      emit('ready', false);
+      return;
+    }
+
+    console.log('[MilkdownEditor] Creating editor instance...');
+
+    // 逐步初始化，便于定位问题
+    let editorBuilder = Editor.make()
       .config((ctx) => {
         ctx.set(rootCtx, editorRef.value);
-        ctx.set(defaultValueCtx, props.content);
+        ctx.set(defaultValueCtx, props.content || '');
 
         ctx.get(listenerCtx).markdownUpdated((ctx, markdown) => {
           if (!isInternalChange) {
@@ -211,38 +231,62 @@ onMounted(async () => {
             emit('change', markdown);
           }
         });
-      })
-      .use(commonmark)
-      .use(gfm)
-      .use(math)
-      // 使用 Shiki 代码高亮
-      .use(shikiHighlight({
-        themes: {
-          light: 'github-light',
-          dark: 'github-dark',
-        },
-      }))
-      .use(diagram)
-      .use(footnote)
-      .use(listEdit)
-      .use(listener)
-      .use(history)
-      .create();
+      });
+
+    console.log('[MilkdownEditor] Adding commonmark plugin...');
+    editorBuilder = editorBuilder.use(commonmark);
+
+    console.log('[MilkdownEditor] Adding gfm plugin...');
+    editorBuilder = editorBuilder.use(gfm);
+
+    console.log('[MilkdownEditor] Adding math plugin...');
+    editorBuilder = editorBuilder.use(math);
+
+    // 暂时禁用 Shiki 高亮，看看是否是它导致的问题
+    console.log('[MilkdownEditor] Skipping Shiki highlight for debugging...');
+    // editorBuilder = editorBuilder.use(shikiHighlight({
+    //   themes: {
+    //     light: 'github-light',
+    //     dark: 'github-dark',
+    //   },
+    // }));
+
+    console.log('[MilkdownEditor] Adding diagram plugin...');
+    editorBuilder = editorBuilder.use(diagram);
+
+    console.log('[MilkdownEditor] Adding footnote plugin...');
+    editorBuilder = editorBuilder.use(footnote);
+
+    console.log('[MilkdownEditor] Adding listEdit plugin...');
+    editorBuilder = editorBuilder.use(listEdit);
+
+    console.log('[MilkdownEditor] Adding listener plugin...');
+    editorBuilder = editorBuilder.use(listener);
+
+    console.log('[MilkdownEditor] Adding history plugin...');
+    editorBuilder = editorBuilder.use(history);
+
+    console.log('[MilkdownEditor] Creating editor...');
+    editor = await editorBuilder.create();
+
+    console.log('[MilkdownEditor] Editor created successfully');
 
     // 绑定图片点击事件
     bindImageEvents();
-    
+
     // 初始化 mermaid
     initMermaid();
-    
+
     // 通知父组件编辑器已准备好
+    console.log('[MilkdownEditor] Emitting ready event');
     emit('ready', true);
   } catch (error) {
-    console.error('Failed to create Milkdown editor:', error);
+    console.error('[MilkdownEditor] Failed to create editor:', error);
+    console.error('[MilkdownEditor] Error stack:', (error as Error).stack);
     // 通知父组件编辑器初始化失败
     emit('ready', false);
   }
-});
+}
 
 onUnmounted(() => {
   // 清除 updateTimeout
