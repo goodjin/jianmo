@@ -11,6 +11,7 @@
       @redo="handleRedo"
       @find-replace="findReplaceVisible = true"
       @toggle-outline="showOutline = !showOutline"
+      @export="handleExport"
     />
     <!-- 字数统计 -->
     <div class="word-count" v-if="editorReady">
@@ -443,6 +444,14 @@ function handleOutlineJump(pos: number) {
       console.log('Jump to heading:', pos);
     }
   }
+}
+
+// 导出处理函数
+function handleExport(format: 'pdf' | 'html') {
+  sendMessage({
+    type: 'EXPORT',
+    payload: { format },
+  });
 }
 
 // Keyboard shortcuts

@@ -86,7 +86,16 @@ export class ModeController implements vscode.Disposable {
           scrollLeft: message.scrollLeft || 0,
         });
         break;
-      // 可以添加其他消息类型的处理
+      // 以下消息类型由 customEditor.ts 处理，这里静默忽略
+      case 'READY':
+      case 'CONTENT_CHANGE':
+      case 'SAVE':
+      case 'SAVE_IMAGE':
+      case 'OPEN_IMAGE_PREVIEW':
+      case 'OPEN_IMAGE_EDITOR':
+      case 'EXPORT':
+      case 'getScrollPosition':
+        break;
       default:
         console.log(`[ModeController] Unknown message type: ${message.type}`);
     }

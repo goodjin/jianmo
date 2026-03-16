@@ -1,28 +1,81 @@
 <template>
   <div class="toolbar">
-    <!-- 模式切换 -->
-    <div class="toolbar-group mode-switch">
-      <button
-        class="toolbar-btn mode-btn"
-        :class="{ active: mode === 'source' }"
-        title="Source Mode"
-        @click="$emit('switch-mode', 'source')"
-      >
-        <span class="mode-icon">{ }</span>
-        <span class="mode-label">Source</span>
-      </button>
-      <button
-        class="toolbar-btn mode-btn"
-        :class="{ active: mode === 'preview' }"
-        title="Preview Mode"
-        @click="$emit('switch-mode', 'preview')"
-      >
-        <span class="mode-icon">👁</span>
-        <span class="mode-label">Preview</span>
-      </button>
+    <!-- 第一行：模式切换、标题、格式 -->
+    <div class="toolbar-row">
+      <!-- 模式切换 -->
+      <div class="toolbar-group mode-switch">
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: mode === 'source' }"
+          title="Source Mode"
+          @click="$emit('switch-mode', 'source')"
+        >
+          <span class="mode-icon">{ }</span>
+          <span class="mode-label">Source</span>
+        </button>
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: mode === 'preview' }"
+          title="Preview Mode"
+          @click="$emit('switch-mode', 'preview')"
+        >
+          <span class="mode-icon">👁</span>
+          <span class="mode-label">Preview</span>
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 标题 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in headingButtons"
+          :key="btn.id"
+          class="toolbar-btn heading-btn"
+          :title="btn.label"
+          @click="$emit('format', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 格式 -->
+      <div class="toolbar-group">
+        <button
+          v-for="btn in formatButtons"
+          :key="btn.id"
+          class="toolbar-btn"
+          :title="btn.label"
+          @click="$emit('format', btn.id)"
+        >
+          {{ btn.icon }}
+        </button>
+      </div>
+
+      <div class="toolbar-spacer"></div>
+
+      <!-- 导出按钮 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn export-btn"
+          title="Export PDF"
+          @click="$emit('export', 'pdf')"
+        >
+          📄 PDF
+        </button>
+        <button
+          class="toolbar-btn export-btn"
+          title="Export HTML"
+          @click="$emit('export', 'html')"
+        >
+          🌐 HTML
+        </button>
+      </div>
     </div>
 
-    <!-- 第二行：列表和插入操作 -->
+    <!-- 第二行：列表、插入、操作 -->
     <div class="toolbar-row">
       <!-- 列表 -->
       <div class="toolbar-group">
@@ -54,6 +107,40 @@
 
       <div class="toolbar-spacer"></div>
 
+      <!-- 操作按钮 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn"
+          title="Undo"
+          @click="$emit('undo')"
+        >
+          ↩️
+        </button>
+        <button
+          class="toolbar-btn"
+          title="Redo"
+          @click="$emit('redo')"
+        >
+          ↪️
+        </button>
+      </div>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- 大纲切换 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn"
+          :class="{ active: showOutline }"
+          title="Toggle Outline"
+          @click="$emit('toggle-outline')"
+        >
+          📋
+        </button>
+      </div>
+
+      <div class="toolbar-spacer"></div>
+
       <!-- 快捷键提示 -->
       <div class="toolbar-hint">
         <kbd>Cmd + \</kbd> Toggle
@@ -78,6 +165,7 @@ defineEmits<{
   (e: 'redo'): void;
   (e: 'find-replace'): void;
   (e: 'toggle-outline'): void;
+  (e: 'export', format: 'pdf' | 'html'): void;
 }>();
 
 const headingButtons = [
@@ -238,5 +326,21 @@ const insertButtons = [
   padding: 1px 4px;
   font-family: var(--vscode-editor-font-family);
   font-size: 11px;
+}
+
+/* Heading buttons */
+.heading-btn {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Export buttons */
+.export-btn {
+  width: auto;
+  min-width: 60px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 4px;
 }
 </style>
