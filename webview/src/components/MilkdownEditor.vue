@@ -257,8 +257,9 @@ async function initEditor(): Promise<void> {
     console.log('[MilkdownEditor] Adding footnote plugin...');
     editorBuilder = editorBuilder.use(footnote);
 
-    console.log('[MilkdownEditor] Adding listEdit plugin...');
-    editorBuilder = editorBuilder.use(listEdit);
+    // 暂时禁用 listEdit 插件，它可能访问未初始化的 schema
+    console.log('[MilkdownEditor] Skipping listEdit plugin for debugging...');
+    // editorBuilder = editorBuilder.use(listEdit);
 
     console.log('[MilkdownEditor] Adding listener plugin...');
     editorBuilder = editorBuilder.use(listener);
