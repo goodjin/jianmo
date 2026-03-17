@@ -536,18 +536,40 @@ function applyFormat(format: string): void {
 
   let command: any = null;
 
+  // 检查 marks 是否存在
+  if (!marks) {
+    console.warn('Marks not available');
+    return;
+  }
+
   switch (format) {
     case 'bold':
-      command = toggleMark(marks.strong!);
+      if (!marks.strong) {
+        console.warn('Strong mark not available');
+        return;
+      }
+      command = toggleMark(marks.strong);
       break;
     case 'italic':
-      command = toggleMark(marks.em!);
+      if (!marks.em) {
+        console.warn('Em mark not available');
+        return;
+      }
+      command = toggleMark(marks.em);
       break;
     case 'strike':
-      command = toggleMark(marks.strikethrough!);
+      if (!marks.strikethrough) {
+        console.warn('Strikethrough mark not available');
+        return;
+      }
+      command = toggleMark(marks.strikethrough);
       break;
     case 'code':
-      command = toggleMark(marks.code_inline!);
+      if (!marks.code_inline) {
+        console.warn('Code_inline mark not available');
+        return;
+      }
+      command = toggleMark(marks.code_inline);
       break;
     case 'highlight':
       if (marks?.highlight) {
@@ -574,31 +596,67 @@ function applyFormat(format: string): void {
       }
       break;
     case 'h1':
-      command = setBlockType(nodes.heading!, { level: 1 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 1 });
       break;
     case 'h2':
-      command = setBlockType(nodes.heading!, { level: 2 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 2 });
       break;
     case 'h3':
-      command = setBlockType(nodes.heading!, { level: 3 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 3 });
       break;
     case 'h4':
-      command = setBlockType(nodes.heading!, { level: 4 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 4 });
       break;
     case 'h5':
-      command = setBlockType(nodes.heading!, { level: 5 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 5 });
       break;
     case 'h6':
-      command = setBlockType(nodes.heading!, { level: 6 });
+      if (!nodes?.heading) {
+        console.warn('Heading node not available');
+        return;
+      }
+      command = setBlockType(nodes.heading, { level: 6 });
       break;
     case 'bulletList':
-      command = wrapIn(nodes.bullet_list!);
+      if (!nodes?.bullet_list) {
+        console.warn('Bullet_list node not available');
+        return;
+      }
+      command = wrapIn(nodes.bullet_list);
       break;
     case 'orderedList':
-      command = wrapIn(nodes.ordered_list!);
+      if (!nodes?.ordered_list) {
+        console.warn('Ordered_list node not available');
+        return;
+      }
+      command = wrapIn(nodes.ordered_list);
       break;
     case 'quote':
-      command = wrapIn(nodes.blockquote!);
+      if (!nodes?.blockquote) {
+        console.warn('Blockquote node not available');
+        return;
+      }
+      command = wrapIn(nodes.blockquote);
       break;
     case 'taskList':
       // 任务列表通过 insertNode 处理，这里调用它
