@@ -439,6 +439,28 @@ function getCursorPosition(): number {
   }
 }
 
+function setCursorPosition(pos: number): void {
+  if (!editor) return;
+  try {
+    const ctx = editor.ctx;
+    const editorView = ctx.get(editorViewCtx);
+    const { state, dispatch } = editorView;
+    const safePos = Math.max(0, Math.min(pos, state.doc.content.size));
+    const tr = state.tr.setSelection(TextSelection.create(state.doc, safePos, safePos));
+    dispatch(tr);
+    // 滚动到光标位置
+    const coords = editorView.coordsAtPos(safePos);
+    const editorRect = editorRef.value?.getBoundingClientRect();
+    if (editorRect && coords.top < editorRect.top) {
+      editorRef.value?.scrollTo({ top: coords.top - editorRect.top - 50, behavior: 'smooth' });
+    } else if (editorRect && coords.top > editorRect.bottom) {
+      editorRef.value?.scrollTo({ top: coords.top - editorRect.top + 50, behavior: 'smooth' });
+    }
+  } catch (e) {
+    console.error('Failed to set cursor position:', e);
+  }
+}
+
 function getContent(): string {
   if (!editor) return '';
   try {
@@ -838,6 +860,8 @@ defineExpose({
   setContent,
   undo,
   redo,
+  getCursorPosition,
+  setCursorPosition,
   // TOC 相关功能
   insertToc: () => insertNode('toc'),
   updateToc: () => {

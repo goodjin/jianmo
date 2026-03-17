@@ -228,20 +228,66 @@ function toggleMode() {
   switchMode(newMode);
 }
 
+// 保存的位置信息
+const savedPosition = ref<{ mode: EditorMode; cursorPos: number; scrollTop: number } | null>(null);
+
 function switchMode(mode: EditorMode) {
   if (mode === currentMode.value) return;
 
   const previousMode = currentMode.value;
+
+  // 保存当前位置
+  if (previousMode === 'source' && textareaRef.value) {
+    const textarea = textareaRef.value;
+    savedPosition.value = {
+      mode: 'source',
+      cursorPos: textarea.selectionStart,
+      scrollTop: textarea.scrollTop,
+    };
+  } else if (previousMode === 'preview' && editorRef.value) {
+    const cursorPos = editorRef.value.getCursorPosition?.() || 0;
+    const scrollContainer = editorRef.value?.$el?.querySelector('.milkdown-editor');
+    savedPosition.value = {
+      mode: 'preview',
+      cursorPos,
+      scrollTop: scrollContainer?.scrollTop || 0,
+    };
+  }
+
   currentMode.value = mode;
 
   // 同步内容
   if (previousMode === 'source' && mode === 'preview') {
     content.value = sourceContent.value;
+    // 恢复预览模式位置
+    nextTick(() => {
+      if (savedPosition.value && editorRef.value) {
+        setTimeout(() => {
+          editorRef.value?.setCursorPosition?.(savedPosition.value!.cursorPos);
+          const scrollContainer = editorRef.value?.$el?.querySelector('.milkdown-editor');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = savedPosition.value!.scrollTop;
+          }
+        }, 100); // 延迟等待编辑器渲染
+      }
+    });
   } else if (previousMode === 'preview' && mode === 'source') {
     sourceContent.value = content.value;
     nextTick(() => {
       if (textareaRef.value) {
-        textareaRef.value.focus();
+        const textarea = textareaRef.value;
+        textarea.focus();
+        // 恢复源码模式位置
+        if (savedPosition.value?.mode === 'source') {
+          const pos = Math.min(savedPosition.value.cursorPos, sourceContent.value.length);
+          textarea.setSelectionRange(pos, pos);
+          textarea.scrollTop = savedPosition.value.scrollTop;
+        } else if (savedPosition.value) {
+          // 从预览模式切换过来，尝试找到对应的文本位置
+          const ratio = savedPosition.value.cursorPos / (content.value.length || 1);
+          const targetPos = Math.round(ratio * sourceContent.value.length);
+          textarea.setSelectionRange(targetPos, targetPos);
+        }
       }
     });
   }
