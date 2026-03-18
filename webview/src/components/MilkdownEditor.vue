@@ -9,10 +9,8 @@ import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
-import { math } from '@milkdown/plugin-math';
 // 使用 Shiki 替代 Prism 做代码高亮
 import { shikiHighlight } from '../plugins/shiki-highlight';
-import { diagram } from '@milkdown/plugin-diagram';
 import { footnote } from '../plugins/footnote';
 import { listEdit } from '../plugins/listEdit';
 import { callCommand } from '@milkdown/utils';
@@ -20,9 +18,7 @@ import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import { TextSelection } from '@milkdown/prose/state';
-import { schema } from '@milkdown/preset-commonmark';
 import type { ExtensionConfig } from '../../src/types';
-import mermaid from 'mermaid';
 
 // TOC 标记
 const TOC_PLACEHOLDER = '<!-- TOC -->';
@@ -239,9 +235,6 @@ async function initEditor(): Promise<void> {
     console.log('[MilkdownEditor] Adding gfm plugin...');
     editorBuilder = editorBuilder.use(gfm);
 
-    console.log('[MilkdownEditor] Adding math plugin...');
-    editorBuilder = editorBuilder.use(math);
-
     // 暂时禁用 Shiki 高亮，看看是否是它导致的问题
     console.log('[MilkdownEditor] Skipping Shiki highlight for debugging...');
     // editorBuilder = editorBuilder.use(shikiHighlight({
@@ -250,9 +243,6 @@ async function initEditor(): Promise<void> {
     //     dark: 'github-dark',
     //   },
     // }));
-
-    console.log('[MilkdownEditor] Adding diagram plugin...');
-    editorBuilder = editorBuilder.use(diagram);
 
     console.log('[MilkdownEditor] Adding footnote plugin...');
     editorBuilder = editorBuilder.use(footnote);
@@ -439,28 +429,6 @@ function getCursorPosition(): number {
   }
 }
 
-function setCursorPosition(pos: number): void {
-  if (!editor) return;
-  try {
-    const ctx = editor.ctx;
-    const editorView = ctx.get(editorViewCtx);
-    const { state, dispatch } = editorView;
-    const safePos = Math.max(0, Math.min(pos, state.doc.content.size));
-    const tr = state.tr.setSelection(TextSelection.create(state.doc, safePos, safePos));
-    dispatch(tr);
-    // 滚动到光标位置
-    const coords = editorView.coordsAtPos(safePos);
-    const editorRect = editorRef.value?.getBoundingClientRect();
-    if (editorRect && coords.top < editorRect.top) {
-      editorRef.value?.scrollTo({ top: coords.top - editorRect.top - 50, behavior: 'smooth' });
-    } else if (editorRect && coords.top > editorRect.bottom) {
-      editorRef.value?.scrollTo({ top: coords.top - editorRect.top + 50, behavior: 'smooth' });
-    }
-  } catch (e) {
-    console.error('Failed to set cursor position:', e);
-  }
-}
-
 function getContent(): string {
   if (!editor) return '';
   try {
@@ -536,127 +504,60 @@ function applyFormat(format: string): void {
 
   let command: any = null;
 
-  // 检查 marks 是否存在
-  if (!marks) {
-    console.warn('Marks not available');
-    return;
-  }
-
   switch (format) {
     case 'bold':
-      if (!marks.strong) {
-        console.warn('Strong mark not available');
-        return;
-      }
-      command = toggleMark(marks.strong);
+      command = toggleMark(marks.strong!);
       break;
     case 'italic':
-      if (!marks.em) {
-        console.warn('Em mark not available');
-        return;
-      }
-      command = toggleMark(marks.em);
+      command = toggleMark(marks.em!);
       break;
     case 'strike':
-      if (!marks.strikethrough) {
-        console.warn('Strikethrough mark not available');
-        return;
-      }
-      command = toggleMark(marks.strikethrough);
+      command = toggleMark(marks.strikethrough!);
       break;
     case 'code':
-      if (!marks.code_inline) {
-        console.warn('Code_inline mark not available');
-        return;
-      }
-      command = toggleMark(marks.code_inline);
+      command = toggleMark(marks.code_inline!);
       break;
     case 'highlight':
-      if (marks?.highlight) {
+      if (marks.highlight) {
         command = toggleMark(marks.highlight);
-      } else {
-        console.warn('Highlight mark not available');
-        return;
       }
       break;
     case 'subscript':
-      if (marks?.subscript) {
+      if (marks.subscript) {
         command = toggleMark(marks.subscript);
-      } else {
-        console.warn('Subscript mark not available');
-        return;
       }
       break;
     case 'superscript':
-      if (marks?.superscript) {
+      if (marks.superscript) {
         command = toggleMark(marks.superscript);
-      } else {
-        console.warn('Superscript mark not available');
-        return;
       }
       break;
     case 'h1':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 1 });
+      command = setBlockType(nodes.heading!, { level: 1 });
       break;
     case 'h2':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 2 });
+      command = setBlockType(nodes.heading!, { level: 2 });
       break;
     case 'h3':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 3 });
+      command = setBlockType(nodes.heading!, { level: 3 });
       break;
     case 'h4':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 4 });
+      command = setBlockType(nodes.heading!, { level: 4 });
       break;
     case 'h5':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 5 });
+      command = setBlockType(nodes.heading!, { level: 5 });
       break;
     case 'h6':
-      if (!nodes?.heading) {
-        console.warn('Heading node not available');
-        return;
-      }
-      command = setBlockType(nodes.heading, { level: 6 });
+      command = setBlockType(nodes.heading!, { level: 6 });
       break;
     case 'bulletList':
-      if (!nodes?.bullet_list) {
-        console.warn('Bullet_list node not available');
-        return;
-      }
-      command = wrapIn(nodes.bullet_list);
+      command = wrapIn(nodes.bullet_list!);
       break;
     case 'orderedList':
-      if (!nodes?.ordered_list) {
-        console.warn('Ordered_list node not available');
-        return;
-      }
-      command = wrapIn(nodes.ordered_list);
+      command = wrapIn(nodes.ordered_list!);
       break;
     case 'quote':
-      if (!nodes?.blockquote) {
-        console.warn('Blockquote node not available');
-        return;
-      }
-      command = wrapIn(nodes.blockquote);
+      command = wrapIn(nodes.blockquote!);
       break;
     case 'taskList':
       // 任务列表通过 insertNode 处理，这里调用它
@@ -697,58 +598,34 @@ function insertNode(type: string): void {
 
   let insertMarkdown = '';
 
-  // 计算插入后的光标位置（用于选中占位符文本）
-  let selectFrom = 0;
-  let selectTo = 0;
-
   switch (type) {
     case 'link':
-      // 插入占位符，并计算选区
-      insertMarkdown = '[链接文字](url)';
-      selectFrom = 1;  // 选中 "链接文字"
-      selectTo = 5;
+      insertMarkdown = '[链接文字](https://example.com)';
       break;
     case 'image':
       insertMarkdown = '![图片描述](图片地址)';
-      selectFrom = 2;  // 选中 "图片描述"
-      selectTo = 6;
       break;
     case 'codeBlock':
       insertMarkdown = '\n```\n代码内容\n```\n';
-      selectFrom = 5;  // 选中 "代码内容"
-      selectTo = 9;
       break;
     case 'table':
       insertMarkdown = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
-      selectFrom = 0;  // 不选中特定文本
-      selectTo = 0;
       break;
     case 'hr':
       insertMarkdown = '\n---\n';
-      selectFrom = 0;
-      selectTo = 0;
       break;
     case 'taskList':
       insertMarkdown = '- [ ] 任务项\n';
-      selectFrom = 6;  // 选中 "任务项"
-      selectTo = 9;
       break;
     case 'math':
-      // 插入行内数学公式，光标放在公式内部
-      insertMarkdown = '$公式$';
-      selectFrom = 1;  // 选中 "公式"
-      selectTo = 3;
+      insertMarkdown = '\n$$\nE = mc^2\n$$\n';
       break;
     case 'footnote':
       insertMarkdown = '[^1]\n\n[^1]: 脚注内容\n';
-      selectFrom = 0;
-      selectTo = 0;
       break;
     case 'toc':
       // 插入 TOC 标记
       insertMarkdown = `\n${TOC_PLACEHOLDER}\n`;
-      selectFrom = 0;
-      selectTo = 0;
       break;
     default:
       console.log('Unknown insert type:', type);
@@ -760,18 +637,7 @@ function insertNode(type: string): void {
   if (doc) {
     const { from, to } = state.selection;
     const tr = state.tr.replaceWith(from, to, doc.content);
-
-    // 如果有选区，设置选区
-    if (selectFrom !== selectTo) {
-      const insertEnd = from + doc.content.size;
-      const contentStart = from;
-      tr.setSelection(TextSelection.create(tr.doc, contentStart + selectFrom, contentStart + selectTo));
-    }
-
     dispatch(tr);
-
-    // 聚焦编辑器
-    view.focus();
   }
 }
 
@@ -864,10 +730,7 @@ function unbindImageEvents(): void {
 function undo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const view = ctx.get(editorViewCtx);
-    const { state, dispatch } = view;
-    undoCommand(state, dispatch);
+    callCommand(undoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to undo:', e);
   }
@@ -876,10 +739,7 @@ function undo(): void {
 function redo(): void {
   if (!editor) return;
   try {
-    const ctx = editor.ctx;
-    const view = ctx.get(editorViewCtx);
-    const { state, dispatch } = view;
-    redoCommand(state, dispatch);
+    callCommand(redoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to redo:', e);
   }
@@ -918,8 +778,6 @@ defineExpose({
   setContent,
   undo,
   redo,
-  getCursorPosition,
-  setCursorPosition,
   // TOC 相关功能
   insertToc: () => insertNode('toc'),
   updateToc: () => {

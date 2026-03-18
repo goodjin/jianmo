@@ -228,66 +228,20 @@ function toggleMode() {
   switchMode(newMode);
 }
 
-// 保存的位置信息
-const savedPosition = ref<{ mode: EditorMode; cursorPos: number; scrollTop: number } | null>(null);
-
 function switchMode(mode: EditorMode) {
   if (mode === currentMode.value) return;
 
   const previousMode = currentMode.value;
-
-  // 保存当前位置
-  if (previousMode === 'source' && textareaRef.value) {
-    const textarea = textareaRef.value;
-    savedPosition.value = {
-      mode: 'source',
-      cursorPos: textarea.selectionStart,
-      scrollTop: textarea.scrollTop,
-    };
-  } else if (previousMode === 'preview' && editorRef.value) {
-    const cursorPos = editorRef.value.getCursorPosition?.() || 0;
-    const scrollContainer = editorRef.value?.$el?.querySelector('.milkdown-editor');
-    savedPosition.value = {
-      mode: 'preview',
-      cursorPos,
-      scrollTop: scrollContainer?.scrollTop || 0,
-    };
-  }
-
   currentMode.value = mode;
 
   // 同步内容
   if (previousMode === 'source' && mode === 'preview') {
     content.value = sourceContent.value;
-    // 恢复预览模式位置
-    nextTick(() => {
-      if (savedPosition.value && editorRef.value) {
-        setTimeout(() => {
-          editorRef.value?.setCursorPosition?.(savedPosition.value!.cursorPos);
-          const scrollContainer = editorRef.value?.$el?.querySelector('.milkdown-editor');
-          if (scrollContainer) {
-            scrollContainer.scrollTop = savedPosition.value!.scrollTop;
-          }
-        }, 100); // 延迟等待编辑器渲染
-      }
-    });
   } else if (previousMode === 'preview' && mode === 'source') {
     sourceContent.value = content.value;
     nextTick(() => {
       if (textareaRef.value) {
-        const textarea = textareaRef.value;
-        textarea.focus();
-        // 恢复源码模式位置
-        if (savedPosition.value?.mode === 'source') {
-          const pos = Math.min(savedPosition.value.cursorPos, sourceContent.value.length);
-          textarea.setSelectionRange(pos, pos);
-          textarea.scrollTop = savedPosition.value.scrollTop;
-        } else if (savedPosition.value) {
-          // 从预览模式切换过来，尝试找到对应的文本位置
-          const ratio = savedPosition.value.cursorPos / (content.value.length || 1);
-          const targetPos = Math.round(ratio * sourceContent.value.length);
-          textarea.setSelectionRange(targetPos, targetPos);
-        }
+        textareaRef.value.focus();
       }
     });
   }
@@ -458,65 +412,36 @@ function handleImageContextMenu(src: string, x: number, y: number) {
   });
 }
 
-function handleOutlineJump(headingId: string) {
-  console.log('[App] Jumping to heading:', headingId);
-
+function handleOutlineJump(pos: number) {
   if (currentMode.value === 'source') {
-    // 源码模式：查找标题所在行并跳转
+    // 源码模式：跳转到文本位置
     const lines = sourceContent.value.split('\n');
     let charCount = 0;
     let targetLine = 0;
-    let found = false;
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      // 匹配标题行
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const text = match[2].trim().replace(/\{#[^}]+\}$/, '').trim();
-        const id = text
-          .toLowerCase()
-          .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-
-        if (id === headingId) {
-          targetLine = i;
-          found = true;
-          break;
-        }
+      if (charCount + lines[i].length >= pos) {
+        targetLine = i;
+        break;
       }
-      charCount += line.length + 1; // +1 for newline
+      charCount += lines[i].length + 1; // +1 for newline
     }
 
-    if (found) {
-      nextTick(() => {
-        if (textareaRef.value) {
-          textareaRef.value.focus();
-          // 计算目标行的起始位置
-          let targetPos = 0;
-          for (let i = 0; i < targetLine; i++) {
-            targetPos += lines[i].length + 1;
-          }
-          textareaRef.value.setSelectionRange(targetPos, targetPos);
-          // 滚动到行
-          const lineHeight = 1.6 * 21;
-          textareaRef.value.scrollTop = targetLine * lineHeight;
-        }
-      });
-    }
+    nextTick(() => {
+      if (textareaRef.value) {
+        textareaRef.value.focus();
+        textareaRef.value.setSelectionRange(charCount, charCount);
+        // Scroll to line
+        const lineHeight = 1.6 * 21; // line-height * font-size
+        textareaRef.value.scrollTop = targetLine * lineHeight;
+      }
+    });
   } else {
-    // 预览模式：通过编辑器跳转到标题
+    // 预览模式：通过编辑器跳转
     if (editorRef.value?.scrollToHeading) {
-      editorRef.value.scrollToHeading(headingId);
+      editorRef.value.scrollToHeading(pos);
     } else {
-      console.log('[App] scrollToHeading not available, trying DOM scroll');
-      // 备选方案：直接操作 DOM 滚动
-      const element = document.querySelector(`[id="${headingId}"]`) as HTMLElement;
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      console.log('Jump to heading:', pos);
     }
   }
 }
