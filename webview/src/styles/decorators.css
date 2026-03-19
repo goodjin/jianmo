@@ -1,0 +1,93 @@
+/**
+ * 装饰器样式
+ * @module styles/decorators
+ * @description Markdown WYSIWYG 装饰器的 CSS 样式
+ */
+
+/* ========== 标题样式 ========== */
+.cm-heading {
+  color: var(--markly-heading, var(--vscode-foreground));
+  line-height: 1.4;
+  margin: 0.5em 0;
+}
+
+.cm-heading-1 {
+  border-bottom: 2px solid var(--markly-border, var(--vscode-panel-border));
+  padding-bottom: 0.3em;
+}
+
+/* ========== 强调样式 ========== */
+.cm-strong {
+  font-weight: 700;
+}
+
+.cm-em {
+  font-style: italic;
+}
+
+.cm-strikethrough {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* ========== 链接样式 ========== */
+.cm-link {
+  color: var(--markly-link, var(--vscode-textLink-foreground));
+  text-decoration: none;
+}
+
+.cm-link:hover {
+  color: var(--markly-linkHover, var(--vscode-textLink-activeForeground));
+  text-decoration: underline;
+}
+
+/* ========== 代码样式 ========== */
+.cm-code {
+  color: var(--markly-code, var(--vscode-textPreformat-foreground));
+  background: var(--markly-codeBackground, rgba(175, 184, 193, 0.2));
+  font-family: 'Fira Code', 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, monospace;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+/* ========== 任务列表样式 ========== */
+.cm-task-checkbox {
+  margin-right: 0.5em;
+  cursor: default;
+  vertical-align: middle;
+}
+
+/* ========== 数学公式样式 ========== */
+.cm-math {
+  cursor: pointer;
+}
+
+.cm-math:hover {
+  background: var(--markly-surfaceHover, var(--vscode-list-hoverBackground));
+}
+
+.cm-math-inline {
+  display: inline;
+}
+
+.cm-math-block {
+  display: block;
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.cm-math-error {
+  color: var(--markly-error, var(--vscode-errorForeground));
+  text-decoration: wavy underline;
+}
+
+/* KaTeX 样式覆盖 */
+.cm-math .katex {
+  font-size: 1em;
+}
+
+.cm-math-block .katex {
+  font-size: 1.21em;
+}

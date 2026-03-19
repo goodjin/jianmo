@@ -1,0 +1,35 @@
+/**
+ * KaTeX 数学公式样式
+ * @module styles/katex
+ */
+
+/* 行内公式 */
+.cm-math-inline {
+  display: inline;
+  font-size: 1em;
+}
+
+/* 块级公式 */
+.cm-math-block {
+  display: block;
+  text-align: center;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+/* 错误状态 */
+.cm-math-error {
+  color: var(--markly-error, #f44747);
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+/* KaTeX 容器适配 */
+.cm-math .katex-display {
+  margin: 0;
+}
+
+.cm-math .katex {
+  font-size: 1.1em;
+}
