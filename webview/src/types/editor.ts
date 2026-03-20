@@ -79,6 +79,18 @@ export interface EditorInstance {
   canUndo: ComputedRef<boolean>;
   /** 是否可重做 */
   canRedo: ComputedRef<boolean>;
+
+  // ========== 格式与插入操作 ==========
+  /**
+   * 应用文本格式
+   * @param format - 格式类型 (e.g. 'bold', 'italic', 'h1')
+   */
+  applyFormat: (format: string) => void;
+  /**
+   * 插入特定节点或内容
+   * @param type - 节点类型 (e.g. 'image', 'link', 'codeBlock')
+   */
+  insertNode: (type: string) => void;
 }
 
 /**

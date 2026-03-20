@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { useVSCode, type VSCodeApi } from '../useVSCode';
+import { withSetup } from '../../utils/testUtils';
 import type { VSCodeMessage } from '../../../../src/shared/types';
 
 // Mock VS Code API
@@ -36,7 +37,7 @@ describe('useVSCode', () => {
       (window as unknown as { acquireVsCodeApi: () => VSCodeApi }).acquireVsCodeApi = () =>
         mockVSCodeApi;
 
-      const { vscode, isReady } = useVSCode();
+      const { result: { vscode, isReady }, wrapper } = withSetup(() => useVSCode());
 
       // 手动触发 onMounted 逻辑
       if (typeof window.acquireVsCodeApi === 'function') {
@@ -49,7 +50,7 @@ describe('useVSCode', () => {
     });
 
     it('应该在 acquireVsCodeApi 不可用时保持未就绪状态', () => {
-      const { vscode, isReady } = useVSCode();
+      const { result: { vscode, isReady }, wrapper } = withSetup(() => useVSCode());
 
       expect(vscode.value).toBeNull();
       expect(isReady.value).toBe(false);
@@ -62,7 +63,7 @@ describe('useVSCode', () => {
       (window as unknown as { acquireVsCodeApi: () => VSCodeApi }).acquireVsCodeApi = () =>
         mockVSCodeApi;
 
-      const { vscode, isReady, postMessage } = useVSCode();
+      const { result: { vscode, isReady, postMessage }, wrapper } = withSetup(() => useVSCode());
 
       if (typeof window.acquireVsCodeApi === 'function') {
         vscode.value = window.acquireVsCodeApi();
@@ -80,7 +81,7 @@ describe('useVSCode', () => {
     });
 
     it('在 vscode 未初始化时不应该报错', () => {
-      const { postMessage } = useVSCode();
+      const { result: { postMessage }, wrapper } = withSetup(() => useVSCode());
 
       const message: VSCodeMessage = {
         type: 'CONTENT_CHANGE',
@@ -94,7 +95,7 @@ describe('useVSCode', () => {
 
   describe('onMessage', () => {
     it('应该监听来自 Extension 的消息', () => {
-      const { onMessage } = useVSCode();
+      const { result: { onMessage }, wrapper } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);
@@ -118,7 +119,7 @@ describe('useVSCode', () => {
     });
 
     it('应该支持取消监听', () => {
-      const { onMessage } = useVSCode();
+      const { result: { onMessage }, wrapper } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);
@@ -143,7 +144,7 @@ describe('useVSCode', () => {
     });
 
     it('应该能处理多个监听器', () => {
-      const { onMessage } = useVSCode();
+      const { result: { onMessage }, wrapper } = withSetup(() => useVSCode());
       const handler1 = vi.fn();
       const handler2 = vi.fn();
 
@@ -175,7 +176,7 @@ describe('useVSCode', () => {
       (window as unknown as { acquireVsCodeApi: () => VSCodeApi }).acquireVsCodeApi = () =>
         mockVSCodeApi;
 
-      const { vscode, isReady, setState } = useVSCode();
+      const { result: { vscode, isReady, setState }, wrapper } = withSetup(() => useVSCode());
 
       if (typeof window.acquireVsCodeApi === 'function') {
         vscode.value = window.acquireVsCodeApi();
@@ -196,7 +197,7 @@ describe('useVSCode', () => {
       (window as unknown as { acquireVsCodeApi: () => VSCodeApi }).acquireVsCodeApi = () =>
         mockVSCodeApi;
 
-      const { vscode, isReady, getState } = useVSCode();
+      const { result: { vscode, isReady, getState }, wrapper } = withSetup(() => useVSCode());
 
       if (typeof window.acquireVsCodeApi === 'function') {
         vscode.value = window.acquireVsCodeApi();
@@ -210,14 +211,14 @@ describe('useVSCode', () => {
     });
 
     it('在 vscode 未初始化时 setState 不应该报错', () => {
-      const { setState } = useVSCode();
+      const { result: { setState }, wrapper } = withSetup(() => useVSCode());
 
       expect(() => setState({ test: true })).not.toThrow();
       expect(mockSetState).not.toHaveBeenCalled();
     });
 
     it('在 vscode 未初始化时 getState 应该返回 undefined', () => {
-      const { getState } = useVSCode();
+      const { result: { getState }, wrapper } = withSetup(() => useVSCode());
 
       const state = getState();
 
@@ -228,7 +229,7 @@ describe('useVSCode', () => {
 
   describe('边界条件', () => {
     it('应该处理不同类型的消息', () => {
-      const { onMessage } = useVSCode();
+      const { result: { onMessage }, wrapper } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);
@@ -258,7 +259,7 @@ describe('useVSCode', () => {
     });
 
     it('应该处理没有 payload 的消息', () => {
-      const { onMessage } = useVSCode();
+      const { result: { onMessage }, wrapper } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);

@@ -41,27 +41,12 @@
 
     <div class="editor-main">
       <div class="editor-container">
-        <!-- 源码模式 -->
-        <div v-if="currentMode === 'source'" class="source-editor">
-          <textarea
-            ref="textareaRef"
-            v-model="sourceContent"
-            class="source-textarea"
-            @input="handleSourceChange"
-          ></textarea>
-        </div>
-
-        <!-- 预览模式 -->
-        <MilkdownEditor
-          v-else-if="currentMode === 'preview' && editorReady"
-          ref="editorRef"
-          :content="content"
-          :config="config"
-          @change="handleChange"
-          @image-click="handleImageClick"
-          @image-context-menu="handleImageContextMenu"
-          @ready="handleEditorReady"
-        />
+        <!-- 编辑器容器 (IR、源码、分屏都由 CM6 处理) -->
+        <div
+          ref="editorContainerRef"
+          class="cm-editor-container"
+          v-show="editorReady"
+        ></div>
 
         <div v-if="!editorReady" class="loading">
           <span>Loading editor...</span>
@@ -80,56 +65,44 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
-import MilkdownEditor from './components/MilkdownEditor.vue';
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { useEditor } from './composables/useEditor';
 import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
-import { formatTablesInContent } from './utils/tableFormatter';
+import { hasToc, updateTocInContent } from './utils/toc';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
 
-const vscode = (window as any).vscode;
+import { useVSCode } from './composables/useVSCode';
+const { postMessage } = useVSCode();
 
 // State
 const content = ref('');
-const sourceContent = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const editorReady = ref(false);
-const currentMode = ref<EditorMode>('preview');
-const editorRef = ref<InstanceType<typeof MilkdownEditor> | null>(null);
-const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const currentMode = ref<EditorMode>('ir');
+const editorContainerRef = ref<HTMLElement | null>(null);
 
 // Table formatting debounce
 let tableFormatTimeout: ReturnType<typeof setTimeout> | null = null;
 const TABLE_FORMAT_DELAY = 500; // ms
 
-// 等待编辑器准备好的辅助函数
-function waitForEditorReady(): Promise<void> {
-  return new Promise((resolve) => {
-    // 如果编辑器已经准备好，立即解决
-    if (editorReady.value && editorRef.value?.getContent !== undefined) {
-      resolve();
-      return;
-    }
-    
-    // 否则等待一小段时间让编辑器完成初始化
-    // 使用轮询方式，最多等待 2 秒
-    let attempts = 0;
-    const maxAttempts = 20;
-    const interval = setInterval(() => {
-      attempts++;
-      if (editorReady.value && editorRef.value?.getContent !== undefined) {
-        clearInterval(interval);
-        resolve();
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        console.warn('waitForEditorReady: timeout, editor may not be ready');
-        resolve();
-      }
-    }, 100);
-  });
-}
+// Initialize useEditor hook
+const editor = useEditor({
+  initialContent: '',
+  initialMode: currentMode.value,
+  onChange: (newContent: string) => {
+    content.value = newContent;
+    sendMessage({
+      type: 'CONTENT_CHANGE',
+      payload: { content: newContent },
+    });
+  },
+  onModeChange: (newMode: EditorMode) => {
+    currentMode.value = newMode;
+  }
+});
 
 // UI state
 const findReplaceVisible = ref(false);
@@ -175,15 +148,19 @@ function handleMessage(event: MessageEvent) {
     case 'INIT':
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       content.value = message.payload.content;
-      sourceContent.value = message.payload.content;
       config.value = message.payload.config;
-      editorReady.value = true;
-      console.log('[Webview] editorReady set to true');
+
+      // Initialize editor when INIT is received
+      if (editorContainerRef.value) {
+        editor.setContent(content.value);
+        editorReady.value = true;
+        console.log('[Webview] editorReady set to true');
+      }
       break;
 
     case 'CONTENT_UPDATE':
       content.value = message.payload.content;
-      sourceContent.value = message.payload.content;
+      editor.setContent(message.payload.content);
       break;
 
     case 'CONFIG_CHANGE':
@@ -211,7 +188,7 @@ function handleMessage(event: MessageEvent) {
 }
 
 function sendMessage(message: any) {
-  vscode.postMessage(message);
+  postMessage(message);
 }
 
 // 编辑器准备好后的回调
@@ -230,90 +207,32 @@ function toggleMode() {
 
 function switchMode(mode: EditorMode) {
   if (mode === currentMode.value) return;
-
-  const previousMode = currentMode.value;
-  currentMode.value = mode;
-
-  // 同步内容
-  if (previousMode === 'source' && mode === 'preview') {
-    content.value = sourceContent.value;
-  } else if (previousMode === 'preview' && mode === 'source') {
-    sourceContent.value = content.value;
-    nextTick(() => {
-      if (textareaRef.value) {
-        textareaRef.value.focus();
-      }
-    });
-  }
+  editor.switchMode(mode);
 }
 
 // Event handlers
 function handleChange(newContent: string) {
   content.value = newContent;
-  sourceContent.value = newContent;
   sendMessage({
     type: 'CONTENT_CHANGE',
     payload: { content: newContent },
   });
 }
 
-function handleSourceChange() {
-  // Clear any pending table format
-  if (tableFormatTimeout) {
-    clearTimeout(tableFormatTimeout);
-  }
-
-  // Immediately update content and notify (no debounce for content sync)
-  const currentInput = sourceContent.value;
-  content.value = currentInput;
-  sendMessage({
-    type: 'CONTENT_CHANGE',
-    payload: { content: currentInput },
-  });
-
-  // Debounce table formatting only - don't block content updates
-  tableFormatTimeout = setTimeout(() => {
-    // Quick check if content has table potential
-    if (currentInput.includes('|')) {
-      const formatted = formatTablesInContent(currentInput);
-      if (formatted !== currentInput) {
-        // Calculate cursor offset based on character difference
-        const cursorPos = textareaRef.value?.selectionStart || 0;
-        const oldLength = currentInput.length;
-        const newLength = formatted.length;
-        const offset = newLength - oldLength;
-
-        // Update content with formatted result
-        sourceContent.value = formatted;
-        content.value = formatted;
-        sendMessage({
-          type: 'CONTENT_CHANGE',
-          payload: { content: formatted },
-        });
-
-        // Restore cursor position with offset adjustment
-        nextTick(() => {
-          if (textareaRef.value) {
-            const newPos = Math.min(cursorPos + offset, formatted.length);
-            textareaRef.value.setSelectionRange(newPos, newPos);
-          }
-        });
-      }
-    }
-  }, TABLE_FORMAT_DELAY);
-}
-
-// 保存文件时自动更新 TOC
+// 保存文件时处理
 function saveWithTocUpdate() {
+  let updatedContent = editor.getContent();
+
   // 检查并更新 TOC
-  if (editorRef.value?.hasToc(content.value)) {
-    editorRef.value.updateToc();
+  if (hasToc(updatedContent)) {
+    updatedContent = updateTocInContent(updatedContent);
+    // 同步回编辑器
+    if (updatedContent !== editor.getContent()) {
+      editor.setContent(updatedContent);
+      content.value = updatedContent;
+    }
   }
-  
-  // 直接使用 content.value，而不是 getContent()（可能返回过期数据）
-  const updatedContent = content.value;
-  sourceContent.value = updatedContent;
-  
+
   // 发送保存消息
   sendMessage({
     type: 'SAVE',
@@ -322,53 +241,19 @@ function saveWithTocUpdate() {
 }
 
 function handleFormat(format: string) {
-  if (currentMode.value === 'source') {
-    // 源码模式下，先切换到预览模式
-    switchMode('preview');
-    // 等待 Milkdown 编辑器完全初始化后再执行格式操作
-    waitForEditorReady().then(() => {
-      editorRef.value?.applyFormat(format);
-    });
-  } else {
-    editorRef.value?.applyFormat(format);
-  }
+  editor.applyFormat(format);
 }
 
 function handleInsert(type: string) {
-  if (currentMode.value === 'source') {
-    // 源码模式下，先切换到预览模式
-    switchMode('preview');
-    // 等待 Milkdown 编辑器完全初始化后再执行插入操作
-    waitForEditorReady().then(() => {
-      editorRef.value?.insertNode(type);
-    });
-  } else {
-    editorRef.value?.insertNode(type);
-  }
+  editor.insertNode(type);
 }
 
 function handleUndo() {
-  if (currentMode.value === 'source') {
-    // 源码模式下，先切换到预览模式
-    switchMode('preview');
-    waitForEditorReady().then(() => {
-      editorRef.value?.undo();
-    });
-  } else {
-    editorRef.value?.undo();
-  }
+  editor.undo();
 }
 
 function handleRedo() {
-  if (currentMode.value === 'source') {
-    // 源码模式下，先切换到预览模式
-    switchMode('preview');
-    waitForEditorReady().then(() => {
-      editorRef.value?.redo();
-    });
-  } else {
-    editorRef.value?.redo();
-  }
+  editor.redo();
 }
 
 // 查找替换处理函数
@@ -398,51 +283,63 @@ function handleReplaceAll(
   console.log('Replace All:', findText, '->', replaceText, options);
 }
 
-function handleImageClick(src: string, images: string[], index: number) {
-  currentImageSrc.value = src;
-  currentImages.value = images;
-  currentImageIndex.value = index;
-  imagePreviewVisible.value = true;
+// 解析图片 URL（处理相对路径）
+function resolveImageUrl(src: string): string {
+  if (!src) return '';
+  if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:') || src.startsWith('file://')) {
+    return src;
+  }
+  const baseUrl = document.baseURI || '';
+  if (baseUrl) {
+    try {
+      return new URL(src, baseUrl).href;
+    } catch {
+      return src;
+    }
+  }
+  return src;
 }
 
-function handleImageContextMenu(src: string, x: number, y: number) {
-  sendMessage({
-    type: 'OPEN_IMAGE_EDITOR',
-    payload: { src },
-  });
+// Global click handler to intercept image clicks
+function handleGlobalClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target && target.tagName === 'IMG') {
+    const src = target.getAttribute('src') || '';
+    const resolvedSrc = resolveImageUrl(src);
+
+    const images = Array.from(document.querySelectorAll('.cm-editor-container img'))
+      .map((img) => resolveImageUrl(img.getAttribute('src') || ''));
+    const index = images.indexOf(resolvedSrc);
+
+    currentImageSrc.value = resolvedSrc;
+    currentImages.value = images;
+    currentImageIndex.value = index;
+    imagePreviewVisible.value = true;
+  }
+}
+
+// Global context menu handler for images
+function handleGlobalContextMenu(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (target && target.tagName === 'IMG') {
+    e.preventDefault();
+    const src = target.getAttribute('src') || '';
+    const resolvedSrc = resolveImageUrl(src);
+    sendMessage({
+      type: 'OPEN_IMAGE_EDITOR',
+      payload: { src: resolvedSrc },
+    });
+  }
 }
 
 function handleOutlineJump(pos: number) {
-  if (currentMode.value === 'source') {
-    // 源码模式：跳转到文本位置
-    const lines = sourceContent.value.split('\n');
-    let charCount = 0;
-    let targetLine = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (charCount + lines[i].length >= pos) {
-        targetLine = i;
-        break;
-      }
-      charCount += lines[i].length + 1; // +1 for newline
-    }
-
-    nextTick(() => {
-      if (textareaRef.value) {
-        textareaRef.value.focus();
-        textareaRef.value.setSelectionRange(charCount, charCount);
-        // Scroll to line
-        const lineHeight = 1.6 * 21; // line-height * font-size
-        textareaRef.value.scrollTop = targetLine * lineHeight;
-      }
+  if (editor.view.value) {
+    editor.view.value.dispatch({
+      selection: { anchor: pos },
+      scrollIntoView: true
     });
-  } else {
-    // 预览模式：通过编辑器跳转
-    if (editorRef.value?.scrollToHeading) {
-      editorRef.value.scrollToHeading(pos);
-    } else {
-      console.log('Jump to heading:', pos);
-    }
+    // Give focus back to editor
+    editor.view.value.focus();
   }
 }
 
@@ -473,32 +370,32 @@ function handleKeyDown(e: KeyboardEvent) {
     switch (e.key.toLowerCase()) {
       case 'b':
         e.preventDefault();
-        editorRef.value?.applyFormat('bold');
+        editor.applyFormat('bold');
         break;
       case 'i':
         e.preventDefault();
-        editorRef.value?.applyFormat('italic');
+        editor.applyFormat('italic');
         break;
       case 'k':
         e.preventDefault();
         if (e.shiftKey) {
-          editorRef.value?.insertNode('codeBlock');
+          editor.insertNode('codeBlock');
         } else {
-          editorRef.value?.insertNode('link');
+          editor.insertNode('link');
         }
         break;
       case 'm':
         if (e.shiftKey) {
           e.preventDefault();
-          editorRef.value?.insertNode('math');
+          editor.insertNode('math');
         }
         break;
       case 'z':
         e.preventDefault();
         if (e.shiftKey) {
-          editorRef.value?.redo();
+          editor.redo();
         } else {
-          editorRef.value?.undo();
+          editor.undo();
         }
         break;
     }
@@ -509,9 +406,9 @@ function handleKeyDown(e: KeyboardEvent) {
     e.preventDefault();
     if (currentMode.value === 'preview') {
       if (e.shiftKey) {
-        editorRef.value?.applyFormat('outdent');
+        editor.applyFormat('outdent');
       } else {
-        editorRef.value?.applyFormat('indent');
+        editor.applyFormat('indent');
       }
     }
   }
@@ -527,21 +424,62 @@ const themeChangeListener = () => {
   }
 };
 
+// 初始化重试机制
+let initRetryTimer: ReturnType<typeof setTimeout> | null = null;
+const MAX_INIT_RETRIES = 5;
+let initRetryCount = 0;
+
+function checkInitStatus() {
+  if (editorReady.value) {
+    if (initRetryTimer) clearTimeout(initRetryTimer);
+    return;
+  }
+
+  if (initRetryCount < MAX_INIT_RETRIES) {
+    initRetryCount++;
+    console.log(`[Webview] Retrying READY message (${initRetryCount}/${MAX_INIT_RETRIES})...`);
+    sendMessage({ type: 'READY' });
+    initRetryTimer = setTimeout(checkInitStatus, 1000);
+  } else {
+    console.error('[Webview] Failed to initialize after multiple retries.');
+  }
+}
+
 // Lifecycle
 onMounted(() => {
   window.addEventListener('message', handleMessage);
   window.addEventListener('keydown', handleKeyDown);
-  sendMessage({ type: 'READY' });
+
+  // Wait for next tick to ensure VS Code API is acquired
+  nextTick(() => {
+    sendMessage({ type: 'READY' });
+    initRetryTimer = setTimeout(checkInitStatus, 1000);
+  });
 
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChangeListener);
+
+  // 监听图片点击和右键菜单 (用于 CM6 装饰器渲染出的 DOM 元素)
+  if (editorContainerRef.value) {
+    editor.createEditor(editorContainerRef.value);
+    editorContainerRef.value.addEventListener('click', handleGlobalClick);
+    editorContainerRef.value.addEventListener('contextmenu', handleGlobalContextMenu);
+  }
 });
 
 onUnmounted(() => {
   window.removeEventListener('message', handleMessage);
   window.removeEventListener('keydown', handleKeyDown);
   window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', themeChangeListener);
-  
+
+  if (editorContainerRef.value) {
+    editorContainerRef.value.removeEventListener('click', handleGlobalClick);
+    editorContainerRef.value.removeEventListener('contextmenu', handleGlobalContextMenu);
+  }
+
+  // Destroy editor
+  editor.destroy();
+
   // Clear table format timeout
   if (tableFormatTimeout) {
     clearTimeout(tableFormatTimeout);
@@ -573,30 +511,28 @@ onUnmounted(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
-.source-editor {
+.cm-editor-container {
   flex: 1;
   min-height: 0;
-  display: flex;
-  overflow: hidden;
-}
-
-.source-textarea {
-  flex: 1;
   width: 100%;
   height: 100%;
-  padding: 24px;
-  border: none;
-  outline: none;
-  resize: none;
+  display: flex;
+  flex-direction: column;
   background: var(--vscode-editor-background);
-  color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-editor-font-family, 'SF Mono', Consolas, monospace);
-  font-size: 21px;
-  line-height: 1.6;
-  tab-size: 2;
-  box-sizing: border-box;
+}
+
+/* Ensure CodeMirror takes full height */
+:deep(.cm-editor) {
+  height: 100%;
+  width: 100%;
+}
+
+:deep(.cm-scroller) {
+  overflow: auto;
+  padding: 24px;
 }
 
 .loading {

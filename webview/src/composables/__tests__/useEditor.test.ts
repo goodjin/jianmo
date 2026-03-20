@@ -6,8 +6,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { useEditor } from '../useEditor';
+import { withSetup } from '../../utils/testUtils';
 
 // Mock CodeMirror DOM APIs
+if (typeof Range !== 'undefined') {
+  Range.prototype.getClientRects = () => [] as any;
+  Range.prototype.getBoundingClientRect = () => ({ right: 0, bottom: 0, left: 0, top: 0, width: 0, height: 0, x: 0, y: 0 } as any);
+}
 Object.defineProperty(window, 'getComputedStyle', {
   value: () => ({
     getPropertyValue: () => '',
@@ -30,7 +35,7 @@ describe('useEditor', () => {
 
   describe('创建和销毁', () => {
     it('应该创建编辑器实例', () => {
-      const { createEditor, view } = useEditor();
+      const { result: { createEditor, view }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
 
@@ -38,7 +43,7 @@ describe('useEditor', () => {
     });
 
     it('应该销毁编辑器实例', () => {
-      const { createEditor, destroy, view } = useEditor();
+      const { result: { createEditor, destroy, view }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
       destroy();
@@ -49,7 +54,7 @@ describe('useEditor', () => {
 
   describe('模式切换', () => {
     it('应该切换编辑模式', () => {
-      const { createEditor, switchMode, mode } = useEditor();
+      const { result: { createEditor, switchMode, mode }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
       switchMode('source');
@@ -59,9 +64,9 @@ describe('useEditor', () => {
 
     it('应该触发模式变化回调', () => {
       const onModeChange = vi.fn();
-      const { createEditor, switchMode } = useEditor({
+      const { result: { createEditor, switchMode }, wrapper } = withSetup(() => useEditor({
         onModeChange,
-      });
+      }));
 
       createEditor(container);
       switchMode('split');
@@ -70,9 +75,9 @@ describe('useEditor', () => {
     });
 
     it('相同模式不应该触发更新', () => {
-      const { createEditor, switchMode, mode } = useEditor({
+      const { result: { createEditor, switchMode, mode }, wrapper } = withSetup(() => useEditor({
         initialMode: 'ir',
-      });
+      }));
 
       createEditor(container);
       switchMode('ir');
@@ -83,9 +88,9 @@ describe('useEditor', () => {
 
   describe('内容操作', () => {
     it('应该获取编辑器内容', () => {
-      const { createEditor, getContent } = useEditor({
+      const { result: { createEditor, getContent }, wrapper } = withSetup(() => useEditor({
         initialContent: '# Hello World',
-      });
+      }));
 
       createEditor(container);
 
@@ -93,7 +98,7 @@ describe('useEditor', () => {
     });
 
     it('应该设置编辑器内容', async () => {
-      const { createEditor, setContent, getContent } = useEditor();
+      const { result: { createEditor, setContent, getContent }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
       setContent('# New Content');
@@ -103,7 +108,7 @@ describe('useEditor', () => {
     });
 
     it('内容计算属性应该同步', async () => {
-      const { createEditor, setContent, content } = useEditor();
+      const { result: { createEditor, setContent, content }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
       setContent('# Test');
@@ -115,7 +120,7 @@ describe('useEditor', () => {
 
   describe('撤销重做', () => {
     it('应该有撤销方法', () => {
-      const { createEditor, undo } = useEditor();
+      const { result: { createEditor, undo }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
 
@@ -124,7 +129,7 @@ describe('useEditor', () => {
     });
 
     it('应该有重做方法', () => {
-      const { createEditor, redo } = useEditor();
+      const { result: { createEditor, redo }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
 
@@ -133,7 +138,7 @@ describe('useEditor', () => {
     });
 
     it('应该有可撤销计算属性', () => {
-      const { createEditor, canUndo } = useEditor();
+      const { result: { createEditor, canUndo }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
 
@@ -141,7 +146,7 @@ describe('useEditor', () => {
     });
 
     it('应该有可重做计算属性', () => {
-      const { createEditor, canRedo } = useEditor();
+      const { result: { createEditor, canRedo }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
 
@@ -149,9 +154,36 @@ describe('useEditor', () => {
     });
   });
 
+  describe('格式与插入操作', () => {
+    it('应该有 applyFormat 方法并能执行基础格式化', async () => {
+      const { result: { createEditor, applyFormat, setContent, getContent }, wrapper } = withSetup(() => useEditor());
+      createEditor(container);
+      setContent('test');
+      await nextTick();
+
+      expect(typeof applyFormat).toBe('function');
+      expect(() => applyFormat('bold')).not.toThrow();
+      // 这里由于处于测试环境，没有选中文字，applyFormat 默认在光标位置（0）插入 ** 前后缀
+      expect(getContent()).toContain('**');
+    });
+
+    it('应该有 insertNode 方法并能插入指定内容', async () => {
+      const { result: { createEditor, insertNode, getContent }, wrapper } = withSetup(() => useEditor());
+      createEditor(container);
+      await nextTick();
+
+      expect(typeof insertNode).toBe('function');
+      insertNode('link');
+      expect(getContent()).toContain('[链接文字](https://example.com)');
+
+      insertNode('image');
+      expect(getContent()).toContain('![图片描述](图片地址)');
+    });
+  });
+
   describe('边界条件', () => {
     it('未创建时不应该报错', () => {
-      const { getContent, setContent, undo, redo } = useEditor();
+      const { result: { getContent, setContent, undo, redo }, wrapper } = withSetup(() => useEditor());
 
       expect(() => getContent()).not.toThrow();
       expect(() => setContent('test')).not.toThrow();
@@ -160,7 +192,7 @@ describe('useEditor', () => {
     });
 
     it('销毁后不应该报错', () => {
-      const { createEditor, destroy, getContent } = useEditor();
+      const { result: { createEditor, destroy, getContent }, wrapper } = withSetup(() => useEditor());
 
       createEditor(container);
       destroy();

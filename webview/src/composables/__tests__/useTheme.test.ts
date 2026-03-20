@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import { useTheme } from '../useTheme';
+import { withSetup } from '../../utils/testUtils';
 import { lightTheme, darkTheme } from '../../shared/themeConfig';
 
 // Mock useVSCode
@@ -29,63 +30,65 @@ describe('useTheme', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => matchMediaMock));
 
     // Mock document
-    vi.stubGlobal('document', {
-      documentElement: {
-        style: { setProperty: vi.fn() },
-        setAttribute: vi.fn(),
-      },
-    });
+    
+    // Don't stub whole document, just mock documentElement methods
+    const originalSetProperty = document.documentElement.style.setProperty;
+    const originalSetAttribute = document.documentElement.setAttribute;
+    document.documentElement.style.setProperty = vi.fn();
+    document.documentElement.setAttribute = vi.fn();
+
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    // we should restore document properties actually, wait, we can just do that in afterEach
     vi.clearAllMocks();
   });
 
   describe('初始化', () => {
     it('应该使用默认主题 auto', () => {
-      const { theme } = useTheme();
+      const { result: { theme }, wrapper } = withSetup(() => useTheme());
       expect(theme.value).toBe('auto');
     });
 
     it('应该接受自定义默认主题', () => {
-      const { theme } = useTheme({ defaultTheme: 'dark' });
+      const { result: { theme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'dark' }));
       expect(theme.value).toBe('dark');
     });
 
-    it('系统主题监听只在组件挂载后触发（onMounted）', () => {
-      // onMounted 在测试环境不触发，所以 effectiveTheme 初始为 light（默认）
+    it('系统主题监听会在组件挂载后触发（onMounted）', () => {
+      // 通过 withSetup 模拟挂载，所以 onMounted 会执行
       matchMediaMock.matches = true;
-      const { effectiveTheme } = useTheme({ defaultTheme: 'auto' });
-      // 因为 onMounted 不执行，systemPrefersDark 保持初始值 false
-      expect(effectiveTheme.value).toBe('light');
+      const { result: { effectiveTheme } } = withSetup(() => useTheme({ defaultTheme: 'auto' }));
+      // 由于 onMounted 执行且 matches=true，effectiveTheme 应该是 dark
+      expect(effectiveTheme.value).toBe('dark');
     });
   });
 
   describe('effectiveTheme', () => {
     it('auto 模式下默认返回 light（系统偏好检测在 onMounted 中）', () => {
       matchMediaMock.matches = false;
-      const { effectiveTheme } = useTheme({ defaultTheme: 'auto' });
+      const { result: { effectiveTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'auto' }));
 
       expect(effectiveTheme.value).toBe('light');
     });
 
     it('auto 模式下通过 setTheme 切换', () => {
-      const { theme, effectiveTheme, setTheme } = useTheme({ defaultTheme: 'auto' });
+      const { result: { theme, effectiveTheme, setTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'auto' }));
 
       setTheme('dark');
       expect(effectiveTheme.value).toBe('dark');
     });
 
     it('明确设置 light 应该返回 light', () => {
-      const { theme, effectiveTheme } = useTheme({ defaultTheme: 'light' });
+      const { result: { theme, effectiveTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       expect(theme.value).toBe('light');
       expect(effectiveTheme.value).toBe('light');
     });
 
     it('明确设置 dark 应该返回 dark', () => {
-      const { theme, effectiveTheme } = useTheme({ defaultTheme: 'dark' });
+      const { result: { theme, effectiveTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'dark' }));
 
       expect(theme.value).toBe('dark');
       expect(effectiveTheme.value).toBe('dark');
@@ -94,13 +97,13 @@ describe('useTheme', () => {
 
   describe('currentConfig', () => {
     it('light 主题应该返回 lightTheme 配置', () => {
-      const { currentConfig } = useTheme({ defaultTheme: 'light' });
+      const { result: { currentConfig }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       expect(currentConfig.value).toEqual(lightTheme);
     });
 
     it('dark 主题应该返回 darkTheme 配置', () => {
-      const { currentConfig } = useTheme({ defaultTheme: 'dark' });
+      const { result: { currentConfig }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'dark' }));
 
       expect(currentConfig.value).toEqual(darkTheme);
     });
@@ -108,7 +111,7 @@ describe('useTheme', () => {
 
   describe('setTheme', () => {
     it('应该能够设置主题', () => {
-      const { theme, setTheme } = useTheme({ defaultTheme: 'light' });
+      const { result: { theme, setTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       setTheme('dark');
 
@@ -116,7 +119,7 @@ describe('useTheme', () => {
     });
 
     it('应该能够设置为 auto', () => {
-      const { theme, setTheme } = useTheme({ defaultTheme: 'light' });
+      const { result: { theme, setTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       setTheme('auto');
 
@@ -126,7 +129,7 @@ describe('useTheme', () => {
 
   describe('toggleTheme', () => {
     it('应该按 light -> dark -> auto -> light 循环', () => {
-      const { theme, toggleTheme } = useTheme({ defaultTheme: 'light' });
+      const { result: { theme, toggleTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       expect(theme.value).toBe('light');
 
@@ -143,7 +146,7 @@ describe('useTheme', () => {
 
   describe('DOM 操作', () => {
     it('应该设置 CSS 变量', async () => {
-      const { setTheme } = useTheme({ defaultTheme: 'light' });
+      const { result: { setTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'light' }));
 
       await nextTick();
 
@@ -153,7 +156,7 @@ describe('useTheme', () => {
     });
 
     it('应该设置 data-theme 属性', async () => {
-      const { setTheme } = useTheme({ defaultTheme: 'dark' });
+      const { result: { setTheme }, wrapper } = withSetup(() => useTheme({ defaultTheme: 'dark' }));
 
       await nextTick();
 
@@ -162,11 +165,10 @@ describe('useTheme', () => {
   });
 
   describe('系统主题监听', () => {
-    it('系统主题监听在 onMounted 中注册（测试环境不触发）', () => {
-      // onMounted 在测试环境不执行，matchMedia 监听不会注册
-      useTheme({ defaultTheme: 'auto' });
-      // 验证 hook 可以正常初始化
-      expect(matchMediaMock.addEventListener).not.toHaveBeenCalled();
+    it('系统主题监听会在 onMounted 中注册', () => {
+      withSetup(() => useTheme({ defaultTheme: 'auto' }));
+      // 验证 addEventListener 被调用
+      expect(matchMediaMock.addEventListener).toHaveBeenCalledWith('change', expect.any(Function));
     });
   });
 });

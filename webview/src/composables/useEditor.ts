@@ -6,7 +6,7 @@
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
-import type { EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import type { EditorMode, EditorOptions, EditorInstance } from '../types';
 import { createEditorState, createEditorView, destroyEditor } from '../core';
@@ -50,9 +50,16 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
 
     containerRef.value = container;
 
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged && options.onChange) {
+        options.onChange(update.state.doc.toString());
+      }
+    });
+
     const state = createEditorState(
       options.initialContent || '',
-      mode.value
+      mode.value,
+      [updateListener]
     );
 
     view.value = createEditorView(container, state);
@@ -101,7 +108,12 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     const currentContent = getContent();
 
     // 创建新状态
-    const newState = createEditorState(currentContent, newMode);
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged && options.onChange) {
+        options.onChange(update.state.doc.toString());
+      }
+    });
+    const newState = createEditorState(currentContent, newMode, [updateListener]);
 
     // 更新视图
     view.value.setState(newState);
@@ -129,6 +141,137 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     redo(view.value);
   };
 
+  // ========== 格式化与插入操作 ==========
+
+  /**
+   * 应用文本格式 (如加粗、斜体等)
+   * 这是一个基础实现，实际需要根据所选文字包裹特定的 Markdown 语法
+   * @param format - 格式类型
+   */
+  const applyFormat = (format: string): void => {
+    if (!view.value) return;
+
+    const { state, dispatch } = view.value;
+    const selection = state.selection.main;
+    const text = state.sliceDoc(selection.from, selection.to);
+
+    let prefix = '';
+    let suffix = '';
+
+    switch (format) {
+      case 'bold':
+        prefix = '**';
+        suffix = '**';
+        break;
+      case 'italic':
+        prefix = '*';
+        suffix = '*';
+        break;
+      case 'strike':
+        prefix = '~~';
+        suffix = '~~';
+        break;
+      case 'code':
+        prefix = '`';
+        suffix = '`';
+        break;
+      case 'h1':
+        prefix = '# ';
+        break;
+      case 'h2':
+        prefix = '## ';
+        break;
+      case 'h3':
+        prefix = '### ';
+        break;
+      case 'h4':
+        prefix = '#### ';
+        break;
+      case 'h5':
+        prefix = '##### ';
+        break;
+      case 'h6':
+        prefix = '###### ';
+        break;
+      case 'quote':
+        prefix = '> ';
+        break;
+      case 'bulletList':
+        prefix = '- ';
+        break;
+      case 'orderedList':
+        prefix = '1. ';
+        break;
+      case 'taskList':
+        prefix = '- [ ] ';
+        break;
+      default:
+        console.log('Unsupported format:', format);
+        return;
+    }
+
+    dispatch({
+      changes: {
+        from: selection.from,
+        to: selection.to,
+        insert: `${prefix}${text}${suffix}`,
+      },
+      selection: { anchor: selection.from + prefix.length, head: selection.from + prefix.length + text.length },
+    });
+  };
+
+  /**
+   * 插入特定节点或内容
+   * @param type - 节点类型
+   */
+  const insertNode = (type: string): void => {
+    if (!view.value) return;
+
+    const { state, dispatch } = view.value;
+    const selection = state.selection.main;
+
+    let insertText = '';
+
+    switch (type) {
+      case 'link':
+        insertText = '[链接文字](https://example.com)';
+        break;
+      case 'image':
+        insertText = '![图片描述](图片地址)';
+        break;
+      case 'codeBlock':
+        insertText = '\n```\n代码内容\n```\n';
+        break;
+      case 'table':
+        insertText = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
+        break;
+      case 'hr':
+        insertText = '\n---\n';
+        break;
+      case 'math':
+        insertText = '\n$$\nE = mc^2\n$$\n';
+        break;
+      case 'footnote':
+        insertText = '[^1]\n\n[^1]: 脚注内容\n';
+        break;
+      case 'toc':
+        insertText = `\n<!-- TOC -->\n`;
+        break;
+      default:
+        console.log('Unsupported insert type:', type);
+        return;
+    }
+
+    dispatch({
+      changes: {
+        from: selection.from,
+        to: selection.to,
+        insert: insertText,
+      },
+      selection: { anchor: selection.from + insertText.length },
+    });
+  };
+
   // ========== 生命周期 ==========
 
   onUnmounted(() => {
@@ -154,6 +297,10 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     redo: redoAction,
     canUndo,
     canRedo,
+
+    // 格式与插入操作
+    applyFormat,
+    insertNode,
   };
 };
 
