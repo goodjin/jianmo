@@ -89,12 +89,24 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
   const setContent = (newContent: string): void => {
     if (!view.value) return;
 
+    const currentContent = view.value.state.doc.toString();
+    // 只有内容真正变化时才更新，避免重置光标位置
+    if (newContent === currentContent) return;
+
+    // 保存当前选区/光标位置
+    const selection = view.value.state.selection;
+    const mainSel = selection.main;
+
     view.value.dispatch({
       changes: {
         from: 0,
         to: view.value.state.doc.length,
         insert: newContent,
       },
+      // 尝试恢复光标位置（如果新内容长度允许）
+      selection: mainSel.anchor <= newContent.length
+        ? { anchor: mainSel.anchor, head: mainSel.head }
+        : undefined,
     });
   };
 

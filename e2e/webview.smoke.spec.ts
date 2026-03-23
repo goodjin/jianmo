@@ -11,32 +11,49 @@ test.describe('Webview Editor Smoke Test (CM6)', () => {
   const webviewUrl = 'http://localhost:5173';
 
   test.beforeEach(async ({ page }) => {
-    // 拦截 VS Code API 调用
+    // 模拟真实 VS Code 环境：acquireVsCodeApi 只能调用一次
     await page.addInitScript(() => {
-      window.acquireVsCodeApi = () => ({
-        postMessage: (msg: any) => console.log('Mock VS Code received:', msg),
-        getState: () => ({}),
-        setState: (state: any) => console.log('Mock VS Code state set:', state)
-      });
+      let acquired = false;
+      window.acquireVsCodeApi = () => {
+        if (acquired) {
+          throw new Error('acquireVsCodeApi can only be called once');
+        }
+        acquired = true;
+
+        const api = {
+          postMessage: (msg: any) => {
+            console.log('Mock VS Code received:', msg);
+            // 模拟宿主：收到 READY 后回复 INIT
+            if (msg.type === 'READY') {
+              setTimeout(() => {
+                window.postMessage({
+                  type: 'INIT',
+                  payload: {
+                    content: '# Test Document\n\nThis is a test document.',
+                    config: {
+                      editor: { theme: 'light', tabSize: 2 }
+                    },
+                    version: 1
+                  }
+                }, '*');
+              }, 50);
+            }
+          },
+          getState: () => ({}),
+          setState: (state: any) => console.log('Mock VS Code state set:', state)
+        };
+
+        (window as any).vscode = api;
+        return api;
+      };
     });
 
     await page.goto(webviewUrl);
 
-    // 模拟 VS Code 传递 INIT 消息
-    await page.evaluate(() => {
-      window.postMessage({
-        type: 'INIT',
-        payload: {
-          content: '# Test Document\n\nThis is a test document.',
-          config: {
-            editor: { theme: 'light', tabSize: 2 }
-          }
-        }
-      }, '*');
-    });
-
-    // 等待编辑器挂载
-    await page.waitForSelector('.cm-editor-container');
+    // 等待真实的 READY → INIT 握手完成（默认 preview 模式）
+    await page.waitForSelector('.toolbar');
+    // 切换到 source 模式
+    await page.locator('.toolbar-btn.mode-btn', { hasText: 'Source' }).click();
     await page.waitForSelector('.cm-content');
   });
 

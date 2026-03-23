@@ -14,7 +14,7 @@ import type { EditorView } from '@codemirror/view';
  * - source: 源码编辑模式
  * - split: 分屏预览模式
  */
-export type EditorMode = 'ir' | 'source' | 'split';
+export type EditorMode = 'source' | 'preview';
 
 /**
  * 编辑器选项接口

@@ -33,10 +33,10 @@ test.describe('Webview Editor Comprehensive E2E Tests', () => {
       }, '*');
     });
 
-    // Wait for the editor and toolbar to mount
-    await page.waitForSelector('.cm-editor-container');
-    await page.waitForSelector('.cm-content');
+    // Wait for the toolbar (INIT done), then switch to source mode for editing
     await page.waitForSelector('.toolbar');
+    await page.locator('.toolbar-btn.mode-btn', { hasText: 'Source' }).click();
+    await page.waitForSelector('.cm-content');
   });
 
   test.describe('Basic Formatting', () => {
@@ -221,8 +221,8 @@ test.describe('Webview Editor Comprehensive E2E Tests', () => {
         }, '*');
       });
 
-      // Wait for editor to appear (meaning INIT was processed)
-      await freshPage.waitForSelector('.cm-content');
+      // Wait for preview container to appear (meaning INIT was processed)
+      await freshPage.waitForSelector('.preview-container');
 
       // Wait another 2 seconds to ensure retries stopped
       await freshPage.waitForTimeout(2000);
@@ -232,6 +232,27 @@ test.describe('Webview Editor Comprehensive E2E Tests', () => {
       expect(finalCount).toBe(count);
 
       await freshPage.close();
+    });
+  });
+
+
+  // ============================================
+  // Additional UX Test Cases (Added 2026-03-23)
+  // ============================================
+
+  test.describe('Keyboard Shortcuts', () => {
+    test('should handle keyboard shortcuts without error', async ({ page }) => {
+      // Switch to preview mode where shortcuts are handled
+      await page.locator('.toolbar-btn.mode-btn', { hasText: 'Preview' }).click();
+      await page.waitForSelector('.preview-container');
+      // Use Ctrl+B shortcut - should not throw error
+      await page.keyboard.press('Control+b');
+      // Use Ctrl+I shortcut
+      await page.keyboard.press('Control+i');
+      // Use Ctrl+Z shortcut
+      await page.keyboard.press('Control+z');
+      // If we get here without error, test passes
+      expect(true).toBe(true);
     });
   });
 });

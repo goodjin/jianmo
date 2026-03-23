@@ -41,11 +41,19 @@
 
     <div class="editor-main">
       <div class="editor-container">
-        <!-- 编辑器容器 (IR、源码、分屏都由 CM6 处理) -->
+        <!-- 编辑器容器 (源码模式由 CM6 处理) -->
         <div
           ref="editorContainerRef"
           class="cm-editor-container"
-          v-show="editorReady"
+          v-show="editorReady && currentMode === 'source'"
+        ></div>
+
+        <!-- 预览容器 (预览模式渲染 HTML) -->
+        <div
+          v-show="editorReady && currentMode === 'preview'"
+          ref="previewContainerRef"
+          class="preview-container"
+          v-html="previewHtml"
         ></div>
 
         <div v-if="!editorReady" class="loading">
@@ -55,7 +63,7 @@
 
       <!-- 大纲视图 -->
       <OutlinePanel
-        v-if="currentMode === 'preview' && editorReady && showOutline"
+        v-if="editorReady && showOutline"
         :content="content"
         :current-mode="currentMode"
         @jump="handleOutlineJump"
@@ -65,13 +73,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useEditor } from './composables/useEditor';
 import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
 import { hasToc, updateTocInContent } from './utils/toc';
+import { marked } from 'marked';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
 
 import { useVSCode } from './composables/useVSCode';
@@ -81,8 +90,9 @@ const { postMessage } = useVSCode();
 const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const editorReady = ref(false);
-const currentMode = ref<EditorMode>('ir');
+const currentMode = ref<EditorMode>('preview');
 const editorContainerRef = ref<HTMLElement | null>(null);
+const previewContainerRef = ref<HTMLElement | null>(null);
 
 // Table formatting debounce
 let tableFormatTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +140,30 @@ const lineCount = computed(() => {
   return content.value.split('\n').length;
 });
 
+// 标题 ID 生成（与 OutlinePanel 一致）
+function generateHeadingId(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// 配置 marked renderer，为标题添加 id
+const renderer = new marked.Renderer();
+renderer.heading = function ({ text, depth }: { text: string; depth: number }) {
+  const id = generateHeadingId(text);
+  return `<h${depth} id="${id}">${text}</h${depth}>`;
+};
+marked.use({ renderer });
+
+// Preview HTML
+const previewHtml = computed(() => {
+  if (!content.value) return '';
+  return marked.parse(content.value, { async: false }) as string;
+});
+
 // Theme
 const isDark = computed(() => {
   if (!config.value) return false;
@@ -159,8 +193,11 @@ function handleMessage(event: MessageEvent) {
       break;
 
     case 'CONTENT_UPDATE':
-      content.value = message.payload.content;
-      editor.setContent(message.payload.content);
+      // 只有内容真正变化时才更新，避免重置光标位置
+      if (message.payload.content !== content.value) {
+        content.value = message.payload.content;
+        editor.setContent(message.payload.content);
+      }
       break;
 
     case 'CONFIG_CHANGE':
@@ -207,7 +244,46 @@ function toggleMode() {
 
 function switchMode(mode: EditorMode) {
   if (mode === currentMode.value) return;
-  editor.switchMode(mode);
+
+  if (mode === 'source') {
+    // 切换到源码模式：保存预览滚动比例，恢复到 CM 对应位置
+    const preview = previewContainerRef.value;
+    const previewRatio = preview && preview.scrollHeight > 0
+      ? preview.scrollTop / preview.scrollHeight : 0;
+
+    // 只在没有未保存的更改时才设置内容（避免重置光标）
+    const currentEditorContent = editor.getContent();
+    if (currentEditorContent !== content.value) {
+      editor.setContent(content.value);
+    }
+    currentMode.value = mode;
+
+    // 使用 setTimeout 确保 CodeMirror 已完全渲染并恢复光标位置
+    setTimeout(() => {
+      const scroller = document.querySelector('.cm-scroller') as HTMLElement;
+      if (scroller && scroller.scrollHeight > 0) {
+        scroller.scrollTop = previewRatio * scroller.scrollHeight;
+      }
+      // 恢复编辑器焦点
+      editor.view.value?.focus();
+    }, 50);
+  } else {
+    // 切换到预览模式：保存 CM 滚动比例，恢复到预览对应位置
+    const scroller = document.querySelector('.cm-scroller') as HTMLElement;
+    const sourceRatio = scroller && scroller.scrollHeight > 0
+      ? scroller.scrollTop / scroller.scrollHeight : 0;
+
+    content.value = editor.getContent();
+    currentMode.value = mode;
+
+    // 使用 setTimeout 确保预览容器已完全渲染
+    setTimeout(() => {
+      const preview = previewContainerRef.value;
+      if (preview && preview.scrollHeight > 0) {
+        preview.scrollTop = sourceRatio * preview.scrollHeight;
+      }
+    }, 50);
+  }
 }
 
 // Event handlers
@@ -241,19 +317,40 @@ function saveWithTocUpdate() {
 }
 
 function handleFormat(format: string) {
-  editor.applyFormat(format);
+  try {
+    editor.applyFormat(format);
+    editor.view.value?.focus();
+  } catch (err) {
+    console.warn('[Editor] applyFormat failed:', err);
+  }
 }
 
 function handleInsert(type: string) {
-  editor.insertNode(type);
+  try {
+    editor.insertNode(type);
+    editor.view.value?.focus();
+  } catch (err) {
+    console.warn('[Editor] insertNode failed:', err);
+  }
 }
 
 function handleUndo() {
-  editor.undo();
+  try {
+    editor.undo();
+    // 恢复编辑器焦点，否则后续快捷键不生效
+    editor.view.value?.focus();
+  } catch (err) {
+    console.warn('[Editor] undo failed:', err);
+  }
 }
 
 function handleRedo() {
-  editor.redo();
+  try {
+    editor.redo();
+    editor.view.value?.focus();
+  } catch (err) {
+    console.warn('[Editor] redo failed:', err);
+  }
 }
 
 // 查找替换处理函数
@@ -261,8 +358,18 @@ function handleFind(
   text: string,
   options: { caseSensitive: boolean; useRegex: boolean; direction: 'next' | 'prev' }
 ) {
-  // TODO: 实现编辑器内查找高亮
-  console.log('Find:', text, options);
+  if (!text) return;
+
+  // 统一使用浏览器原生查找
+  // Preview 模式：查找渲染后的内容
+  // Source 模式：查找源码（注意：CodeMirror 使用 contenteditable，window.find 可用）
+  const caseSensitive = options.caseSensitive;
+  const backward = options.direction === 'prev';
+
+  const found = window.find(text, caseSensitive, backward, true, false, true, false);
+  if (!found) {
+    console.log('Find: text not found -', text);
+  }
 }
 
 function handleReplace(
@@ -270,8 +377,24 @@ function handleReplace(
   replaceText: string,
   options: { caseSensitive: boolean; useRegex: boolean }
 ) {
-  // TODO: 实现单处替换
-  console.log('Replace:', findText, '->', replaceText, options);
+  if (!findText) return;
+
+  // 使用 selection 获取当前选中的文本（由 handleFind 选中）
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+
+  const selectedText = selection.toString();
+  const matches = options.caseSensitive
+    ? selectedText === findText
+    : selectedText.toLowerCase() === findText.toLowerCase();
+
+  if (matches) {
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(replaceText));
+    // 清除选择
+    selection.removeAllRanges();
+  }
 }
 
 function handleReplaceAll(
@@ -279,8 +402,75 @@ function handleReplaceAll(
   replaceText: string,
   options: { caseSensitive: boolean; useRegex: boolean }
 ) {
-  // TODO: 实现全部替换
-  console.log('Replace All:', findText, '->', replaceText, options);
+  if (!findText) return;
+
+  if (currentMode.value === 'source' && editor.view.value) {
+    // Source 模式：在 CodeMirror 内容中替换
+    let currentContent = editor.getContent();
+    const flags = options.caseSensitive ? 'g' : 'gi';
+
+    if (options.useRegex) {
+      try {
+        const regex = new RegExp(findText, flags);
+        currentContent = currentContent.replace(regex, replaceText);
+      } catch (e) {
+        console.warn('Invalid regex:', findText);
+        return;
+      }
+    } else {
+      // 转义特殊字符
+      const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
+      const regex = new RegExp(escaped, flags);
+      currentContent = currentContent.replace(regex, replaceText);
+    }
+
+    editor.setContent(currentContent);
+  } else {
+    // Preview 模式：使用 DOM 替换（有限支持）
+    const container = document.querySelector('.preview-container');
+    if (!container) return;
+
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+
+    const textNodes: Text[] = [];
+    let node;
+    while ((node = walker.nextNode()) !== null) {
+      textNodes.push(node as Text);
+    }
+
+    for (const textNode of textNodes) {
+      const text = textNode.textContent || '';
+      const flags = options.caseSensitive ? 'g' : 'gi';
+
+      let newText: string;
+      if (options.useRegex) {
+        try {
+          const regex = new RegExp(findText, flags);
+          newText = text.replace(regex, replaceText);
+        } catch (e) {
+          continue;
+        }
+      } else {
+        const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
+        const regex = new RegExp(escaped, flags);
+        newText = text.replace(regex, replaceText);
+      }
+
+      if (newText !== text) {
+        textNode.textContent = newText;
+      }
+    }
+
+    // 同步回源码内容
+    const updatedHtml = container.innerHTML;
+    // 注意：这里是从 HTML 转回 Markdown，可能会有格式损失
+    // 更好的方式是在 source 模式下进行替换
+  }
 }
 
 // 解析图片 URL（处理相对路径）
@@ -332,14 +522,22 @@ function handleGlobalContextMenu(e: MouseEvent) {
   }
 }
 
-function handleOutlineJump(pos: number) {
-  if (editor.view.value) {
-    editor.view.value.dispatch({
-      selection: { anchor: pos },
-      scrollIntoView: true
-    });
-    // Give focus back to editor
-    editor.view.value.focus();
+function handleOutlineJump(pos: number, headingId: string) {
+  if (currentMode.value === 'preview') {
+    // 预览模式：通过标题 id 在渲染 HTML 中定位并滚动
+    const el = document.getElementById(headingId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } else {
+    // 源码模式：CodeMirror 跳转
+    if (editor.view.value) {
+      editor.view.value.dispatch({
+        selection: { anchor: pos },
+        scrollIntoView: true
+      });
+      editor.view.value.focus();
+    }
   }
 }
 
@@ -363,39 +561,39 @@ function handleKeyDown(e: KeyboardEvent) {
     return;
   }
   
-  // 只在预览模式下处理其他快捷键
-  if (currentMode.value !== 'preview') return;
+  // 只在源码模式下处理编辑快捷键
+  if (currentMode.value !== 'source') return;
 
   if (ctrlKey) {
     switch (e.key.toLowerCase()) {
       case 'b':
         e.preventDefault();
-        editor.applyFormat('bold');
+        handleFormat('bold');
         break;
       case 'i':
         e.preventDefault();
-        editor.applyFormat('italic');
+        handleFormat('italic');
         break;
       case 'k':
         e.preventDefault();
         if (e.shiftKey) {
-          editor.insertNode('codeBlock');
+          handleInsert('codeBlock');
         } else {
-          editor.insertNode('link');
+          handleInsert('link');
         }
         break;
-      case 'm':
-        if (e.shiftKey) {
-          e.preventDefault();
-          editor.insertNode('math');
-        }
+      // Note: Ctrl+M removed to avoid potential conflicts
+      // Math formula can be inserted via toolbar button
+      case 'f':
+        e.preventDefault();
+        findReplaceVisible.value = true;
         break;
       case 'z':
         e.preventDefault();
         if (e.shiftKey) {
-          editor.redo();
+          handleRedo();
         } else {
-          editor.undo();
+          handleUndo();
         }
         break;
     }
@@ -404,12 +602,10 @@ function handleKeyDown(e: KeyboardEvent) {
   // Tab 键缩进处理
   if (e.key === 'Tab') {
     e.preventDefault();
-    if (currentMode.value === 'preview') {
-      if (e.shiftKey) {
-        editor.applyFormat('outdent');
-      } else {
-        editor.applyFormat('indent');
-      }
+    if (e.shiftKey) {
+      handleFormat('outdent');
+    } else {
+      handleFormat('indent');
     }
   }
 
@@ -533,6 +729,91 @@ onUnmounted(() => {
 :deep(.cm-scroller) {
   overflow: auto;
   padding: 24px;
+}
+
+.preview-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 32px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--vscode-editor-foreground);
+}
+
+.preview-container :deep(h1) { font-size: 2em; margin: 0.67em 0; border-bottom: 1px solid var(--vscode-editorWidget-border); padding-bottom: 0.3em; }
+.preview-container :deep(h2) { font-size: 1.5em; margin: 0.75em 0; border-bottom: 1px solid var(--vscode-editorWidget-border); padding-bottom: 0.3em; }
+.preview-container :deep(h3) { font-size: 1.25em; margin: 0.75em 0; }
+.preview-container :deep(h4) { font-size: 1em; margin: 0.75em 0; }
+.preview-container :deep(h5) { font-size: 0.875em; margin: 0.75em 0; }
+.preview-container :deep(h6) { font-size: 0.85em; margin: 0.75em 0; color: var(--vscode-descriptionForeground); }
+
+.preview-container :deep(p) { margin: 0.5em 0; }
+
+.preview-container :deep(a) { color: var(--vscode-textLink-foreground, #3794ff); text-decoration: none; }
+.preview-container :deep(a:hover) { text-decoration: underline; }
+
+.preview-container :deep(code) {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  padding: 0.2em 0.4em;
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 3px;
+}
+
+.preview-container :deep(pre) {
+  background: var(--vscode-textCodeBlock-background);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.preview-container :deep(pre code) {
+  padding: 0;
+  background: transparent;
+}
+
+.preview-container :deep(blockquote) {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid var(--vscode-textBlockQuote-border);
+  color: var(--vscode-textBlockQuote-foreground);
+}
+
+.preview-container :deep(ul), .preview-container :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 2em;
+}
+
+.preview-container :deep(li) { margin: 0.25em 0; }
+
+.preview-container :deep(table) {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: auto;
+}
+
+.preview-container :deep(th), .preview-container :deep(td) {
+  border: 1px solid var(--vscode-editorWidget-border);
+  padding: 6px 12px;
+}
+
+.preview-container :deep(th) {
+  background: var(--vscode-editorWidget-background);
+  font-weight: 600;
+}
+
+.preview-container :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--vscode-editorWidget-border);
+  margin: 1.5em 0;
+}
+
+.preview-container :deep(img) {
+  max-width: 100%;
+  border-radius: 4px;
 }
 
 .loading {

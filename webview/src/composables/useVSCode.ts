@@ -4,7 +4,7 @@
  * @description 提供 Webview 与 Extension 之间的通信能力
  */
 
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { VSCodeMessage } from '../../../src/shared/types';
 
@@ -43,15 +43,9 @@ export interface UseVSCodeReturn {
  * @returns UseVSCodeReturn 实例
  */
 export const useVSCode = (): UseVSCodeReturn => {
-  const vscode: Ref<VSCodeApi | null> = ref(null);
-  const isReady: Ref<boolean> = ref(false);
-
-  onMounted(() => {
-    if (typeof window.acquireVsCodeApi === 'function') {
-      vscode.value = window.acquireVsCodeApi();
-      isReady.value = true;
-    }
-  });
+  // acquireVsCodeApi() 只能调用一次，main.ts 已经调用并挂载到 window.vscode
+  const vscode: Ref<VSCodeApi | null> = ref((window as any).vscode || null);
+  const isReady: Ref<boolean> = ref(!!vscode.value);
 
   /**
    * 发送消息到 Extension

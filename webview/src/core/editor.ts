@@ -21,34 +21,13 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
     markdown(),
   ];
 
-  // 根据模式添加不同扩展
-  switch (mode) {
-    case 'ir':
-      // 即时渲染模式：添加装饰器（后续由 Decorator System 模块提供）
-      extensions.push(EditorView.theme({
-        '.cm-content': {
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        },
-      }));
-      break;
-
-    case 'source':
-      // 源码模式：语法高亮
-      extensions.push(EditorView.theme({
-        '.cm-content': {
-          fontFamily: '"Fira Code", "JetBrains Mono", monospace',
-        },
-      }));
-      break;
-
-    case 'split':
-      // 分屏模式：简化装饰
-      extensions.push(EditorView.theme({
-        '.cm-content': {
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        },
-      }));
-      break;
+  // 源码模式使用等宽字体
+  if (mode === 'source') {
+    extensions.push(EditorView.theme({
+      '.cm-content': {
+        fontFamily: '"Fira Code", "JetBrains Mono", Consolas, monospace',
+      },
+    }));
   }
 
   return extensions;

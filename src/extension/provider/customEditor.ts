@@ -88,6 +88,17 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     // 注册 WebView 到命令系统
     registerWebview(uri, webviewPanel.webview);
 
+    // 主动下发 INIT 消息（VS Code 会队列化，Webview 就绪后自动接收）
+    const doc = this.documentStore.getDocument(uri);
+    const version = this.documentVersions.get(uri) || 1;
+    if (doc) {
+      webviewPanel.webview.postMessage({
+        type: 'INIT',
+        payload: { content: doc.content, config: this.config, version },
+      });
+      console.log('Proactively sent INIT for:', uri);
+    }
+
     // 监听文档变化
     this.changeDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === uri) {

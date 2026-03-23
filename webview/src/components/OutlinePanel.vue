@@ -35,7 +35,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'jump', pos: number): void;
+  (e: 'jump', pos: number, headingId: string): void;
 }>();
 
 const outline = ref<OutlineItem[]>([]);
@@ -90,7 +90,7 @@ watch(
 
 function handleClick(item: OutlineItem) {
   activeHeadingId.value = item.id;
-  emit('jump', item.pos);
+  emit('jump', item.pos, item.id);
 }
 
 const currentMode = computed(() => props.currentMode);

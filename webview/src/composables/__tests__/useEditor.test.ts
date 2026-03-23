@@ -1,6 +1,7 @@
 /**
  * useEditor Hook 单元测试
  * @module composables/__tests__/useEditor
+ * @vitest-environment jsdom
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -8,14 +9,49 @@ import { ref, nextTick } from 'vue';
 import { useEditor } from '../useEditor';
 import { withSetup } from '../../utils/testUtils';
 
-// Mock CodeMirror DOM APIs
+// Mock CodeMirror DOM APIs for jsdom
 if (typeof Range !== 'undefined') {
   Range.prototype.getClientRects = () => [] as any;
   Range.prototype.getBoundingClientRect = () => ({ right: 0, bottom: 0, left: 0, top: 0, width: 0, height: 0, x: 0, y: 0 } as any);
 }
+
+// getSelection mock
+if (!document.getSelection) {
+  (document as any).getSelection = () => ({
+    anchorNode: null,
+    anchorOffset: 0,
+    focusNode: null,
+    focusOffset: 0,
+    isCollapsed: true,
+    rangeCount: 0,
+    type: 'None',
+    addRange: () => {},
+    collapse: () => {},
+    collapseToEnd: () => {},
+    collapseToStart: () => {},
+    containsNode: () => false,
+    deleteFromDocument: () => {},
+    empty: () => {},
+    extend: () => {},
+    getRangeAt: () => document.createRange(),
+    removeAllRanges: () => {},
+    removeRange: () => {},
+    selectAllChildren: () => {},
+    setBaseAndExtent: () => {},
+    setPosition: () => {},
+    toString: () => '',
+  });
+}
+if (!window.getSelection) {
+  (window as any).getSelection = document.getSelection;
+}
+
+// getComputedStyle mock
 Object.defineProperty(window, 'getComputedStyle', {
   value: () => ({
     getPropertyValue: () => '',
+    lineHeight: '20px',
+    fontSize: '14px',
   }),
 });
 
@@ -69,20 +105,20 @@ describe('useEditor', () => {
       }));
 
       createEditor(container);
-      switchMode('split');
+      switchMode('preview');
 
-      expect(onModeChange).toHaveBeenCalledWith('split');
+      expect(onModeChange).toHaveBeenCalledWith('preview');
     });
 
     it('相同模式不应该触发更新', () => {
       const { result: { createEditor, switchMode, mode }, wrapper } = withSetup(() => useEditor({
-        initialMode: 'ir',
+        initialMode: 'source',
       }));
 
       createEditor(container);
-      switchMode('ir');
+      switchMode('source');
 
-      expect(mode.value).toBe('ir');
+      expect(mode.value).toBe('source');
     });
   });
 

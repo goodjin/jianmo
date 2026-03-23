@@ -5,7 +5,7 @@ export default defineConfig({
     testTimeout: 60000,
     hookTimeout: 30000,
     environment: 'node',
-    include: ['e2e/**/*.spec.ts', 'src/extension/__tests__/**/*.test.ts'],
-    exclude: ['e2e/complete.spec.ts'], // 排除 Playwright 测试
+    include: ['src/extension/__tests__/**/*.test.ts', 'webview/src/**/__tests__/**/*.test.ts'],
+    exclude: ['e2e/**'], // e2e 目录由 Playwright 运行，不走 Vitest
   },
 });

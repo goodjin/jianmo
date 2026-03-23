@@ -47,39 +47,14 @@ export const editorTheme = EditorView.theme({
 export const getModeExtensions = (mode: EditorMode): Extension[] => {
   const extensions: Extension[] = [editorTheme];
 
-  switch (mode) {
-    case 'ir':
-      // 即时渲染模式
-      extensions.push(
-        EditorView.theme({
-          '.cm-content': {
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          },
-        })
-      );
-      break;
-
-    case 'source':
-      // 源码模式
-      extensions.push(
-        EditorView.theme({
-          '.cm-content': {
-            fontFamily: '"Fira Code", "JetBrains Mono", monospace',
-          },
-        })
-      );
-      break;
-
-    case 'split':
-      // 分屏模式
-      extensions.push(
-        EditorView.theme({
-          '.cm-content': {
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          },
-        })
-      );
-      break;
+  if (mode === 'source') {
+    extensions.push(
+      EditorView.theme({
+        '.cm-content': {
+          fontFamily: '"Fira Code", "JetBrains Mono", Consolas, monospace',
+        },
+      })
+    );
   }
 
   return extensions;
