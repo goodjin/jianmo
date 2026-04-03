@@ -7,7 +7,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useVSCode, type VSCodeApi } from '../useVSCode';
 import { withSetup } from '../../utils/testUtils';
-import type { VSCodeMessage } from '../../../../src/shared/types';
+import type { ExtensionMessage, ExtensionConfig, WebViewMessage } from '@types';
+
+const minimalConfig: ExtensionConfig = {
+  editor: {
+    theme: 'auto',
+    fontSize: 14,
+    fontFamily: 'system-ui',
+  },
+  image: {
+    saveDirectory: './assets',
+    compressThreshold: 512000,
+    compressQuality: 0.8,
+  },
+  export: {
+    pdf: {
+      format: 'A4',
+      margin: { top: 25, right: 20, bottom: 25, left: 20 },
+    },
+  },
+};
 
 // Mock VS Code API
 const mockPostMessage = vi.fn();
@@ -23,28 +42,30 @@ const mockVSCodeApi: VSCodeApi = {
 describe('useVSCode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 清除 window.vscode
-    delete (window as any).vscode;
+    delete (window as unknown as { vscode?: VSCodeApi }).vscode;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete (window as any).vscode;
+    delete (window as unknown as { vscode?: VSCodeApi }).vscode;
   });
 
   describe('初始化', () => {
     it('应该在 window.vscode 存在时初始化', () => {
-      // 模拟 main.ts 已经调用过 acquireVsCodeApi 并挂载
-      (window as any).vscode = mockVSCodeApi;
+      (window as unknown as { vscode: VSCodeApi }).vscode = mockVSCodeApi;
 
-      const { result: { vscode, isReady } } = withSetup(() => useVSCode());
+      const {
+        result: { vscode, isReady },
+      } = withSetup(() => useVSCode());
 
       expect(vscode.value).toStrictEqual(mockVSCodeApi);
       expect(isReady.value).toBe(true);
     });
 
     it('应该在 window.vscode 不存在时保持未就绪状态', () => {
-      const { result: { vscode, isReady } } = withSetup(() => useVSCode());
+      const {
+        result: { vscode, isReady },
+      } = withSetup(() => useVSCode());
 
       expect(vscode.value).toBeNull();
       expect(isReady.value).toBe(false);
@@ -53,11 +74,13 @@ describe('useVSCode', () => {
 
   describe('postMessage', () => {
     it('应该发送消息到 Extension', () => {
-      (window as any).vscode = mockVSCodeApi;
+      (window as unknown as { vscode: VSCodeApi }).vscode = mockVSCodeApi;
 
-      const { result: { postMessage } } = withSetup(() => useVSCode());
+      const {
+        result: { postMessage },
+      } = withSetup(() => useVSCode());
 
-      const message: VSCodeMessage = {
+      const message: WebViewMessage = {
         type: 'CONTENT_CHANGE',
         payload: { content: 'test' },
       };
@@ -68,9 +91,11 @@ describe('useVSCode', () => {
     });
 
     it('在 vscode 未初始化时不应该报错', () => {
-      const { result: { postMessage } } = withSetup(() => useVSCode());
+      const {
+        result: { postMessage },
+      } = withSetup(() => useVSCode());
 
-      const message: VSCodeMessage = {
+      const message: WebViewMessage = {
         type: 'CONTENT_CHANGE',
         payload: { content: 'test' },
       };
@@ -82,19 +107,19 @@ describe('useVSCode', () => {
 
   describe('onMessage', () => {
     it('应该监听来自 Extension 的消息', () => {
-      const { result: { onMessage } } = withSetup(() => useVSCode());
+      const {
+        result: { onMessage },
+      } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);
 
-      const message: VSCodeMessage = {
+      const message: ExtensionMessage = {
         type: 'INIT',
-        payload: { content: 'hello' },
+        payload: { content: 'hello', config: minimalConfig },
       };
 
-      window.dispatchEvent(
-        new MessageEvent('message', { data: message })
-      );
+      window.dispatchEvent(new MessageEvent('message', { data: message }));
 
       expect(handler).toHaveBeenCalledWith(message);
 
@@ -102,20 +127,20 @@ describe('useVSCode', () => {
     });
 
     it('应该支持取消监听', () => {
-      const { result: { onMessage } } = withSetup(() => useVSCode());
+      const {
+        result: { onMessage },
+      } = withSetup(() => useVSCode());
       const handler = vi.fn();
 
       const unsubscribe = onMessage(handler);
       unsubscribe();
 
-      const message: VSCodeMessage = {
+      const message: ExtensionMessage = {
         type: 'INIT',
-        payload: { content: 'hello' },
+        payload: { content: 'hello', config: minimalConfig },
       };
 
-      window.dispatchEvent(
-        new MessageEvent('message', { data: message })
-      );
+      window.dispatchEvent(new MessageEvent('message', { data: message }));
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -123,9 +148,11 @@ describe('useVSCode', () => {
 
   describe('状态管理', () => {
     it('应该设置状态', () => {
-      (window as any).vscode = mockVSCodeApi;
+      (window as unknown as { vscode: VSCodeApi }).vscode = mockVSCodeApi;
 
-      const { result: { setState } } = withSetup(() => useVSCode());
+      const {
+        result: { setState },
+      } = withSetup(() => useVSCode());
 
       const state = { mode: 'source', theme: 'dark' };
       setState(state);
@@ -136,9 +163,11 @@ describe('useVSCode', () => {
     it('应该获取状态', () => {
       const savedState = { mode: 'source', scrollPosition: 100 };
       mockGetState.mockReturnValue(savedState);
-      (window as any).vscode = mockVSCodeApi;
+      (window as unknown as { vscode: VSCodeApi }).vscode = mockVSCodeApi;
 
-      const { result: { getState } } = withSetup(() => useVSCode());
+      const {
+        result: { getState },
+      } = withSetup(() => useVSCode());
 
       const state = getState();
 
@@ -147,14 +176,18 @@ describe('useVSCode', () => {
     });
 
     it('在 vscode 未初始化时 setState 不应该报错', () => {
-      const { result: { setState } } = withSetup(() => useVSCode());
+      const {
+        result: { setState },
+      } = withSetup(() => useVSCode());
 
       expect(() => setState({ test: true })).not.toThrow();
       expect(mockSetState).not.toHaveBeenCalled();
     });
 
     it('在 vscode 未初始化时 getState 应该返回 undefined', () => {
-      const { result: { getState } } = withSetup(() => useVSCode());
+      const {
+        result: { getState },
+      } = withSetup(() => useVSCode());
 
       const state = getState();
 

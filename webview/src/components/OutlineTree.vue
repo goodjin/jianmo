@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import OutlineItem from './OutlineItem.vue';
-import type { HeadingNode } from '../shared/types';
+import type { HeadingNode } from '@/types';
 
 defineProps<{
   tree: HeadingNode[];

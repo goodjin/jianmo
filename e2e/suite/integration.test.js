@@ -1,3 +1,83 @@
-"use strict";var l=Object.create;var d=Object.defineProperty;var m=Object.getOwnPropertyDescriptor;var w=Object.getOwnPropertyNames;var p=Object.getPrototypeOf,h=Object.prototype.hasOwnProperty;var x=(e,t,o,i)=>{if(t&&typeof t=="object"||typeof t=="function")for(let r of w(t))!h.call(e,r)&&r!==o&&d(e,r,{get:()=>t[r],enumerable:!(i=m(t,r))||i.enumerable});return e};var c=(e,t,o)=>(o=e!=null?l(p(e)):{},x(t||!e||!e.__esModule?d(o,"default",{value:e,enumerable:!0}):o,e));var a=c(require("vscode")),u=c(require("path")),n=c(require("fs")),s=c(require("assert"));suite("Markly Extension Integration Tests",()=>{let e;setup(async()=>{let t=process.env.TEMP||"/tmp";e=u.join(t,`markly-test-${Date.now()}.md`),n.writeFileSync(e,`# Test Document
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
-Hello World`,"utf-8")}),teardown(async()=>{e&&n.existsSync(e)&&n.unlinkSync(e)}),test("Extension should be activated",async()=>{await new Promise(o=>setTimeout(o,2e3));let t=a.extensions.getExtension("jianmo.markly");s.ok(t,"Extension should be defined"),s.ok(t?.isActive,"Extension should be active")}),test("Should open markdown file",async()=>{let t=await a.workspace.openTextDocument(e);s.ok(t,"Document should be defined"),s.strictEqual(t.languageId,"markdown","Language should be markdown");let o=await a.window.showTextDocument(t);s.ok(o,"Editor should be defined")}),test("Should toggle mode",async()=>{let t=await a.workspace.openTextDocument(e);await a.window.showTextDocument(t),await a.commands.executeCommand("markly.toggleMode"),await new Promise(o=>setTimeout(o,2e3)),s.ok(!0)}),test("Should export PDF",async()=>{let t=await a.workspace.openTextDocument(e);await a.window.showTextDocument(t);try{await a.commands.executeCommand("markly.export.pdf"),await new Promise(o=>setTimeout(o,5e3))}catch{}s.ok(!0)}),test("Should export HTML",async()=>{let t=await a.workspace.openTextDocument(e);await a.window.showTextDocument(t);try{await a.commands.executeCommand("markly.export.html"),await new Promise(o=>setTimeout(o,3e3))}catch{}s.ok(!0)})});suite("Utility Functions",()=>{test("Should generate heading IDs",()=>{let e=t=>t.toLowerCase().replace(/[^\w\u4e00-\u9fa5\s-]/g,"").replace(/\s+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"");s.strictEqual(e("Hello World"),"hello-world"),s.strictEqual(e("\u4F60\u597D\u4E16\u754C"),"\u4F60\u597D\u4E16\u754C"),s.strictEqual(e("Test 123"),"test-123")}),test("Should validate config",()=>{let e=t=>typeof t=="number"&&t>=8&&t<=72;s.strictEqual(e(14),!0),s.strictEqual(e(8),!0),s.strictEqual(e(72),!0),s.strictEqual(e(7),!1),s.strictEqual(e(73),!1),s.strictEqual(e(NaN),!1)})});
+// e2e/suite/integration.test.ts
+var vscode = __toESM(require("vscode"));
+var path = __toESM(require("path"));
+var fs = __toESM(require("fs"));
+var os = __toESM(require("os"));
+var assert = __toESM(require("assert"));
+var TEST_TIMEOUT = 6e4;
+async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+suite("Markly Extension Integration Tests", () => {
+  let testFilePath;
+  setup(async () => {
+    const tempDir = os.tmpdir();
+    testFilePath = path.join(tempDir, `markly-int-${Date.now()}.md`);
+    fs.writeFileSync(testFilePath, "# Test Document\n\nHello World", "utf-8");
+  });
+  teardown(async () => {
+    if (testFilePath && fs.existsSync(testFilePath)) {
+      fs.unlinkSync(testFilePath);
+    }
+  });
+  test("Extension should be activated", async () => {
+    const extension = vscode.extensions.getExtension("jianmo.markly");
+    assert.ok(extension, "Extension should be defined");
+    if (!extension.isActive) {
+      await extension.activate();
+    }
+    assert.strictEqual(extension.isActive, true, "Extension should be active");
+  }).timeout(TEST_TIMEOUT);
+  test("Should open markdown file", async () => {
+    const doc = await vscode.workspace.openTextDocument(testFilePath);
+    assert.ok(doc, "Document should be defined");
+    assert.strictEqual(doc.languageId, "markdown", "Language should be markdown");
+    const editor = await vscode.window.showTextDocument(doc);
+    assert.ok(editor, "Editor should be defined");
+    assert.strictEqual(editor.document.uri.fsPath, doc.uri.fsPath, "Editor should show the correct document");
+  }).timeout(TEST_TIMEOUT);
+  test("Should toggle mode via modeController", async () => {
+    const extension = vscode.extensions.getExtension("jianmo.markly");
+    if (!extension?.isActive)
+      await extension?.activate();
+    const exportsAny = extension?.exports;
+    const doc = await vscode.workspace.openTextDocument(testFilePath);
+    await vscode.commands.executeCommand("vscode.openWith", doc.uri, "markly.preview");
+    await sleep(2e3);
+    await vscode.commands.executeCommand("markly.toggleMode");
+    await sleep(500);
+    const mode = exportsAny?.modeController?.getCurrentMode?.();
+    assert.ok(mode === "source" || mode === "preview", `modeController.getCurrentMode() \u5E94\u8FD4\u56DE\u6709\u6548\u503C\uFF0C\u5B9E\u9645: ${String(mode)}`);
+  }).timeout(TEST_TIMEOUT);
+  test("All registered commands should be available", async () => {
+    const commands2 = await vscode.commands.getCommands(true);
+    const required = ["markly.toggleMode", "markly.export.pdf", "markly.export.html", "markly.export.image"];
+    for (const cmd of required) {
+      assert.ok(commands2.includes(cmd), `\u547D\u4EE4 ${cmd} \u5E94\u5DF2\u6CE8\u518C`);
+    }
+  }).timeout(TEST_TIMEOUT);
+});

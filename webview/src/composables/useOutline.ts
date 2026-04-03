@@ -8,7 +8,7 @@ import { computed } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
 import type { EditorView } from '@codemirror/view';
 import { parseHeadings, buildTree } from '../shared/outline';
-import type { HeadingNode } from '../shared/types';
+import type { HeadingNode } from '@/types';
 
 /**
  * useOutline 选项

@@ -3,9 +3,14 @@ node_modules/
 
 # Build outputs
 src/
+
+# dist 内仅扩展入口与 webview 产物需要进包（其余多为历史/测试残留）
+dist/e2e/
+dist/test/
+dist/core/
+dist/types/
+dist/run-tests.js
 .webview/
-webview/src/
-webview/node_modules/
 
 # Development files
 .vscode/
@@ -35,3 +40,22 @@ vite.config.*
 .env*
 .DS_Store
 Thumbs.db
+
+# 本地/E2E/杂项 — 勿打进发布包
+e2e/
+e2e-report/
+test-results/
+.github/
+prototype-cm6/
+CLAUDE.md
+test-doc.md
+.mocharc*.json
+fix-app.js
+fix-editor.js
+patch-*.js
+ENDPYTHON
+EOF
+PYEOF
+
+# 源码与工具链已进 dist，webview 目录不必进 VSIX
+webview/

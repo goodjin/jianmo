@@ -30,7 +30,7 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
   const view: Ref<EditorView | null> = ref(null);
   const mode: Ref<EditorMode> = ref(options.initialMode || 'ir');
   const containerRef: Ref<HTMLElement | null> = ref(null);
-  const showLineNumbers: Ref<boolean> = ref(true);
+  const showLineNumbers: Ref<boolean> = ref(false);
 
   // ========== 简易历史栈（替代 CM6 内置 undo/redo，避免某些环境下 RangeError） ==========
   const historyDone = ref<string[]>([]);
@@ -102,6 +102,11 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     );
 
     view.value = createEditorView(container, state);
+    if (!showLineNumbers.value) {
+      view.value.dom.classList.add('cm-hide-line-numbers');
+    } else {
+      view.value.dom.classList.remove('cm-hide-line-numbers');
+    }
     // 创建后清空历史（把初始内容当作基线）
     historyDone.value = [];
     historyUndone.value = [];
@@ -169,6 +174,12 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     // 更新视图
     view.value.setState(newState);
     mode.value = newMode;
+    const root = view.value.dom;
+    if (showLineNumbers.value) {
+      root.classList.remove('cm-hide-line-numbers');
+    } else {
+      root.classList.add('cm-hide-line-numbers');
+    }
     // 切模式视为“基线重建”，清空历史，避免跨 state 的 undo/redo 不一致
     historyDone.value = [];
     historyUndone.value = [];

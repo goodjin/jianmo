@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { HeadingNode } from '../shared/types';
+import type { HeadingNode } from '@/types';
 
 const props = defineProps<{
   node: HeadingNode;

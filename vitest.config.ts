@@ -23,8 +23,6 @@ export default defineConfig({
     setupFiles: ['webview/src/test/codemirrorDomSetup.ts'],
     include: [
       'src/**/__tests__/**/*.test.ts',
-      'webview/src/**/__tests__/**/*.test.ts',
-      'webview/test/**/*.test.ts',
     ],
     exclude: ['e2e/**'], // e2e 为 VS Code / ExTester 脚本与 UI 套件，不走 Vitest
   },

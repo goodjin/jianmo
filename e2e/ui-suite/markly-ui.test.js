@@ -1,245 +1,325 @@
 /**
  * 真 VS Code UI：vscode-extension-tester + WebDriver
- * 由 `extest run-tests` 启动 VS Code 后执行（见 package.json `test:vscode:ui`）
+ * 按功能拆分用例，失败时便于定位模块。
  */
-const path = require('path');
-const fs = require('fs');
 const assert = require('assert');
-const { By, Key, until } = require('selenium-webdriver');
+const { By } = require('selenium-webdriver');
+const { VSBrowser } = require('vscode-extension-tester');
 const {
-  ActivityBar,
-  SideBarView,
-  Workbench,
-  EditorView,
-  InputBox,
-  WebView,
-  TextEditor,
-  DefaultTreeSection,
-  VSBrowser,
-} = require('vscode-extension-tester');
+  defaultBaselineMd,
+  openMarklyWebviewEditor,
+  enterMarklyEditorUi,
+  bridgeGetContent,
+  bridgeSetContent,
+  bridgeGetSelectionAnchor,
+  bridgeSetSelectionAnchor,
+  bridgeSwitchMode,
+  waitMarklyContent,
+  clickToolbarButton,
+  OUTLINE_PANEL,
+  LINE_NUMBERS_HIDDEN,
+  Key,
+} = require('./ui-helpers');
+
+const MOD = process.platform === 'darwin' ? Key.META : Key.CONTROL;
 
 describe('Markly VS Code UI (ExTester)', function () {
-  this.timeout(180000);
+  this.timeout(360000);
 
-  it('covers core toolbar behaviors (mode/format/insert/undo/redo/toggles)', async function () {
-    const driver = VSBrowser.instance.driver;
+  /** @type {import('vscode-extension-tester').WebView} */
+  let editor;
+  /** @type {import('selenium-webdriver').WebDriver} */
+  let driver;
 
-    const fixtureRoot = path.resolve(__dirname, 'fixture-workspace');
-    const sectionTitle = path.basename(fixtureRoot);
-    const wb = new Workbench();
+  before(async function () {
+    const session = await openMarklyWebviewEditor();
+    editor = session.editor;
+    driver = session.driver;
+  });
 
-    // 确保每次用例从一致的初始内容开始（否则前一次跑留下的编辑会让断言失真）
-    const baseline = [
-      '# Title',
-      '',
-      'alpha beta',
-      '',
-      'Inline $x^2$ and block:',
-      '',
-      '$$',
-      'E=mc^2',
-      '$$',
-      '',
-      '```mermaid',
-      'flowchart TD',
-      '  A-->B',
-      '```',
-      '',
-    ].join('\n');
-    fs.writeFileSync(path.join(fixtureRoot, 'sample.md'), baseline, 'utf8');
+  /** 每轮回到 IR、基准正文，避免用例间串味 */
+  async function resetEditorState() {
+    await driver.switchTo().defaultContent();
+    await enterMarklyEditorUi(editor);
+    await bridgeSwitchMode(driver, 'ir');
+    const baseline = defaultBaselineMd();
+    await bridgeSetContent(driver, baseline);
+    await waitMarklyContent(driver, (t) => t.includes('# Title') && t.includes('Section B'), 60000);
+  }
 
-    const explorer = await new ActivityBar().getViewControl('Explorer');
-    assert.ok(explorer, 'Explorer activity should exist');
-    await explorer.openView();
-
-    const content = new SideBarView().getContent();
-    let tree;
-    try {
-      tree = await content.getSection(sectionTitle, DefaultTreeSection);
-    } catch {
-      const sections = await content.getSections();
-      assert.ok(sections.length > 0, 'Explorer should have at least one section');
-      const title = await sections[0].getTitle();
-      tree = await content.getSection(title, DefaultTreeSection);
-    }
-    await tree.openItem('sample.md');
-
-    const editorView = new EditorView();
-    let editor = await editorView.openEditor('sample.md');
-
-    if (editor instanceof TextEditor) {
-      await wb.executeCommand('Reopen Editor With...');
-      const box = await InputBox.create(30000);
-      await box.selectQuickPick('Markly Preview');
-      await VSBrowser.instance.driver.wait(
-        until.elementLocated(EditorView.locators.EditorView.webView),
-        60000,
-        'custom editor webview container'
-      );
-      editor = await editorView.openEditor('sample.md');
-    }
-
-    assert.ok(editor instanceof WebView, `expected WebView editor, got ${editor?.constructor?.name}`);
-
-    async function switchToWebviewFrame(timeoutMs = 60000) {
-      const deadline = Date.now() + timeoutMs;
-      let lastErr = null;
-      while (Date.now() < deadline) {
-        try {
-          // VS Code 新版本的 webview 容器可能不直接暴露为普通 iframe（可能在 webview/shadow DOM 内）。
-          // 使用 vscode-extension-tester 提供的 WebView.switchToFrame，它能处理不同 VS Code 版本的差异。
-          await editor.switchToFrame();
-          return;
-        } catch (e) {
-          lastErr = e;
-          // eslint-disable-next-line no-await-in-loop
-          await new Promise((r) => setTimeout(r, 250));
-        }
-      }
-      throw lastErr ?? new Error('switchToFrame timeout');
-    }
-
-    await switchToWebviewFrame(60000);
-
-    async function waitFor(selector, timeoutMs, message) {
-      await driver.wait(until.elementLocated(By.css(selector)), timeoutMs, message || selector);
-      return await driver.findElement(By.css(selector));
-    }
-
-    async function getMarklyContent() {
-      return await driver.executeScript(() => window.__marklyE2E?.getContent?.() || '');
-    }
-
-    async function setMarklyContent(text) {
-      await driver.executeScript((t) => window.__marklyE2E?.setContent?.(t), text);
-    }
-
-    async function waitMarklyContent(predicate, timeoutMs = 60000) {
-      const deadline = Date.now() + timeoutMs;
-      let last = '';
-      while (Date.now() < deadline) {
-        // eslint-disable-next-line no-await-in-loop
-        last = String((await getMarklyContent()) || '');
-        if (predicate(last)) return last;
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((r) => setTimeout(r, 200));
-      }
-      assert.ok(false, `markly content did not satisfy predicate within ${timeoutMs}ms.\nlast:\n${last}`);
-      return last;
-    }
-
-    async function clickToolbarButton(title) {
-      const sel = `.toolbar .toolbar-btn[title="${title}"]`;
-      const btn = await waitFor(sel, 60000, `toolbar button: ${title}`);
-      await btn.click();
-    }
-
-    const toolbarSelector = '.toolbar';
-    const loadingSelector = '.loading';
-    const deadline = Date.now() + 60000;
-    let lastState = '';
-    while (Date.now() < deadline) {
-      const toolbarEls = await driver.findElements(By.css(toolbarSelector));
-      if (toolbarEls.length > 0) break;
-
-      const loadingEls = await driver.findElements(By.css(loadingSelector));
-      if (loadingEls.length > 0) lastState = 'loading';
-
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 250));
-    }
-
-    const toolbarEls = await driver.findElements(By.css(toolbarSelector));
-    if (toolbarEls.length === 0) {
-      const loadingEls = await driver.findElements(By.css(loadingSelector));
-      const loadingText = loadingEls.length > 0 ? await loadingEls[0].getText() : '';
-      throw new Error(
-        `Markly toolbar not found within 60s. LastState=${lastState || 'unknown'}. LoadingText="${loadingText}"`
-      );
-    }
-
-    await driver.findElement(By.css('.cm-editor'));
-    await driver.findElement(By.css('.toolbar-btn.mode-btn[title="IR Mode (WYSIWYG)"]'));
-    await driver.findElement(By.css('.toolbar-btn.mode-btn[title="Source Mode"]'));
-
-    // 等待 e2e bridge 就绪（App.vue 会在 editorReady 时挂到 window 上）
-    await driver.wait(async () => {
-      const ok = await driver.executeScript(() => !!window.__marklyE2E?.getContent);
-      return !!ok;
-    }, 60000, 'markly e2e bridge ready');
-
-    // 1) Outline / Line numbers toggle：仅验证 UI 状态变化（行为可观测且稳定）
-    const outlinePanelSel = '.outline-panel';
-    const lineNumbersHiddenClass = 'cm-hide-line-numbers';
-
-    // Outline 默认开启（App.vue showOutline=true）
-    await waitFor(outlinePanelSel, 60000, 'outline panel visible by default');
-    await clickToolbarButton('Toggle Outline');
-    await driver.wait(async () => (await driver.findElements(By.css(outlinePanelSel))).length === 0, 60000, 'outline panel hidden');
-    await clickToolbarButton('Toggle Outline');
-    await waitFor(outlinePanelSel, 60000, 'outline panel visible again');
-
-    // Line numbers 默认开启（App.vue showLineNumbers=true），点击一次应隐藏（cm-editor 增加 class）
-    await clickToolbarButton('Toggle Line Numbers');
-    await driver.wait(async () => {
-      const cls = await driver.executeScript(() => document.querySelector('.cm-editor')?.className || '');
-      return cls.includes(lineNumbersHiddenClass);
-    }, 60000, 'line numbers hidden class applied');
-    await clickToolbarButton('Toggle Line Numbers');
-    await driver.wait(async () => {
-      const cls = await driver.executeScript(() => document.querySelector('.cm-editor')?.className || '');
-      return !cls.includes(lineNumbersHiddenClass);
-    }, 60000, 'line numbers hidden class removed');
-
-    // 2) 在 Source 模式下用“原始 markdown 内容”做强断言
-    await setMarklyContent(baseline);
-    await waitMarklyContent((t) => t.includes('# Title') && t.includes('alpha beta'), 60000);
-
-    await clickToolbarButton('Source Mode');
-    await driver.wait(async () => {
-      const cls = await driver.executeScript(() => document.querySelector('.toolbar-btn.mode-btn[title="Source Mode"]')?.className || '');
-      return cls.includes('active');
-    }, 60000, 'source mode active');
-
-    const cmContent = await waitFor('.cm-content', 60000, 'cm content');
-    await cmContent.click();
-    // 移动到文末并插入一行用于操作
-    await driver.actions().sendKeys(Key.chord(Key.META, Key.END)).perform();
-    await driver.actions().sendKeys('\nui-test').perform();
-
-    // 3) Bold：点击后再输入一个字符，应形成 **x**
-    await clickToolbarButton('Bold');
-    await driver.actions().sendKeys('x').perform();
-    let md = await waitMarklyContent((t) => t.includes('**x**'), 60000);
-    assert.ok(md.includes('**x**'), `expected bold markdown in content, got:\n${md}`);
-    const undoDepthBefore = await driver.executeScript(() => window.__marklyE2E?.getUndoDepth?.() || 0);
-    assert.ok(undoDepthBefore > 0, `expected undoDepth > 0 after edits, got ${undoDepthBefore}`);
-
-    // 4) Undo / Redo：点击工具栏按钮（调用 Markly 的 undo/redo 实现）
-    await clickToolbarButton('Undo (Ctrl+Z)');
-    md = await waitMarklyContent((t) => !t.includes('**x**'), 60000);
-    assert.ok(!md.includes('**x**'), `expected undo to remove '**x**', got:\n${md}`);
-    await clickToolbarButton('Redo (Ctrl+Shift+Z)');
-    md = await waitMarklyContent((t) => t.includes('**x**'), 60000);
-    assert.ok(md.includes('**x**'), `expected redo to restore '**x**', got:\n${md}`);
-
-    // 5) 插入：HR / CodeBlock / Table / Math（不依赖 prompt，断言插入 markdown 片段）
-    await clickToolbarButton('Horizontal Rule');
-    await clickToolbarButton('Code Block');
-    await clickToolbarButton('Table');
-    await clickToolbarButton('Math Formula');
-    md = await getMarklyContent();
-    assert.ok(md.includes('\n---\n'), 'expected horizontal rule inserted');
-    assert.ok(md.includes('\n```\n代码内容\n```\n'), 'expected code block inserted');
-    assert.ok(md.includes('| 列1 | 列2 | 列3 |'), 'expected table inserted');
-    assert.ok(md.includes('\n$$\nE = mc^2\n$$\n'), 'expected math block inserted');
-
-    // 6) Replace All（直接用 bridge 调用 App.vue 逻辑，验证内容变化）
-    await driver.executeScript(() => window.__marklyE2E?.replaceAll?.('alpha', 'ALPHA', { caseSensitive: true, useRegex: false }));
-    md = await waitMarklyContent((t) => t.includes('ALPHA beta'), 60000);
-    assert.ok(md.includes('ALPHA beta'), `expected replaceAll to work, got:\n${md}`);
-
-    // 切回工作区（避免对后续用例产生影响）
+  afterEach(async function () {
     await driver.switchTo().defaultContent();
   });
+
+  it('toggles outline and line number visibility from toolbar', async function () {
+    await resetEditorState();
+    await driver.wait(async () => (await driver.findElements(By.css(OUTLINE_PANEL))).length === 0, 60000, 'outline default hidden');
+
+    await clickToolbarButton(driver, 'Toggle Outline');
+    await driver.wait(async () => (await driver.findElements(By.css(OUTLINE_PANEL))).length > 0, 60000, 'outline visible');
+    await clickToolbarButton(driver, 'Toggle Outline');
+    await driver.wait(async () => (await driver.findElements(By.css(OUTLINE_PANEL))).length === 0, 60000, 'outline hidden');
+
+    await driver.wait(async () => {
+      const cls = await driver.executeScript(() => document.querySelector('.cm-editor')?.className || '');
+      return cls.includes(LINE_NUMBERS_HIDDEN);
+    }, 60000, 'line numbers default hidden');
+    await clickToolbarButton(driver, 'Toggle Line Numbers');
+    await driver.wait(async () => {
+      const cls = await driver.executeScript(() => document.querySelector('.cm-editor')?.className || '');
+      return !cls.includes(LINE_NUMBERS_HIDDEN);
+    }, 60000, 'line numbers visible');
+    await clickToolbarButton(driver, 'Toggle Line Numbers');
+    await driver.wait(async () => {
+      const cls = await driver.executeScript(() => document.querySelector('.cm-editor')?.className || '');
+      return cls.includes(LINE_NUMBERS_HIDDEN);
+    }, 60000, 'line numbers hidden again');
+  });
+
+  it('Source mode: bold, toolbar undo, toolbar redo', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'source');
+    await driver.wait(async () => {
+      const cls = await driver.executeScript(
+        () => document.querySelector('.toolbar-btn.mode-btn[title="Source Mode"]')?.className || ''
+      );
+      return cls.includes('active');
+    }, 60000);
+
+    const cmContent = await driver.findElement(By.css('.cm-content'));
+    await cmContent.click();
+    await driver.actions().sendKeys(Key.chord(MOD, Key.END)).perform();
+    await driver.actions().sendKeys('\nextra-line').perform();
+
+    await clickToolbarButton(driver, 'Bold');
+    await driver.actions().sendKeys('z').perform();
+    let md = await waitMarklyContent(driver, (t) => t.includes('**z**'), 60000);
+    assert.ok(md.includes('**z**'), md);
+
+    await clickToolbarButton(driver, 'Undo (Ctrl+Z)');
+    md = await waitMarklyContent(driver, (t) => !t.includes('**z**'), 60000);
+    assert.ok(!md.includes('**z**'), md);
+    await clickToolbarButton(driver, 'Redo (Ctrl+Shift+Z)');
+    md = await waitMarklyContent(driver, (t) => t.includes('**z**'), 60000);
+    assert.ok(md.includes('**z**'), md);
+  });
+
+  it('Source mode: toolbar inserts HR, code block, table, math', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'source');
+    await driver.wait(async () => {
+      const cls = await driver.executeScript(
+        () => document.querySelector('.toolbar-btn.mode-btn[title="Source Mode"]')?.className || ''
+      );
+      return cls.includes('active');
+    }, 60000);
+
+    await clickToolbarButton(driver, 'Horizontal Rule');
+    await clickToolbarButton(driver, 'Code Block');
+    await clickToolbarButton(driver, 'Table');
+    await clickToolbarButton(driver, 'Math Formula');
+    const md = await bridgeGetContent(driver);
+    assert.ok(md.includes('\n---\n'), 'horizontal rule');
+    assert.ok(md.includes('\n```\n代码内容\n```\n'), 'code block');
+    assert.ok(md.includes('| 列1 | 列2 | 列3 |'), 'table');
+    assert.ok(md.includes('\n$$\nE = mc^2\n$$\n'), 'math');
+  });
+
+  it('Find/Replace panel: keyboard opens UI and Replace All changes markdown', async function () {
+    await resetEditorState();
+    await bridgeSetContent(driver, 'ping pong ping\n');
+
+    const cm = await driver.findElement(By.css('.cm-content'));
+    await cm.click();
+    // 物理 Cmd/Ctrl+F 常被 VS Code 宿主抢占；在 webview 内派发与 App.vue 相同的 keydown（真实走同一 handler）
+    await driver.executeScript(() => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'f',
+          bubbles: true,
+          cancelable: true,
+          metaKey: isMac,
+          ctrlKey: !isMac,
+        })
+      );
+    });
+
+    await driver.wait(untilVisibleFindPanel(driver), 30000, 'find panel');
+    const inputs = await driver.findElements(By.css('.find-replace-panel .panel-input'));
+    assert.strictEqual(inputs.length, 2, 'find + replace inputs');
+    await inputs[0].clear();
+    await inputs[0].sendKeys('ping');
+    await inputs[1].clear();
+    await inputs[1].sendKeys('ding');
+
+    const replaceAllBtn = await driver.findElement(
+      By.xpath("//div[contains(@class,'find-replace-panel')]//button[contains(@class,'action-btn') and normalize-space()='全部替换']")
+    );
+    await replaceAllBtn.click();
+
+    const md = await waitMarklyContent(driver, (t) => t.includes('ding pong ding'), 60000);
+    assert.ok(md.includes('ding pong ding'), md);
+
+    await driver.findElement(By.css('.find-replace-panel .close-btn')).click();
+    await driver.wait(async () => (await driver.findElements(By.css('.find-replace-panel'))).length === 0, 10000);
+  });
+
+  it('Find/Replace panel: toolbar Find button opens UI', async function () {
+    await resetEditorState();
+    await clickToolbarButton(driver, '查找和替换 (Ctrl+F)');
+    await driver.wait(untilVisibleFindPanel(driver), 30000, 'find panel from toolbar');
+    const panels = await driver.findElements(By.css('.find-replace-panel'));
+    assert.strictEqual(panels.length, 1, 'panel visible');
+    await driver.findElement(By.css('.find-replace-panel .close-btn')).click();
+    await driver.wait(async () => (await driver.findElements(By.css('.find-replace-panel'))).length === 0, 10000);
+  });
+
+  it('Source mode: headings H1/H3, inline formats, clear format', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'source');
+
+    await bridgeSetContent(driver, 'plain\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Heading 1');
+    let md = await waitMarklyContent(driver, (t) => /^# plain/m.test(t), 60000);
+    assert.ok(md.startsWith('# plain'), md);
+
+    await bridgeSetContent(driver, 'heading three\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Heading 3');
+    md = await waitMarklyContent(driver, (t) => /^### heading three/m.test(t), 60000);
+    assert.ok(md.startsWith('### heading three'), md);
+
+    await bridgeSetContent(driver, 'alpha beta\n');
+    await bridgeSetSelectionAnchor(driver, 6, 10);
+    await clickToolbarButton(driver, 'Italic');
+    md = await waitMarklyContent(driver, (t) => t.includes('*beta*'), 60000);
+    assert.ok(md.includes('*beta*'), md);
+
+    await bridgeSetContent(driver, 'wrapme\n');
+    await bridgeSetSelectionAnchor(driver, 0, 6);
+    await clickToolbarButton(driver, 'Strikethrough');
+    md = await waitMarklyContent(driver, (t) => t.includes('~~wrapme~~'), 60000);
+    assert.ok(md.includes('~~wrapme~~'), md);
+
+    await bridgeSetContent(driver, 'codex\n');
+    await bridgeSetSelectionAnchor(driver, 0, 5);
+    await clickToolbarButton(driver, 'Inline Code');
+    md = await waitMarklyContent(driver, (t) => t.includes('`codex`'), 60000);
+    assert.ok(md.includes('`codex`'), md);
+
+    await bridgeSetContent(driver, '## zzz\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Clear Format');
+    md = await waitMarklyContent(driver, (t) => t.trim().startsWith('zzz'), 60000);
+    assert.ok(md.includes('zzz') && !/^##\s/m.test(md), md);
+  });
+
+  it('Source mode: bullet, ordered, task list, quote', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'source');
+
+    await bridgeSetContent(driver, 'item\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Bullet List');
+    let md = await waitMarklyContent(driver, (t) => t.startsWith('- item'), 60000);
+    assert.ok(md.startsWith('- item'), md);
+
+    await bridgeSetContent(driver, 'n2\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Ordered List');
+    md = await waitMarklyContent(driver, (t) => /^1\.\s+n2/m.test(t), 60000);
+    assert.ok(/^1\.\s+n2/m.test(md), md);
+
+    await bridgeSetContent(driver, 'tchk\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Task List');
+    md = await waitMarklyContent(driver, (t) => t.startsWith('- [ ] tchk'), 60000);
+    assert.ok(md.startsWith('- [ ] tchk'), md);
+
+    await bridgeSetContent(driver, 'qq\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Quote');
+    md = await waitMarklyContent(driver, (t) => t.startsWith('> qq'), 60000);
+    assert.ok(md.startsWith('> qq'), md);
+  });
+
+  it('IR mode: heading from toolbar respects line cursor', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'ir');
+    await bridgeSetContent(driver, 'plain line\nsecond\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Heading 2');
+    const md = await waitMarklyContent(driver, (t) => /^## plain line/m.test(t), 60000);
+    assert.ok(md.startsWith('## plain line'), md);
+  });
+
+  it('outline panel click jumps caret to heading line', async function () {
+    await resetEditorState();
+    await clickToolbarButton(driver, 'Toggle Outline');
+    await driver.wait(async () => (await driver.findElements(By.css(OUTLINE_PANEL))).length > 0, 60000, 'outline open');
+    const md0 = await bridgeGetContent(driver);
+    const sectionIdx = md0.indexOf('## Section B');
+    assert.ok(sectionIdx >= 0, 'fixture must contain ## Section B');
+
+    await driver.wait(async () => (await driver.findElements(By.css('.outline-item'))).length >= 2, 60000);
+    const item = await driver.findElement(
+      By.xpath("//div[contains(@class,'outline-item')][normalize-space()='Section B']")
+    );
+    await bridgeSetSelectionAnchor(driver, 0);
+    const before = await bridgeGetSelectionAnchor(driver);
+    assert.strictEqual(before, 0);
+    await item.click();
+
+    await driver.wait(async () => (await bridgeGetSelectionAnchor(driver)) === sectionIdx, 30000, 'caret at Section B');
+  });
+
+  it('insert Link uses prompt answers (no native dialog interaction)', async function () {
+    await resetEditorState();
+    await driver.executeScript(() => {
+      window.__marklyOrigPrompt = window.prompt.bind(window);
+      window.prompt = (msg) => {
+        const m = String(msg || '');
+        if (m.includes('文字')) return 'e2e-link';
+        if (m.includes('地址')) return 'https://e2e.example/ui';
+        return '';
+      };
+    });
+    await bridgeSetContent(driver, 'x\n');
+    await bridgeSetSelectionAnchor(driver, 2);
+    await clickToolbarButton(driver, 'Link');
+    const md = await waitMarklyContent(driver, (t) => t.includes('[e2e-link](https://e2e.example/ui)'), 60000);
+    assert.ok(md.includes('[e2e-link](https://e2e.example/ui)'), md);
+    await driver.executeScript(() => {
+      const o = window.__marklyOrigPrompt;
+      if (typeof o === 'function') window.prompt = o;
+    });
+  });
+
+  it('word count strip updates when content changes', async function () {
+    await resetEditorState();
+    let bar = await driver.findElement(By.css('.word-count')).getText();
+    assert.ok(bar.includes('字数:'), bar);
+
+    await bridgeSetContent(driver, `${'测'.repeat(40)}\n`);
+    await driver.wait(async () => {
+      bar = await driver.findElement(By.css('.word-count')).getText();
+      return bar.includes('字数: 40');
+    }, 30000, 'word count 40');
+  });
+
+  it('replaceAll still works via E2E bridge (regression guard)', async function () {
+    await resetEditorState();
+    await bridgeSetContent(driver, 'one two one\n');
+    await driver.executeScript(() =>
+      window.__marklyE2E?.replaceAll?.('one', 'NE', { caseSensitive: true, useRegex: false })
+    );
+    const md = await waitMarklyContent(driver, (t) => t.includes('NE two NE'), 60000);
+    assert.ok(md.includes('NE two NE'), md);
+  });
 });
+
+function untilVisibleFindPanel(driver) {
+  return async () => (await driver.findElements(By.css('.find-replace-panel'))).length > 0;
+}

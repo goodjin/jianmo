@@ -4,7 +4,8 @@
       v-if="editorReady"
       :mode="currentMode"
       :show-outline="showOutline"
-      :show-line-numbers="showLineNumbers"
+      :show-line-numbers="editor.showLineNumbers"
+      :find-panel-open="findReplaceVisible"
       @format="handleFormat"
       @insert="handleInsert"
       @switch-mode="switchMode"
@@ -25,11 +26,14 @@
     <!-- 查找替换面板 -->
     <FindReplacePanel
       :visible="findReplaceVisible"
-      :content="content"
-      @close="findReplaceVisible = false"
-      @find="handleFind"
-      @replace="handleReplace"
-      @replace-all="handleReplaceAll"
+      :match-count="findMatches.length"
+      :current-match-index="findActiveIdx"
+      @close="onFindPanelClose"
+      @query-change="onFindQueryChange"
+      @find-next="handleFindNext"
+      @find-prev="handleFindPrev"
+      @replace="handleFindReplaceOnce"
+      @replace-all="handleReplaceAllFromPanel"
     />
 
     <!-- 图片预览弹窗 -->
@@ -67,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useEditor } from './composables/useEditor';
 import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
@@ -75,6 +79,11 @@ import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
 import { hasToc, updateTocInContent } from './utils/toc';
 import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
+import {
+  patternToRegExp,
+  findAllMatchesInText,
+  type FindPatternMode,
+} from './utils/findPattern';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
 import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 
@@ -86,6 +95,8 @@ declare global {
     __marklyE2E?: {
       getContent: () => string;
       setContent: (c: string) => void;
+      getSelectionAnchor: () => number;
+      setSelectionAnchor: (anchor: number, head?: number | null) => void;
       applyFormat: (format: string) => void;
       insertNode: (type: string) => void;
       undo: () => void;
@@ -94,7 +105,12 @@ declare global {
       replaceAll: (
         findText: string,
         replaceText: string,
-        options: { caseSensitive: boolean; useRegex: boolean }
+        options: {
+          caseSensitive: boolean;
+          useRegex: boolean;
+          useGlob?: boolean;
+          useWholeWord?: boolean;
+        }
       ) => void;
       getUndoDepth: () => number;
       getRedoDepth: () => number;
@@ -137,8 +153,17 @@ const imagePreviewVisible = ref(false);
 const currentImages = ref<string[]>([]);
 const currentImageIndex = ref(0);
 const currentImageSrc = ref('');
-const showOutline = ref(true); // 大纲视图开关
-const showLineNumbers = ref(true); // 行号显示开关
+const showOutline = ref(false);
+
+const findState = reactive({
+  findText: '',
+  replaceText: '',
+  caseSensitive: false,
+  wholeWord: false,
+  patternMode: 'literal' as FindPatternMode,
+});
+const findMatches = ref<{ from: number; to: number }[]>([]);
+const findActiveIdx = ref(-1);
 
 // Word count
 const wordCount = computed(() => {
@@ -187,12 +212,27 @@ function ensureEditorFromInit(): boolean {
       content.value = c;
       editor.setContent(c);
     },
+    getSelectionAnchor: () => editor.view.value?.state.selection.main.anchor ?? -1,
+    setSelectionAnchor: (anchor: number, head?: number | null) => {
+      const v = editor.view.value;
+      if (!v) return;
+      const len = v.state.doc.length;
+      const a = Math.min(Math.max(0, anchor), len);
+      // WebDriver 常把「省略参数」序列化成 null；须与 undefined 一样视为折叠光标
+      const h = head == null ? a : Math.min(Math.max(0, head), len);
+      v.dispatch({ selection: { anchor: a, head: h } });
+    },
     applyFormat: (format: string) => handleFormat(format),
     insertNode: (type: string) => handleInsert(type),
     undo: () => handleUndo(),
     redo: () => handleRedo(),
     switchMode: (mode: EditorMode) => switchMode(mode),
-    replaceAll: (findText, replaceText, options) => handleReplaceAll(findText, replaceText, options),
+    replaceAll: (findText, replaceText, options) =>
+      handleReplaceAll(findText, replaceText, {
+        caseSensitive: options.caseSensitive,
+        patternMode: options.useRegex ? 'regex' : options.useGlob ? 'glob' : 'literal',
+        wholeWord: options.useWholeWord ?? false,
+      }),
     getUndoDepth: () => (editor.view.value ? undoDepth(editor.view.value.state) : 0),
     getRedoDepth: () => (editor.view.value ? redoDepth(editor.view.value.state) : 0),
     undoCmd: () => {
@@ -248,9 +288,11 @@ function handleMessage(event: MessageEvent) {
       }
       break;
 
-    case 'SWITCH_MODE':
-      switchMode(message.payload.mode);
+    case 'SWITCH_MODE': {
+      const m = message.payload.mode;
+      switchMode(m === 'preview' ? 'ir' : m);
       break;
+    }
       
     case 'SAVE':
       // VS Code 触发的保存，也需要更新 TOC
@@ -365,9 +407,155 @@ function handleInsert(type: string) {
 }
 
 function handleToggleLineNumbers() {
-  showLineNumbers.value = !showLineNumbers.value;
   editor.toggleLineNumbers();
 }
+
+function recomputeFindMatches(): void {
+  const v = editor.view.value;
+  const text = v?.state.doc.toString() ?? '';
+  const re = patternToRegExp(findState.findText, {
+    caseSensitive: findState.caseSensitive,
+    patternMode: findState.patternMode,
+    wholeWord: findState.wholeWord,
+  });
+  if (!re || !findState.findText) {
+    findMatches.value = [];
+    findActiveIdx.value = -1;
+    return;
+  }
+  findMatches.value = findAllMatchesInText(text, re);
+  if (findMatches.value.length === 0) {
+    findActiveIdx.value = -1;
+  } else if (findActiveIdx.value >= findMatches.value.length) {
+    findActiveIdx.value = findMatches.value.length - 1;
+  }
+}
+
+function onFindQueryChange(payload: {
+  findText: string;
+  replaceText: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  patternMode: FindPatternMode;
+}): void {
+  Object.assign(findState, payload);
+  const prev = findActiveIdx.value;
+  recomputeFindMatches();
+  if (findMatches.value.length === 0) {
+    findActiveIdx.value = -1;
+  } else {
+    findActiveIdx.value = Math.min(Math.max(0, prev), findMatches.value.length - 1);
+  }
+}
+
+function scrollToFindMatch(idx: number): void {
+  const v = editor.view.value;
+  const m = findMatches.value[idx];
+  if (!v || !m) return;
+  v.dispatch({
+    selection: { anchor: m.from, head: m.to },
+    scrollIntoView: true,
+  });
+}
+
+function handleFindNext(): void {
+  const v = editor.view.value;
+  if (!v || !findState.findText.trim()) return;
+  recomputeFindMatches();
+  if (!findMatches.value.length) return;
+  const pos = v.state.selection.main.head;
+  let idx = findMatches.value.findIndex((m) => m.from > pos);
+  if (idx === -1) idx = 0;
+  findActiveIdx.value = idx;
+  scrollToFindMatch(idx);
+}
+
+function handleFindPrev(): void {
+  const v = editor.view.value;
+  if (!v || !findState.findText.trim()) return;
+  recomputeFindMatches();
+  if (!findMatches.value.length) return;
+  const pos = v.state.selection.main.head;
+  let idx = -1;
+  for (let i = findMatches.value.length - 1; i >= 0; i--) {
+    if (findMatches.value[i].to < pos) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx === -1) idx = findMatches.value.length - 1;
+  findActiveIdx.value = idx;
+  scrollToFindMatch(idx);
+}
+
+function handleFindReplaceOnce(): void {
+  const v = editor.view.value;
+  if (!v || findActiveIdx.value < 0) return;
+  const m = findMatches.value[findActiveIdx.value];
+  if (!m) return;
+  const ins = findState.replaceText;
+  v.dispatch({
+    changes: { from: m.from, to: m.to, insert: ins },
+  });
+  const afterPos = m.from + ins.length;
+  recomputeFindMatches();
+  if (findMatches.value.length === 0) {
+    findActiveIdx.value = -1;
+    return;
+  }
+  let idx = findMatches.value.findIndex((x) => x.from >= afterPos);
+  if (idx === -1) idx = 0;
+  findActiveIdx.value = idx;
+  scrollToFindMatch(idx);
+}
+
+function handleReplaceAllFromPanel(): void {
+  handleReplaceAll(findState.findText, findState.replaceText, {
+    caseSensitive: findState.caseSensitive,
+    patternMode: findState.patternMode,
+    wholeWord: findState.wholeWord,
+  });
+}
+
+function handleReplaceAll(
+  findText: string,
+  replaceText: string,
+  opts: { caseSensitive: boolean; patternMode: FindPatternMode; wholeWord?: boolean }
+): void {
+  const v = editor.view.value;
+  if (!v || !findText) return;
+  const text = v.state.doc.toString();
+  const re = patternToRegExp(findText, {
+    caseSensitive: opts.caseSensitive,
+    patternMode: opts.patternMode,
+    wholeWord: opts.wholeWord,
+  });
+  if (!re) return;
+  const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
+  const r = new RegExp(re.source, flags);
+  let newText: string;
+  try {
+    newText = text.replace(r, replaceText);
+  } catch {
+    return;
+  }
+  if (newText === text) return;
+  v.dispatch({
+    changes: { from: 0, to: text.length, insert: newText },
+  });
+  findMatches.value = [];
+  findActiveIdx.value = -1;
+}
+
+function onFindPanelClose(): void {
+  findReplaceVisible.value = false;
+}
+
+watch(content, () => {
+  if (findReplaceVisible.value) {
+    recomputeFindMatches();
+  }
+});
 
 function handleUndo() {
   try {
@@ -385,77 +573,6 @@ function handleRedo() {
     console.warn('[Editor] redo failed:', e);
   }
   focusEditor();
-}
-
-// 查找替换处理函数
-function handleFind(
-  text: string,
-  options: { caseSensitive: boolean; useRegex: boolean; direction: 'next' | 'prev' }
-) {
-  if (!text) return;
-
-  // 统一使用浏览器原生查找
-  // Preview 模式：查找渲染后的内容
-  // Source 模式：查找源码（注意：CodeMirror 使用 contenteditable，window.find 可用）
-  const caseSensitive = options.caseSensitive;
-  const backward = options.direction === 'prev';
-
-  const found = window.find(text, caseSensitive, backward, true, false, true, false);
-  if (!found) {
-    console.log('Find: text not found -', text);
-  }
-}
-
-function handleReplace(
-  findText: string,
-  replaceText: string,
-  options: { caseSensitive: boolean; useRegex: boolean }
-) {
-  if (!findText) return;
-
-  // 使用 selection 获取当前选中的文本（由 handleFind 选中）
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return;
-
-  const selectedText = selection.toString();
-  const matches = options.caseSensitive
-    ? selectedText === findText
-    : selectedText.toLowerCase() === findText.toLowerCase();
-
-  if (matches) {
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(document.createTextNode(replaceText));
-    // 清除选择
-    selection.removeAllRanges();
-  }
-}
-
-function handleReplaceAll(
-  findText: string,
-  replaceText: string,
-  options: { caseSensitive: boolean; useRegex: boolean }
-) {
-  if (!findText || !editor.view.value) return;
-
-  let currentContent = editor.getContent();
-  const flags = options.caseSensitive ? 'g' : 'gi';
-
-  if (options.useRegex) {
-    try {
-      const regex = new RegExp(findText, flags);
-      currentContent = currentContent.replace(regex, replaceText);
-    } catch (e) {
-      console.warn('Invalid regex:', findText);
-      return;
-    }
-  } else {
-    const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
-    const regex = new RegExp(escaped, flags);
-    currentContent = currentContent.replace(regex, replaceText);
-  }
-
-  editor.setContent(currentContent);
 }
 
 // 解析图片 URL（处理相对路径）
@@ -722,7 +839,8 @@ onUnmounted(() => {
 
 :deep(.cm-scroller) {
   overflow: auto;
-  padding: 24px;
+  /* 与外框留白：上略大便于首行呼吸，左右略宽适合长行阅读 */
+  padding: 20px 28px 24px;
 }
 
 

@@ -149,13 +149,10 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
       const imagePath = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('图片保存超时')), 30000);
         const unsubscribe = onMessage((message) => {
-          if (
-            message.type === 'IMAGE_SAVED' &&
-            (message.payload as { filename: string; path: string }).filename === filename
-          ) {
+          if (message.type === 'IMAGE_SAVED' && message.payload.filename === filename) {
             clearTimeout(timeout);
             unsubscribe();
-            resolve((message.payload as { filename: string; path: string }).path);
+            resolve(message.payload.path);
           }
         });
         postMessage({ type: 'UPLOAD_IMAGE', payload: { base64: dataUrl, filename } });

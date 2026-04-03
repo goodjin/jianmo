@@ -67,12 +67,27 @@ export interface ExtensionConfig {
   };
 }
 
-// 消息类型
+// 消息类型（Extension ⇄ Webview 自定义编辑器协议）
+//
+// Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
+//   IMAGE_SAVED / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
+// Webview → Extension：READY / CONTENT_CHANGE / SAVE / SAVE_IMAGE / OPEN_* / EXPORT /
+//   UPLOAD_IMAGE / scrollPositionResponse
+//
+// 注：`markly.toggleMode` 仍可能下发 `preview`（历史命名），Webview 侧与 `ir` 同义入口。
 export type ExtensionMessage =
-  | { type: 'INIT'; payload: { content: string; config: ExtensionConfig } }
+  | { type: 'INIT'; payload: { content: string; config: ExtensionConfig; version?: number } }
   | { type: 'CONTENT_UPDATE'; payload: { content: string; version?: number } }
   | { type: 'CONFIG_CHANGE'; payload: { config: Partial<ExtensionConfig> } }
-  | { type: 'SWITCH_MODE'; payload: { mode: EditorMode } };
+  | { type: 'SWITCH_MODE'; payload: { mode: EditorMode | 'preview' } }
+  /** 宿主侧保存（如 workbench 保存）触发 Webview 同步 TOC 等 */
+  | { type: 'SAVE' }
+  | { type: 'SAVE_SUCCESS'; payload: { version: number } }
+  | { type: 'IMAGE_SAVED'; payload: { path: string; filename: string } }
+  /** 旧 Text Editor 路径曾下发；预览模式可不使用 */
+  | { type: 'THEME_CHANGE'; payload: { theme: string } }
+  | { type: 'getScrollPosition'; requestId: string }
+  | { type: 'setScrollPosition'; scrollTop: number; scrollLeft: number };
 
 export type WebViewMessage =
   | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition; version?: number } }
@@ -82,8 +97,7 @@ export type WebViewMessage =
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' } }
   | { type: 'READY'; payload?: undefined }
-  | { type: 'getScrollPosition'; requestId: string }
-  | { type: 'setScrollPosition'; scrollTop: number; scrollLeft: number }
+  | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string } }
   | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
 
 // 导出结果 - 使用联合类型区分成功/失败

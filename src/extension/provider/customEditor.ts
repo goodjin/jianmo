@@ -163,9 +163,27 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         await this.saveDocument(uri, message.payload.content);
         break;
 
-      case 'SAVE_IMAGE':
-        await this.saveImage(uri, message.payload.data, message.payload.filename);
+      case 'SAVE_IMAGE': {
+        const rel = await this.saveImage(uri, message.payload.data, message.payload.filename);
+        if (rel) {
+          this.postMessage(uri, {
+            type: 'IMAGE_SAVED',
+            payload: { path: rel, filename: message.payload.filename },
+          });
+        }
         break;
+      }
+
+      case 'UPLOAD_IMAGE': {
+        const rel = await this.saveImage(uri, message.payload.base64, message.payload.filename);
+        if (rel) {
+          this.postMessage(uri, {
+            type: 'IMAGE_SAVED',
+            payload: { path: rel, filename: message.payload.filename },
+          });
+        }
+        break;
+      }
 
       case 'OPEN_IMAGE_PREVIEW':
         // 处理图片预览 - 使用 VSCode 内置图片预览

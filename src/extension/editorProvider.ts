@@ -6,7 +6,11 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import type { VSCodeMessage, EditorConfig } from '../shared/types';
+import type {
+  LegacyEditorOutboundMessage,
+  LegacyTextEditorConfig,
+  LegacyWebviewToExtension,
+} from './legacyTextEditorProtocol';
 
 /**
  * Markdown 编辑器提供者类
@@ -84,36 +88,36 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel: vscode.WebviewPanel,
     document: vscode.TextDocument
   ): void {
-    webviewPanel.webview.onDidReceiveMessage(async (message: VSCodeMessage) => {
+    webviewPanel.webview.onDidReceiveMessage(async (message: LegacyWebviewToExtension) => {
       switch (message.type) {
         case 'CONTENT_CHANGE':
-          await this.updateDocument(document, message.payload.content as string);
+          await this.updateDocument(document, message.payload.content);
           break;
 
         case 'UPLOAD_IMAGE':
           try {
-            const payload = message.payload as { base64: string; filename: string };
             const imagePath = await this.saveImage(
               document,
-              payload.base64,
-              payload.filename
+              message.payload.base64,
+              message.payload.filename
             );
             this.postMessage(webviewPanel, {
               type: 'IMAGE_SAVED',
-              payload: { path: imagePath, filename: payload.filename },
+              payload: { path: imagePath, filename: message.payload.filename },
             });
           } catch (error) {
             console.error('Failed to save image:', error);
           }
           break;
 
-        case 'GET_THEME':
+        case 'GET_THEME': {
           const theme = this.getVSCodeTheme();
           this.postMessage(webviewPanel, {
             type: 'THEME_CHANGE',
             payload: { theme },
           });
           break;
+        }
       }
     });
   }
@@ -198,7 +202,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    */
   private postMessage(
     webviewPanel: vscode.WebviewPanel,
-    message: VSCodeMessage
+    message: LegacyEditorOutboundMessage
   ): void {
     webviewPanel.webview.postMessage(message);
   }
@@ -207,7 +211,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    * 发送消息到活动 Webview
    * @param message - 消息
    */
-  public postMessageToActiveWebview(message: VSCodeMessage): void {
+  public postMessageToActiveWebview(message: LegacyEditorOutboundMessage): void {
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor) return;
 
@@ -221,7 +225,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
    * 获取编辑器配置
    * @returns 配置对象
    */
-  private getEditorConfig(): EditorConfig {
+  private getEditorConfig(): LegacyTextEditorConfig {
     const config = vscode.workspace.getConfiguration('markly');
     return {
       theme: config.get('theme', 'auto'),

@@ -6,7 +6,7 @@
 
 import { ref } from 'vue';
 import type { Ref } from 'vue';
-import type { VSCodeMessage } from '../../../src/shared/types';
+import type { ExtensionMessage, WebViewMessage } from '@types';
 
 /**
  * VS Code API 接口
@@ -28,10 +28,10 @@ export interface UseVSCodeReturn {
   vscode: Ref<VSCodeApi | null>;
   /** 是否已准备好 */
   isReady: Ref<boolean>;
-  /** 发送消息到 Extension */
-  postMessage: (message: VSCodeMessage) => void;
-  /** 监听来自 Extension 的消息 */
-  onMessage: (handler: (message: VSCodeMessage) => void) => (() => void);
+  /** Webview → Extension（自定义编辑器协议） */
+  postMessage: (message: WebViewMessage) => void;
+  /** Extension → Webview */
+  onMessage: (handler: (message: ExtensionMessage) => void) => (() => void);
   /** 设置状态 */
   setState: (state: unknown) => void;
   /** 获取状态 */
@@ -51,7 +51,7 @@ export const useVSCode = (): UseVSCodeReturn => {
    * 发送消息到 Extension
    * @param message - 消息对象
    */
-  const postMessage = (message: VSCodeMessage): void => {
+  const postMessage = (message: WebViewMessage): void => {
     vscode.value?.postMessage(message);
   };
 
@@ -60,9 +60,9 @@ export const useVSCode = (): UseVSCodeReturn => {
    * @param handler - 消息处理函数
    * @returns 取消监听的函数
    */
-  const onMessage = (handler: (message: VSCodeMessage) => void): (() => void) => {
+  const onMessage = (handler: (message: ExtensionMessage) => void): (() => void) => {
     const listener = (event: MessageEvent) => {
-      handler(event.data as VSCodeMessage);
+      handler(event.data as ExtensionMessage);
     };
 
     window.addEventListener('message', listener);

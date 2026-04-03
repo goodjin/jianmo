@@ -4,7 +4,7 @@
  * @description 提供标题解析和树形结构构建
  */
 
-import type { HeadingNode } from './types';
+import type { HeadingNode } from '../types';
 
 /**
  * 解析 Markdown 内容中的标题

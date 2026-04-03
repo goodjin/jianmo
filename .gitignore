@@ -21,6 +21,9 @@ Thumbs.db
 # Test
 coverage/
 
+# 扩展安装包（本地 npm run package 生成）
+*.vsix
+
 # VSCode
 .vscode-test/
 

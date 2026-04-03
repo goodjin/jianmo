@@ -141,6 +141,21 @@
 
       <div class="toolbar-spacer"></div>
 
+      <!-- 查找替换 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn has-label"
+          :class="{ active: findPanelOpen }"
+          type="button"
+          title="查找和替换 (Ctrl+F)"
+          @mousedown.prevent
+          @click="$emit('find-replace')"
+        >
+          <span class="btn-icon">&#x2315;</span>
+          <span class="btn-label">Find</span>
+        </button>
+      </div>
+
       <!-- 大纲切换 -->
       <div class="toolbar-group">
         <button
@@ -173,10 +188,12 @@
 <script setup lang="ts">
 import type { EditorMode } from '../../../src/types';
 
-const props = defineProps<{
+defineProps<{
   mode: EditorMode;
   showOutline?: boolean;
   showLineNumbers?: boolean;
+  /** 查找面板是否打开（工具栏高亮） */
+  findPanelOpen?: boolean;
 }>();
 
 defineEmits<{

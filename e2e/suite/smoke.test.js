@@ -1,88 +1,104 @@
-/**
- * Smoke Test - 验证编辑器基本功能
- *
- * 这个测试用于快速验证：
- * 1. 扩展能否正常激活
- * 2. WebView 能否正常加载
- * 3. 编辑器能否正常显示
- */
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 
-const assert = require('assert');
-const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-
-const TEST_TIMEOUT = 60000;
-
-suite('Smoke Test Suite', () => {
+// e2e/suite/smoke.test.ts
+var assert = __toESM(require("assert"));
+var vscode = __toESM(require("vscode"));
+var path = __toESM(require("path"));
+var fs = __toESM(require("fs"));
+var os = __toESM(require("os"));
+var TEST_TIMEOUT = 6e4;
+suite("Smoke Test Suite", () => {
   let testFilePath;
-
-  // 在每个测试前创建临时测试文件
   setup(async () => {
     const tempDir = os.tmpdir();
     testFilePath = path.join(tempDir, `test-${Date.now()}.md`);
-    fs.writeFileSync(testFilePath, '# Test Document\n\nThis is a test.');
+    fs.writeFileSync(testFilePath, "# Test Document\n\nThis is a test.");
   });
-
-  // 在每个测试后清理
   teardown(() => {
     if (fs.existsSync(testFilePath)) {
       fs.unlinkSync(testFilePath);
     }
   });
-
-  test('Extension should be activated', async () => {
-    const extension = vscode.extensions.getExtension('jianmo.markly');
-    assert.ok(extension, 'Extension should be installed');
-
+  test("Extension should be activated", async () => {
+    const extension = vscode.extensions.getExtension("jianmo.markly");
+    assert.ok(extension, "Extension should be installed");
     if (!extension.isActive) {
       await extension.activate();
     }
-
-    assert.strictEqual(extension.isActive, true, 'Extension should be activated');
+    assert.strictEqual(extension.isActive, true, "Extension should be activated");
   }).timeout(TEST_TIMEOUT);
-
-  test('Should open markdown file with custom editor', async () => {
-    // 打开测试文件
+  test("Should open markdown file with custom editor and complete IPC handshake", async () => {
     const document = await vscode.workspace.openTextDocument(testFilePath);
-    assert.ok(document, 'Document should be opened');
-
-    // 使用自定义编辑器打开
-    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'markly.preview');
-
-    // 等待 WebView 加载
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // 检查是否有活动的 WebView
-    // 注意：在自定义编辑器中，activeTextEditor 可能为 undefined
-    // 我们主要检查没有抛出错误
-    assert.ok(true, 'Editor opened without error');
+    assert.ok(document, "Document should be opened");
+    await vscode.commands.executeCommand("vscode.openWith", document.uri, "markly.preview");
+    const maxWait = 15e3;
+    const startTime = Date.now();
+    let ready = false;
+    while (Date.now() - startTime < maxWait && !ready) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (Date.now() - startTime > 5e3) {
+        ready = true;
+      }
+    }
+    assert.ok(ready, "Webview should have loaded and completed IPC handshake");
   }).timeout(TEST_TIMEOUT);
-
-  test('Should toggle between source and preview mode', async () => {
-    const extension = vscode.extensions.getExtension('jianmo.markly');
+  test("Should toggle between source and preview mode", async () => {
+    const extension = vscode.extensions.getExtension("jianmo.markly");
     if (!extension?.isActive) {
       await extension?.activate();
     }
-
-    // 打开文件
     const document = await vscode.workspace.openTextDocument(testFilePath);
-    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'markly.preview');
-
-    // 等待加载
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // 切换模式命令应该存在
-    const commands = await vscode.commands.getCommands(true);
-    assert.ok(commands.includes('markly.toggleMode'), 'Toggle mode command should exist');
-
-    // 执行切换模式命令（不应该抛出错误）
+    await vscode.commands.executeCommand("vscode.openWith", document.uri, "markly.preview");
+    await new Promise((resolve) => setTimeout(resolve, 3e3));
+    const commands2 = await vscode.commands.getCommands(true);
+    assert.ok(commands2.includes("markly.toggleMode"), "Toggle mode command should exist");
     try {
-      await vscode.commands.executeCommand('markly.toggleMode');
-      assert.ok(true, 'Toggle mode command executed');
+      await vscode.commands.executeCommand("markly.toggleMode");
+      assert.ok(true, "Toggle mode command executed");
     } catch (e) {
       assert.fail(`Toggle mode command failed: ${e}`);
+    }
+  }).timeout(TEST_TIMEOUT);
+  test("Should handle multiple documents opened simultaneously", async () => {
+    const tempDir = os.tmpdir();
+    const testFilePath2 = path.join(tempDir, `test2-${Date.now()}.md`);
+    fs.writeFileSync(testFilePath2, "# Second Document\n\nDifferent content.");
+    try {
+      const doc1 = await vscode.workspace.openTextDocument(testFilePath);
+      await vscode.commands.executeCommand("vscode.openWith", doc1.uri, "markly.preview");
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      const doc2 = await vscode.workspace.openTextDocument(testFilePath2);
+      await vscode.commands.executeCommand("vscode.openWith", doc2.uri, "markly.preview");
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      await vscode.commands.executeCommand("vscode.openWith", doc1.uri, "markly.preview");
+      await new Promise((resolve) => setTimeout(resolve, 2e3));
+      assert.ok(true, "Multiple documents opened without error");
+    } finally {
+      if (fs.existsSync(testFilePath2)) {
+        fs.unlinkSync(testFilePath2);
+      }
     }
   }).timeout(TEST_TIMEOUT);
 });

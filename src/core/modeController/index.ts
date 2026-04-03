@@ -94,6 +94,7 @@ export class ModeController implements vscode.Disposable {
       case 'OPEN_IMAGE_PREVIEW':
       case 'OPEN_IMAGE_EDITOR':
       case 'EXPORT':
+      case 'UPLOAD_IMAGE':
       case 'getScrollPosition':
         break;
       default:

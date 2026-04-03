@@ -94,23 +94,6 @@ export interface ToolbarGroup {
   buttons: ToolbarButton[];
 }
 
-// VS Code 通信类型
-export type MessageType =
-  | 'INIT'
-  | 'CONTENT_CHANGE'
-  | 'SAVE'
-  | 'UPLOAD_IMAGE'
-  | 'IMAGE_SAVED'
-  | 'CONFIG_CHANGE'
-  | 'GET_THEME'
-  | 'THEME_CHANGE'
-  | 'COMMAND';
-
-export interface VSCodeMessage {
-  type: MessageType;
-  payload?: unknown;
-}
-
 // 装饰器类型
 export interface DecoratorOptions {
   theme?: 'light' | 'dark';

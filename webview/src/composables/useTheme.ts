@@ -77,7 +77,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
     // 监听 VS Code 主题变化
     const unsubscribe = onMessage((message) => {
       if (message.type === 'THEME_CHANGE') {
-        const vsTheme = (message.payload as { theme: string }).theme;
+        const vsTheme = message.payload.theme;
         // 根据 VS Code 主题名称判断是亮色还是暗色
         const isDark =
           vsTheme.toLowerCase().includes('dark') ||
