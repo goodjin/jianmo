@@ -26,6 +26,6 @@ export default defineConfig({
       'webview/src/**/__tests__/**/*.test.ts',
       'webview/test/**/*.test.ts',
     ],
-    exclude: ['e2e/**'], // e2e 目录由 Playwright 运行，不走 Vitest
+    exclude: ['e2e/**'], // e2e 为 VS Code / ExTester 脚本与 UI 套件，不走 Vitest
   },
 });

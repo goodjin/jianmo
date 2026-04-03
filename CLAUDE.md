@@ -68,8 +68,6 @@ npm run test:vscode:ui:setup  # first run: ExTester downloads VS Code + ChromeDr
 npm run test:vscode:ui     # ExTester：会先 vsce package + install-vsix 再跑 UI（避免测试实例里仍是陈旧 vsix）；见 e2e/ui-suite/
 # 须在 macOS 已登录桌面的本机终端运行；纯 SSH / 无 WindowServer 时常见 Chrome/Electron 立刻退出
 # 若报 user-data-dir 被占用：先重跑（脚本会 pkill 残留进程）；仍失败则删 .vscode-test/extest-ui/settings
-npm run test:e2e:install   # first run: install Chromium into project (required before test:e2e)
-npm run test:e2e           # Playwright tests (webview dev server; see playwright.config.ts)
 
 # Lint
 npm run lint

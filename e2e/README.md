@@ -1,76 +1,38 @@
-# Markly E2E 测试
+# Markly 端到端 / 集成测试
 
-本项目使用两种测试方式：
+本项目**以真实 VS Code 环境为准**：扩展集成测试（Mocha）与带 UI 的 ExTester（Selenium + 真实 Electron/VS Code）。
 
-## 方式一：VS Code 调试模式（推荐）
+## 1. 扩展集成测试（无 UI 自动化，`@vscode/test-electron`）
 
-1. 在 VS Code 中打开项目
-2. 按 `F5` 启动扩展测试
-3. 测试会自动运行
-
-这是最简单的方式，会在真实的 VS Code 环境中运行所有测试。
-
-## 方式二：命令行测试
+会先 `build`，再启动 VS Code 实例加载本仓库扩展，运行 `e2e/suite/`：
 
 ```bash
-# 构建项目
-npm run build
-
-# 运行 VS Code 测试（需要在 VS Code 中打开）
 npm run test:vscode
 ```
 
-## 方式三：Playwright（WebView 测试）
+## 2. 真实 UI：ExTester（推荐用于验证「像用户一样点」）
+
+首次需下载测试专用 VS Code 与驱动（进入 `.vscode-test/extest-ui/`）：
 
 ```bash
-# 安装依赖
-npm install
-npx playwright install chromium
-
-# 运行 Playwright 测试
-npm run test:e2e
+npm run test:vscode:ui:setup
 ```
 
-注意：Playwright 测试需要特殊的 VS Code 连接配置。
+日常运行（会先打包 VSIX 并安装到测试 profile，再跑 UI 用例，避免测到陈旧扩展）：
 
-## 测试文件
+```bash
+npm run test:vscode:ui
+```
 
-| 文件 | 说明 |
-|-----|------|
-| `e2e/complete-vscode.spec.ts` | VS Code 扩展测试 (27个用例) |
-| `e2e/integration.spec.ts` | 集成测试 |
-| `e2e/complete.spec.ts` | Playwright 测试 (44个用例) |
+用例入口：`e2e/ui-suite/`（Mocha + vscode-extension-tester）。
 
-## 测试覆盖
+**环境要求**（见根目录 `CLAUDE.md`）：须在 **macOS 已登录桌面的本机终端** 运行；纯 SSH / 无 WindowServer 时 Electron 常会立刻退出。
 
-| 功能 | 测试用例数 |
-|-----|----------|
-| 模式切换 | 2 |
-| 撤销/重做 | 2 |
-| 标题 | 6 |
-| 格式化 | 8 |
-| 列表 | 6 |
-| 插入功能 | 8 |
-| 查找替换 | 1 |
-| 大纲面板 | 1 |
-| 字数统计 | 1 |
-| 源码编辑 | 1 |
-| 导出功能 | 3 |
-| 快捷键 | 3 |
-| 主题 | 1 |
-| 图片预览 | 1 |
-| 完整流程 | 1 |
-| **总计** | **44+** |
+## 3. 目录说明
 
-## 常见问题
-
-### 测试无法运行
-
-确保：
-1. 已运行 `npm install` 安装依赖
-2. 已运行 `npm run build` 构建项目
-3. 使用 VS Code 打开项目（按 F5）
-
-### VS Code API 不可用
-
-VS Code 测试必须在扩展环境中运行，不能在普通 Node.js 中运行。
+| 路径 | 说明 |
+|------|------|
+| `e2e/index.js` | `test:vscode` 入口，调用 `@vscode/test-electron` |
+| `e2e/suite/` | 集成测试套件（Mocha） |
+| `e2e/run-extest-ui.mjs` 等 | `test:vscode:ui` 编排脚本 |
+| `e2e/ui-suite/` | ExTester UI 测试与 fixture 工作区 |
