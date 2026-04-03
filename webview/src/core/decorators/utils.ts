@@ -1,6 +1,6 @@
 /**
  * 装饰器工具函数
- * @module decorators/utils
+ * @module core/decorators/utils
  * @description 提供装饰器创建的基础工具函数
  */
 

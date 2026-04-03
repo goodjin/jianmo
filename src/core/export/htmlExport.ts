@@ -15,8 +15,8 @@ const defaultOptions: HtmlExportOptions = {
   darkMode: false,
 };
 
-// HTML 转义函数，防止 XSS
-function escapeHtml(text: string): string {
+/** HTML 转义，防止 XSS */
+export function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
@@ -50,7 +50,7 @@ export async function exportToHtml(
   fs.writeFileSync(outputPath, fullHtml, 'utf-8');
 }
 
-function generateToc(markdown: string): string {
+export function generateToc(markdown: string): string {
   const headings: { level: number; text: string; anchor: string }[] = [];
   const lines = markdown.split('\n');
 
@@ -96,7 +96,7 @@ async function markdownToHtml(markdown: string): Promise<string> {
   });
 }
 
-function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOptions): string {
+export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOptions): string {
   const { darkMode } = opts;
   const bgColor = darkMode ? '#0d1117' : '#ffffff';
   const textColor = darkMode ? '#c9d1d9' : '#24292e';
@@ -143,7 +143,7 @@ function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOpt
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${opts.title}</title>
+  <title>${escapeHtml(opts.title || '导出文档')}</title>
   <style>
     :root {
       --bg-color: ${bgColor};

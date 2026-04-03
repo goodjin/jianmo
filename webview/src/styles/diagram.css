@@ -1,0 +1,26 @@
+/**
+ * Mermaid 图表（IR 装饰器）样式
+ * @module styles/diagram
+ */
+
+.cm-diagram {
+  display: block;
+  margin: 0.75em 0;
+  padding: 8px 10px;
+  border: 1px solid var(--markly-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  background: var(--markly-surface, var(--vscode-editor-background));
+  overflow-x: auto;
+}
+
+.cm-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.cm-diagram-error {
+  color: var(--markly-error, var(--vscode-errorForeground));
+  font-family: var(--vscode-editor-font-family);
+  white-space: pre-wrap;
+}
+

@@ -9,12 +9,11 @@ import type { EditorView } from '@codemirror/view';
 
 /**
  * 编辑器模式类型
- * @description 支持三种编辑模式：
- * - ir: 即时渲染模式 (Instant Rendering)
+ * @description 支持两种编辑模式：
+ * - ir: 即时渲染模式 (Instant Rendering) - WYSIWYG
  * - source: 源码编辑模式
- * - split: 分屏预览模式
  */
-export type EditorMode = 'source' | 'preview';
+export type EditorMode = 'ir' | 'source';
 
 /**
  * 编辑器选项接口
@@ -29,6 +28,11 @@ export interface EditorOptions {
   onChange?: (content: string) => void;
   /** 模式变化回调 */
   onModeChange?: (mode: EditorMode) => void;
+  /**
+   * 替代 `window.prompt`（插入链接/图片时收集输入）。
+   * 不传则在浏览器环境调用原生 prompt；单测可通过注入避免 jsdom 噪音。
+   */
+  promptInput?: (message: string, defaultValue?: string) => string | null;
 }
 
 /**

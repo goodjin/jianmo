@@ -6,21 +6,21 @@
       <div class="toolbar-group mode-switch">
         <button
           class="toolbar-btn mode-btn"
+          :class="{ active: mode === 'ir' }"
+          title="IR Mode (WYSIWYG)"
+          @click="$emit('switch-mode', 'ir')"
+        >
+          <span class="btn-icon">&#x270E;</span>
+          <span class="mode-label">IR</span>
+        </button>
+        <button
+          class="toolbar-btn mode-btn"
           :class="{ active: mode === 'source' }"
           title="Source Mode"
           @click="$emit('switch-mode', 'source')"
         >
           <span class="btn-icon">{ }</span>
           <span class="mode-label">Source</span>
-        </button>
-        <button
-          class="toolbar-btn mode-btn"
-          :class="{ active: mode === 'preview' }"
-          title="Preview Mode"
-          @click="$emit('switch-mode', 'preview')"
-        >
-          <span class="btn-icon">&#x25B7;</span>
-          <span class="mode-label">Preview</span>
         </button>
       </div>
 
@@ -33,6 +33,7 @@
           :key="btn.id"
           class="toolbar-btn heading-btn has-label"
           :title="btn.label"
+          @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
           <span class="btn-icon">{{ btn.icon }}</span>
@@ -49,6 +50,7 @@
           :key="btn.id"
           class="toolbar-btn has-label"
           :title="btn.label"
+          @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
           <span class="btn-icon">{{ btn.icon }}</span>
@@ -88,6 +90,7 @@
           :key="btn.id"
           class="toolbar-btn has-label"
           :title="btn.label"
+          @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
           <span class="btn-icon">{{ btn.icon }}</span>
@@ -104,6 +107,7 @@
           :key="btn.id"
           class="toolbar-btn has-label"
           :title="btn.label"
+          @mousedown.prevent
           @click="$emit('insert', btn.id)"
         >
           <span class="btn-icon">{{ btn.icon }}</span>
@@ -111,13 +115,14 @@
         </button>
       </div>
 
-      <div class="toolbar-spacer"></div>
+      <div class="toolbar-divider"></div>
 
-      <!-- 操作按钮 -->
+      <!-- 撤销/重做 -->
       <div class="toolbar-group">
         <button
           class="toolbar-btn has-label"
-          title="Undo"
+          title="Undo (Ctrl+Z)"
+          @mousedown.prevent
           @click="$emit('undo')"
         >
           <span class="btn-icon">&#x21A9;</span>
@@ -125,7 +130,8 @@
         </button>
         <button
           class="toolbar-btn has-label"
-          title="Redo"
+          title="Redo (Ctrl+Shift+Z)"
+          @mousedown.prevent
           @click="$emit('redo')"
         >
           <span class="btn-icon">&#x21AA;</span>
@@ -133,7 +139,7 @@
         </button>
       </div>
 
-      <div class="toolbar-divider"></div>
+      <div class="toolbar-spacer"></div>
 
       <!-- 大纲切换 -->
       <div class="toolbar-group">
@@ -147,6 +153,19 @@
           <span class="btn-label">Outline</span>
         </button>
       </div>
+
+      <!-- 行号切换 -->
+      <div class="toolbar-group">
+        <button
+          class="toolbar-btn has-label"
+          :class="{ active: showLineNumbers }"
+          title="Toggle Line Numbers"
+          @click="$emit('toggle-line-numbers')"
+        >
+          <span class="btn-icon">#</span>
+          <span class="btn-label">Lines</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -157,6 +176,7 @@ import type { EditorMode } from '../../../src/types';
 const props = defineProps<{
   mode: EditorMode;
   showOutline?: boolean;
+  showLineNumbers?: boolean;
 }>();
 
 defineEmits<{
@@ -167,6 +187,7 @@ defineEmits<{
   (e: 'redo'): void;
   (e: 'find-replace'): void;
   (e: 'toggle-outline'): void;
+  (e: 'toggle-line-numbers'): void;
   (e: 'export', format: 'pdf' | 'html'): void;
 }>();
 
@@ -182,6 +203,7 @@ const formatButtons = [
   { id: 'italic', icon: 'I', shortLabel: 'Italic', label: 'Italic' },
   { id: 'strike', icon: 'S', shortLabel: 'Strike', label: 'Strikethrough' },
   { id: 'code', icon: '</>', shortLabel: 'Code', label: 'Inline Code' },
+  { id: 'clear', icon: 'T', shortLabel: 'Normal', label: 'Clear Format' },
 ];
 
 const listButtons = [

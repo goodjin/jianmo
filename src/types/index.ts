@@ -1,5 +1,5 @@
 // 编辑器模式
-export type EditorMode = 'source' | 'preview';
+export type EditorMode = 'ir' | 'source';
 
 // 光标位置
 export interface SourceCursorPosition {

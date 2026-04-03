@@ -5,7 +5,7 @@ import type { ExtensionConfig } from '@types';
  * 深度合并两个对象，确保 target 的默认值被保留
  * source 的属性会覆盖 target 的属性，但 target 中有而 source 中没有的键也会保留
  */
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+export function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const result = { ...target };
 
   // 遍历 target 的所有键，确保默认值被保留
@@ -38,7 +38,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
 /**
  * 配置验证结果
  */
-interface ValidationResult {
+export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
@@ -46,7 +46,7 @@ interface ValidationResult {
 /**
  * 验证配置值
  */
-function validateConfig(config: ExtensionConfig): ValidationResult {
+export function validateConfig(config: ExtensionConfig): ValidationResult {
   const errors: string[] = [];
 
   // 验证 editor.fontSize (8-72)

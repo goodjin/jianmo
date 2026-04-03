@@ -4,6 +4,7 @@
       v-if="editorReady"
       :mode="currentMode"
       :show-outline="showOutline"
+      :show-line-numbers="showLineNumbers"
       @format="handleFormat"
       @insert="handleInsert"
       @switch-mode="switchMode"
@@ -11,6 +12,7 @@
       @redo="handleRedo"
       @find-replace="findReplaceVisible = true"
       @toggle-outline="showOutline = !showOutline"
+      @toggle-line-numbers="handleToggleLineNumbers"
       @export="handleExport"
     />
     <!-- 字数统计 -->
@@ -41,19 +43,11 @@
 
     <div class="editor-main">
       <div class="editor-container">
-        <!-- 编辑器容器 (源码模式由 CM6 处理) -->
+        <!-- 编辑器容器 (IR 模式和源码模式由 CM6 处理) -->
         <div
           ref="editorContainerRef"
           class="cm-editor-container"
-          v-show="editorReady && currentMode === 'source'"
-        ></div>
-
-        <!-- 预览容器 (预览模式渲染 HTML) -->
-        <div
-          v-show="editorReady && currentMode === 'preview'"
-          ref="previewContainerRef"
-          class="preview-container"
-          v-html="previewHtml"
+          v-show="editorReady"
         ></div>
 
         <div v-if="!editorReady" class="loading">
@@ -80,19 +74,42 @@ import OutlinePanel from './components/OutlinePanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
 import { hasToc, updateTocInContent } from './utils/toc';
-import { marked } from 'marked';
+import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
+import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 
 import { useVSCode } from './composables/useVSCode';
 const { postMessage } = useVSCode();
+
+declare global {
+  interface Window {
+    __marklyE2E?: {
+      getContent: () => string;
+      setContent: (c: string) => void;
+      applyFormat: (format: string) => void;
+      insertNode: (type: string) => void;
+      undo: () => void;
+      redo: () => void;
+      switchMode: (mode: EditorMode) => void;
+      replaceAll: (
+        findText: string,
+        replaceText: string,
+        options: { caseSensitive: boolean; useRegex: boolean }
+      ) => void;
+      getUndoDepth: () => number;
+      getRedoDepth: () => number;
+      undoCmd: () => boolean;
+      redoCmd: () => boolean;
+    };
+  }
+}
 
 // State
 const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const editorReady = ref(false);
-const currentMode = ref<EditorMode>('preview');
+const currentMode = ref<EditorMode>('ir');
 const editorContainerRef = ref<HTMLElement | null>(null);
-const previewContainerRef = ref<HTMLElement | null>(null);
 
 // Table formatting debounce
 let tableFormatTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -121,6 +138,7 @@ const currentImages = ref<string[]>([]);
 const currentImageIndex = ref(0);
 const currentImageSrc = ref('');
 const showOutline = ref(true); // 大纲视图开关
+const showLineNumbers = ref(true); // 行号显示开关
 
 // Word count
 const wordCount = computed(() => {
@@ -140,30 +158,6 @@ const lineCount = computed(() => {
   return content.value.split('\n').length;
 });
 
-// 标题 ID 生成（与 OutlinePanel 一致）
-function generateHeadingId(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-// 配置 marked renderer，为标题添加 id
-const renderer = new marked.Renderer();
-renderer.heading = function ({ text, depth }: { text: string; depth: number }) {
-  const id = generateHeadingId(text);
-  return `<h${depth} id="${id}">${text}</h${depth}>`;
-};
-marked.use({ renderer });
-
-// Preview HTML
-const previewHtml = computed(() => {
-  if (!content.value) return '';
-  return marked.parse(content.value, { async: false }) as string;
-});
-
 // Theme
 const isDark = computed(() => {
   if (!config.value) return false;
@@ -172,6 +166,57 @@ const isDark = computed(() => {
   }
   return config.value.editor.theme === 'dark';
 });
+
+/** 确保 CM6 已挂载到容器并完成 INIT（避免宿主过早 postMessage INIT 时 ref 未就绪 → 永久 Loading） */
+function ensureEditorFromInit(): boolean {
+  const el = editorContainerRef.value;
+  if (!el) return false;
+  if (!editor.view.value) {
+    editor.createEditor(el);
+    el.addEventListener('click', handleGlobalClick);
+    el.addEventListener('contextmenu', handleGlobalContextMenu);
+  }
+  editor.setContent(content.value);
+  editorReady.value = true;
+  console.log('[Webview] editorReady set to true');
+
+  // e2e 调试桥：让真 UI 测试能稳定读取/驱动编辑器状态（不依赖 DOM 可见文本/落盘时序）
+  window.__marklyE2E = {
+    getContent: () => editor.getContent(),
+    setContent: (c: string) => {
+      content.value = c;
+      editor.setContent(c);
+    },
+    applyFormat: (format: string) => handleFormat(format),
+    insertNode: (type: string) => handleInsert(type),
+    undo: () => handleUndo(),
+    redo: () => handleRedo(),
+    switchMode: (mode: EditorMode) => switchMode(mode),
+    replaceAll: (findText, replaceText, options) => handleReplaceAll(findText, replaceText, options),
+    getUndoDepth: () => (editor.view.value ? undoDepth(editor.view.value.state) : 0),
+    getRedoDepth: () => (editor.view.value ? redoDepth(editor.view.value.state) : 0),
+    undoCmd: () => {
+      const v = editor.view.value;
+      return v ? undo({ state: v.state, dispatch: v.dispatch }) : false;
+    },
+    redoCmd: () => {
+      const v = editor.view.value;
+      return v ? redo({ state: v.state, dispatch: v.dispatch }) : false;
+    },
+  };
+
+  return true;
+}
+
+function scheduleEnsureEditorFromInit() {
+  if (ensureEditorFromInit()) return;
+  nextTick(() => {
+    if (ensureEditorFromInit()) return;
+    requestAnimationFrame(() => {
+      ensureEditorFromInit();
+    });
+  });
+}
 
 // Message handling
 function handleMessage(event: MessageEvent) {
@@ -183,13 +228,7 @@ function handleMessage(event: MessageEvent) {
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       content.value = message.payload.content;
       config.value = message.payload.config;
-
-      // Initialize editor when INIT is received
-      if (editorContainerRef.value) {
-        editor.setContent(content.value);
-        editorReady.value = true;
-        console.log('[Webview] editorReady set to true');
-      }
+      scheduleEnsureEditorFromInit();
       break;
 
     case 'CONTENT_UPDATE':
@@ -237,53 +276,33 @@ function handleEditorReady(success: boolean) {
 }
 
 // Mode switching
-function toggleMode() {
-  const newMode = currentMode.value === 'source' ? 'preview' : 'source';
-  switchMode(newMode);
-}
-
 function switchMode(mode: EditorMode) {
   if (mode === currentMode.value) return;
 
-  if (mode === 'source') {
-    // 切换到源码模式：保存预览滚动比例，恢复到 CM 对应位置
-    const preview = previewContainerRef.value;
-    const previewRatio = preview && preview.scrollHeight > 0
-      ? preview.scrollTop / preview.scrollHeight : 0;
+  // 保存当前滚动位置
+  const scroller = document.querySelector('.cm-scroller') as HTMLElement;
+  let scrollRatio = 0;
 
-    // 只在没有未保存的更改时才设置内容（避免重置光标）
-    const currentEditorContent = editor.getContent();
-    if (currentEditorContent !== content.value) {
-      editor.setContent(content.value);
-    }
-    currentMode.value = mode;
-
-    // 使用 setTimeout 确保 CodeMirror 已完全渲染并恢复光标位置
-    setTimeout(() => {
-      const scroller = document.querySelector('.cm-scroller') as HTMLElement;
-      if (scroller && scroller.scrollHeight > 0) {
-        scroller.scrollTop = previewRatio * scroller.scrollHeight;
-      }
-      // 恢复编辑器焦点
-      editor.view.value?.focus();
-    }, 50);
-  } else {
-    // 切换到预览模式：保存 CM 滚动比例，恢复到预览对应位置
-    const scroller = document.querySelector('.cm-scroller') as HTMLElement;
-    const sourceRatio = scroller && scroller.scrollHeight > 0
-      ? scroller.scrollTop / scroller.scrollHeight : 0;
-
-    content.value = editor.getContent();
-    currentMode.value = mode;
-
-    // 使用 setTimeout 确保预览容器已完全渲染
-    setTimeout(() => {
-      const preview = previewContainerRef.value;
-      if (preview && preview.scrollHeight > 0) {
-        preview.scrollTop = sourceRatio * preview.scrollHeight;
-      }
-    }, 50);
+  if (scroller) {
+    scrollRatio = scroller.scrollHeight > 0 ? scroller.scrollTop / scroller.scrollHeight : 0;
   }
+
+  // 切换到 IR 或 Source 模式
+  const currentEditorContent = editor.getContent();
+  if (currentEditorContent !== content.value) {
+    editor.setContent(content.value);
+  }
+  // 通过 composable 切换 CM6 state（否则只是 UI 状态变化，编辑器本身不会换模式）
+  editor.switchMode(mode);
+
+  // 恢复滚动位置
+  setTimeout(() => {
+    const newScroller = document.querySelector('.cm-scroller') as HTMLElement;
+    if (newScroller && newScroller.scrollHeight > 0) {
+      newScroller.scrollTop = scrollRatio * newScroller.scrollHeight;
+    }
+    editor.view.value?.focus();
+  }, 50);
 }
 
 // Event handlers
@@ -316,10 +335,21 @@ function saveWithTocUpdate() {
   });
 }
 
+function focusEditor() {
+  // 使用 setTimeout 延迟 focus，避免与刚执行的 dispatch 冲突
+  setTimeout(() => {
+    try {
+      editor.view.value?.focus();
+    } catch (e) {
+      console.warn('[Editor] focus failed:', e);
+    }
+  }, 0);
+}
+
 function handleFormat(format: string) {
   try {
     editor.applyFormat(format);
-    editor.view.value?.focus();
+    focusEditor();
   } catch (err) {
     console.warn('[Editor] applyFormat failed:', err);
   }
@@ -328,29 +358,33 @@ function handleFormat(format: string) {
 function handleInsert(type: string) {
   try {
     editor.insertNode(type);
-    editor.view.value?.focus();
+    focusEditor();
   } catch (err) {
     console.warn('[Editor] insertNode failed:', err);
   }
 }
 
+function handleToggleLineNumbers() {
+  showLineNumbers.value = !showLineNumbers.value;
+  editor.toggleLineNumbers();
+}
+
 function handleUndo() {
   try {
     editor.undo();
-    // 恢复编辑器焦点，否则后续快捷键不生效
-    editor.view.value?.focus();
-  } catch (err) {
-    console.warn('[Editor] undo failed:', err);
+  } catch (e) {
+    console.warn('[Editor] undo failed:', e);
   }
+  focusEditor();
 }
 
 function handleRedo() {
   try {
     editor.redo();
-    editor.view.value?.focus();
-  } catch (err) {
-    console.warn('[Editor] redo failed:', err);
+  } catch (e) {
+    console.warn('[Editor] redo failed:', e);
   }
+  focusEditor();
 }
 
 // 查找替换处理函数
@@ -402,75 +436,26 @@ function handleReplaceAll(
   replaceText: string,
   options: { caseSensitive: boolean; useRegex: boolean }
 ) {
-  if (!findText) return;
+  if (!findText || !editor.view.value) return;
 
-  if (currentMode.value === 'source' && editor.view.value) {
-    // Source 模式：在 CodeMirror 内容中替换
-    let currentContent = editor.getContent();
-    const flags = options.caseSensitive ? 'g' : 'gi';
+  let currentContent = editor.getContent();
+  const flags = options.caseSensitive ? 'g' : 'gi';
 
-    if (options.useRegex) {
-      try {
-        const regex = new RegExp(findText, flags);
-        currentContent = currentContent.replace(regex, replaceText);
-      } catch (e) {
-        console.warn('Invalid regex:', findText);
-        return;
-      }
-    } else {
-      // 转义特殊字符
-      const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
-      const regex = new RegExp(escaped, flags);
+  if (options.useRegex) {
+    try {
+      const regex = new RegExp(findText, flags);
       currentContent = currentContent.replace(regex, replaceText);
+    } catch (e) {
+      console.warn('Invalid regex:', findText);
+      return;
     }
-
-    editor.setContent(currentContent);
   } else {
-    // Preview 模式：使用 DOM 替换（有限支持）
-    const container = document.querySelector('.preview-container');
-    if (!container) return;
-
-    const walker = document.createTreeWalker(
-      container,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-
-    const textNodes: Text[] = [];
-    let node;
-    while ((node = walker.nextNode()) !== null) {
-      textNodes.push(node as Text);
-    }
-
-    for (const textNode of textNodes) {
-      const text = textNode.textContent || '';
-      const flags = options.caseSensitive ? 'g' : 'gi';
-
-      let newText: string;
-      if (options.useRegex) {
-        try {
-          const regex = new RegExp(findText, flags);
-          newText = text.replace(regex, replaceText);
-        } catch (e) {
-          continue;
-        }
-      } else {
-        const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
-        const regex = new RegExp(escaped, flags);
-        newText = text.replace(regex, replaceText);
-      }
-
-      if (newText !== text) {
-        textNode.textContent = newText;
-      }
-    }
-
-    // 同步回源码内容
-    const updatedHtml = container.innerHTML;
-    // 注意：这里是从 HTML 转回 Markdown，可能会有格式损失
-    // 更好的方式是在 source 模式下进行替换
+    const escaped = findText.replace(/[.*+?^${}()|[\]]/g, '\\$&');
+    const regex = new RegExp(escaped, flags);
+    currentContent = currentContent.replace(regex, replaceText);
   }
+
+  editor.setContent(currentContent);
 }
 
 // 解析图片 URL（处理相对路径）
@@ -522,22 +507,30 @@ function handleGlobalContextMenu(e: MouseEvent) {
   }
 }
 
-function handleOutlineJump(pos: number, headingId: string) {
-  if (currentMode.value === 'preview') {
-    // 预览模式：通过标题 id 在渲染 HTML 中定位并滚动
-    const el = document.getElementById(headingId);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  } else {
-    // 源码模式：CodeMirror 跳转
-    if (editor.view.value) {
-      editor.view.value.dispatch({
-        selection: { anchor: pos },
-        scrollIntoView: true
-      });
-      editor.view.value.focus();
-    }
+function handleOutlineJump(pos: number, _headingId: string) {
+  if (editor.view.value) {
+    const view = editor.view.value;
+
+    // 先移动光标
+    view.dispatch({
+      selection: { anchor: pos },
+    });
+
+    // 然后滚动到该位置
+    requestAnimationFrame(() => {
+      const dom = view.dom;
+      const line = view.lineBlockAt(pos);
+      if (line) {
+        // 找到对应的 DOM 元素并滚动
+        const scroller = view.scrollDOM;
+        const coords = view.coordsAtPos(pos);
+        if (coords && scroller) {
+          scroller.scrollTop = coords.top - scroller.clientTop - 20;
+        }
+      }
+    });
+
+    focusEditor();
   }
 }
 
@@ -560,9 +553,6 @@ function handleKeyDown(e: KeyboardEvent) {
     saveWithTocUpdate();
     return;
   }
-  
-  // 只在源码模式下处理编辑快捷键
-  if (currentMode.value !== 'source') return;
 
   if (ctrlKey) {
     switch (e.key.toLowerCase()) {
@@ -589,6 +579,11 @@ function handleKeyDown(e: KeyboardEvent) {
         findReplaceVisible.value = true;
         break;
       case 'z':
+        // CM6 minimalSetup 的 historyKeymap 已绑定 Mod-z，且 preventDefault 后仍会冒泡到 window。
+        // 若此处再 handleUndo，会在一次按键内连续执行两次原生 undo，易与 history/focus 微任务交织出错。
+        if (skipWindowUndoRedoWhenEditorFocused(editor.view.value?.hasFocus)) {
+          return;
+        }
         e.preventDefault();
         if (e.shiftKey) {
           handleRedo();
@@ -646,21 +641,20 @@ onMounted(() => {
   window.addEventListener('message', handleMessage);
   window.addEventListener('keydown', handleKeyDown);
 
-  // Wait for next tick to ensure VS Code API is acquired
-  nextTick(() => {
-    sendMessage({ type: 'READY' });
-    initRetryTimer = setTimeout(checkInitStatus, 1000);
-  });
-
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChangeListener);
 
-  // 监听图片点击和右键菜单 (用于 CM6 装饰器渲染出的 DOM 元素)
-  if (editorContainerRef.value) {
-    editor.createEditor(editorContainerRef.value);
-    editorContainerRef.value.addEventListener('click', handleGlobalClick);
-    editorContainerRef.value.addEventListener('contextmenu', handleGlobalContextMenu);
-  }
+  // ref + 子组件在首帧后才稳定；与 INIT 时序对齐，避免同步阶段 ref 仍为空
+  nextTick(() => {
+    const el = editorContainerRef.value;
+    if (el && !editor.view.value) {
+      editor.createEditor(el);
+      el.addEventListener('click', handleGlobalClick);
+      el.addEventListener('contextmenu', handleGlobalContextMenu);
+    }
+    sendMessage({ type: 'READY' });
+    initRetryTimer = setTimeout(checkInitStatus, 1000);
+  });
 });
 
 onUnmounted(() => {
@@ -731,90 +725,6 @@ onUnmounted(() => {
   padding: 24px;
 }
 
-.preview-container {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 24px 32px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 15px;
-  line-height: 1.7;
-  color: var(--vscode-editor-foreground);
-}
-
-.preview-container :deep(h1) { font-size: 2em; margin: 0.67em 0; border-bottom: 1px solid var(--vscode-editorWidget-border); padding-bottom: 0.3em; }
-.preview-container :deep(h2) { font-size: 1.5em; margin: 0.75em 0; border-bottom: 1px solid var(--vscode-editorWidget-border); padding-bottom: 0.3em; }
-.preview-container :deep(h3) { font-size: 1.25em; margin: 0.75em 0; }
-.preview-container :deep(h4) { font-size: 1em; margin: 0.75em 0; }
-.preview-container :deep(h5) { font-size: 0.875em; margin: 0.75em 0; }
-.preview-container :deep(h6) { font-size: 0.85em; margin: 0.75em 0; color: var(--vscode-descriptionForeground); }
-
-.preview-container :deep(p) { margin: 0.5em 0; }
-
-.preview-container :deep(a) { color: var(--vscode-textLink-foreground, #3794ff); text-decoration: none; }
-.preview-container :deep(a:hover) { text-decoration: underline; }
-
-.preview-container :deep(code) {
-  font-family: var(--vscode-editor-font-family);
-  font-size: 0.9em;
-  padding: 0.2em 0.4em;
-  background: var(--vscode-textCodeBlock-background);
-  border-radius: 3px;
-}
-
-.preview-container :deep(pre) {
-  background: var(--vscode-textCodeBlock-background);
-  padding: 16px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 1em 0;
-}
-
-.preview-container :deep(pre code) {
-  padding: 0;
-  background: transparent;
-}
-
-.preview-container :deep(blockquote) {
-  margin: 1em 0;
-  padding: 0.5em 1em;
-  border-left: 4px solid var(--vscode-textBlockQuote-border);
-  color: var(--vscode-textBlockQuote-foreground);
-}
-
-.preview-container :deep(ul), .preview-container :deep(ol) {
-  margin: 0.5em 0;
-  padding-left: 2em;
-}
-
-.preview-container :deep(li) { margin: 0.25em 0; }
-
-.preview-container :deep(table) {
-  border-collapse: collapse;
-  margin: 1em 0;
-  width: auto;
-}
-
-.preview-container :deep(th), .preview-container :deep(td) {
-  border: 1px solid var(--vscode-editorWidget-border);
-  padding: 6px 12px;
-}
-
-.preview-container :deep(th) {
-  background: var(--vscode-editorWidget-background);
-  font-weight: 600;
-}
-
-.preview-container :deep(hr) {
-  border: none;
-  border-top: 1px solid var(--vscode-editorWidget-border);
-  margin: 1.5em 0;
-}
-
-.preview-container :deep(img) {
-  max-width: 100%;
-  border-radius: 4px;
-}
 
 .loading {
   display: flex;

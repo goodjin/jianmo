@@ -59,3 +59,16 @@ body {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: -2px;
 }
+
+/* 行号显示/隐藏 */
+.cm-hide-line-numbers .cm-lineNumbers {
+  display: none !important;
+}
+
+.cm-hide-line-numbers .cm-gutters {
+  display: none !important;
+}
+
+.cm-hide-line-numbers .cm-content {
+  margin-left: 0 !important;
+}

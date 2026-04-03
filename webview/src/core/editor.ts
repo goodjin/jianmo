@@ -5,21 +5,69 @@
  */
 
 import { EditorState, Extension } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
-import { basicSetup } from 'codemirror';
+import { EditorView, keymap } from '@codemirror/view';
+import { minimalSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
+import {
+  headingDecorator,
+  emphasisDecorator,
+  linkDecorator,
+  codeDecorator,
+  taskListDecorator,
+  listDecorator,
+  mathDecorator,
+  diagramDecorator,
+} from './decorators';
 import type { EditorMode } from '../types';
 
 /**
+ * 创建 IR 模式装饰器
+ */
+const createIRDecorators = (): Extension[] => {
+  return [
+    headingDecorator(),
+    emphasisDecorator(),
+    linkDecorator(),
+    codeDecorator(),
+    taskListDecorator(),
+    listDecorator(),
+    // v6: IR 模式下直接预览数学公式与 Mermaid
+    mathDecorator(),
+    diagramDecorator(),
+  ];
+};
+
+/**
+ * 覆盖 CM6 默认的删除线高亮 — 强制使用 line-through solid
+ */
+const strikethroughOverride = syntaxHighlighting(
+  HighlightStyle.define([
+    {
+      tag: tags.strikethrough,
+      textDecoration: 'line-through',
+    },
+  ])
+);
+
+/**
  * 创建基础扩展配置
- * @param mode - 编辑器模式
- * @returns CodeMirror 扩展数组
  */
 export const createBaseExtensions = (mode: EditorMode): Extension[] => {
   const extensions: Extension[] = [
-    basicSetup,
-    markdown(),
+    minimalSetup,
+    // Markdown 解析
+    markdown({
+      strikethrough: true,  // 启用删除线支持
+    }),
   ];
+
+  // IR 模式：应用删除线样式覆盖 + 装饰器
+  if (mode === 'ir') {
+    extensions.push(strikethroughOverride);
+    extensions.push(...createIRDecorators());
+  }
 
   // 源码模式使用等宽字体
   if (mode === 'source') {
@@ -30,15 +78,14 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
     }));
   }
 
+  // 行号通过 CSS 类切换（默认显示）
+  // extensions.push(lineNumbers());
+
   return extensions;
 };
 
 /**
  * 创建编辑器状态
- * @param content - 初始内容
- * @param mode - 编辑器模式
- * @param extensions - 额外的扩展
- * @returns EditorState 实例
  */
 export const createEditorState = (
   content: string,
@@ -56,9 +103,6 @@ export const createEditorState = (
 
 /**
  * 创建编辑器视图
- * @param container - 容器元素
- * @param state - 编辑器状态
- * @returns EditorView 实例
  */
 export const createEditorView = (
   container: HTMLElement,
@@ -72,7 +116,6 @@ export const createEditorView = (
 
 /**
  * 销毁编辑器
- * @param view - 编辑器视图实例
  */
 export const destroyEditor = (view: EditorView | null): void => {
   if (view) {

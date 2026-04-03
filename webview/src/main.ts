@@ -2,6 +2,8 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import 'katex/dist/katex.min.css';
 import './style.css';
+import './styles/decorators.css';
+import './styles/diagram.css';
 
 // 声明 VSCode Webview API
 declare function acquireVsCodeApi(): any;

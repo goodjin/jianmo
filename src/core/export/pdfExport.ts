@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import puppeteer from 'puppeteer';
 import { marked } from 'marked';
 
 export interface PdfExportOptions {
@@ -30,8 +29,8 @@ const defaultOptions: PdfExportOptions = {
   includeToc: true,
 };
 
-// HTML 转义函数，防止 XSS
-function escapeHtml(text: string): string {
+/** HTML 转义，防止 XSS */
+export function escapeHtmlPdf(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
     '<': '&lt;',
@@ -49,6 +48,12 @@ export async function exportToPdf(
 ): Promise<void> {
   const opts = { ...defaultOptions, ...options };
 
+  // 注意：ExTester/VS Code UI 测试环境并不一定会为扩展安装 node_modules。
+  // 若 puppeteer 在顶层静态导入，会导致扩展激活失败（CustomEditor 不会渲染）。
+  // 因此这里改为按需动态加载：仅在真正导出 PDF 时才 require。
+  const puppeteerModule = await import('puppeteer');
+  const puppeteer = (puppeteerModule as any).default ?? puppeteerModule;
+
   // 启动 puppeteer
   const browser = await puppeteer.launch({
     headless: true,
@@ -61,7 +66,7 @@ export async function exportToPdf(
     // 生成 TOC
     let tocHtml = '';
     if (opts.includeToc) {
-      tocHtml = generateToc(markdownContent);
+      tocHtml = generateTocPdf(markdownContent);
     }
 
     // 转换 Markdown 为 HTML
@@ -88,7 +93,7 @@ export async function exportToPdf(
   }
 }
 
-function generateToc(markdown: string): string {
+export function generateTocPdf(markdown: string): string {
   const headings: { level: number; text: string; anchor: string }[] = [];
   const lines = markdown.split('\n');
 
@@ -107,7 +112,7 @@ function generateToc(markdown: string): string {
   let tocHtml = '<div class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtmlPdf(h.text)}</a></li>`;
   }
   tocHtml += '</ul></div><div class="page-break"></div>';
 
@@ -127,12 +132,12 @@ async function markdownToHtml(markdown: string): Promise<string> {
   // 添加锚点到标题（使用统一函数生成锚点）
   return html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
     const anchor = generateAnchor(text);
-    return `<h${level} id="${anchor}">${escapeHtml(text)}</h${level}>`;
+    return `<h${level} id="${anchor}">${escapeHtmlPdf(text)}</h${level}>`;
   });
 }
 
-// 统一的锚点生成函数
-function generateAnchor(text: string): string {
+/** 统一的锚点生成函数 */
+export function generateAnchor(text: string): string {
   return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
 }
 

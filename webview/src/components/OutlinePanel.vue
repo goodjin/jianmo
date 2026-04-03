@@ -1,5 +1,5 @@
 <template>
-  <div class="outline-panel" v-if="currentMode === 'preview' && outline.length > 0">
+  <div class="outline-panel" v-if="outline.length > 0">
     <div class="outline-header">
       <span class="outline-title">大纲</span>
     </div>

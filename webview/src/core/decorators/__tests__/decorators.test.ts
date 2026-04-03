@@ -1,59 +1,45 @@
 /**
  * 装饰器单元测试
- * @module decorators/__tests__/decorators
+ * @module core/decorators/__tests__/decorators
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { headingDecorator } from '../heading';
-import { emphasisDecorator } from '../emphasis';
-import { linkDecorator } from '../link';
-import { codeDecorator } from '../code';
-import { taskListDecorator } from '../taskList';
-import { mathDecorator } from '../math';
 
-// Mock CodeMirror
-vi.mock('@codemirror/view', () => ({
-  ViewPlugin: {
-    fromClass: vi.fn((classDef, spec) => ({
-      extension: { type: 'viewPlugin', class: classDef, spec },
-    })),
-  },
-  Decoration: {
-    none: { type: 'none' },
-    mark: vi.fn((spec) => ({ type: 'mark', spec })),
-    replace: vi.fn((spec) => ({ type: 'replace', spec })),
-    widget: vi.fn((spec) => ({ type: 'widget', spec })),
-    set: vi.fn((ranges) => ({ type: 'set', ranges })),
-  },
-  WidgetType: class WidgetType {
-    eq() { return false; }
-  },
-}));
+vi.mock('@codemirror/view', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@codemirror/view')>();
+  return {
+    ...actual,
+    ViewPlugin: {
+      fromClass: vi.fn((classDef: unknown, spec: unknown) => ({
+        extension: { type: 'viewPlugin', class: classDef, spec },
+      })),
+    },
+    WidgetType: class WidgetType {
+      eq() { return false; }
+    },
+  };
+});
 
 vi.mock('@codemirror/language', () => ({
   syntaxTree: vi.fn(() => ({
-    iterate: vi.fn(({ enter }) => {
-      // 模拟一些节点
+    iterate: vi.fn(({ enter }: { enter: (node: unknown) => void }) => {
       enter({ type: { name: 'ATXHeading1' }, from: 0, to: 10 });
       enter({ type: { name: 'StrongEmphasis' }, from: 11, to: 20 });
     }),
   })),
 }));
 
-describe('decorators', () => {
-  let mockView: any;
+import { headingDecorator } from '../heading';
+import { emphasisDecorator } from '../emphasis';
+import { linkDecorator } from '../link';
+import { codeDecorator } from '../code';
+import { taskListDecorator } from '../taskList';
+import { mathDecorator } from '../math';
+import { diagramDecorator } from '../diagram';
 
+describe('decorators', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockView = {
-      state: {
-        doc: {
-          toString: vi.fn().mockReturnValue('# Heading **bold**'),
-          sliceString: vi.fn().mockReturnValue(''),
-        },
-      },
-      viewport: { from: 0, to: 100 },
-    };
   });
 
   describe('headingDecorator', () => {
@@ -63,10 +49,7 @@ describe('decorators', () => {
     });
 
     it('应该接受自定义选项', () => {
-      const decorator = headingDecorator({
-        classPrefix: 'custom',
-        theme: 'dark',
-      });
+      const decorator = headingDecorator({ minimal: true });
       expect(decorator).toBeDefined();
     });
   });
@@ -78,9 +61,7 @@ describe('decorators', () => {
     });
 
     it('应该接受自定义选项', () => {
-      const decorator = emphasisDecorator({
-        classPrefix: 'custom',
-      });
+      const decorator = emphasisDecorator({ minimal: true });
       expect(decorator).toBeDefined();
     });
   });
@@ -108,8 +89,15 @@ describe('decorators', () => {
 
   describe('mathDecorator', () => {
     it('应该创建数学公式装饰器', () => {
-      const decorator = mathDecorator();
-      expect(decorator).toBeDefined();
+      const ext = mathDecorator();
+      expect(ext).toBeDefined();
+    });
+  });
+
+  describe('diagramDecorator', () => {
+    it('应该创建图表装饰器', () => {
+      const ext = diagramDecorator();
+      expect(ext).toBeDefined();
     });
   });
 });
