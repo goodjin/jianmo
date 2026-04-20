@@ -938,6 +938,23 @@ function dispatchRichTableOp(op: RichTableOp): boolean {
   }
 }
 
+function simulateRichTablePaste(payload: { plain?: string; html?: string }): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    if (!isInTable(view.state)) return false;
+    // 通过 window 事件把剪贴板数据传给 paste 插件（用于 E2E：避免受系统剪贴板权限影响）
+    window.dispatchEvent(
+      new CustomEvent('markly:simulateTablePaste', {
+        detail: { plain: payload.plain ?? '', html: payload.html ?? '' },
+      })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getPmSelectionDiagnostics():
   | {
       from: number;
@@ -981,6 +998,7 @@ defineExpose({
   selectPlainTextOccurrence,
   getPmSelectionDiagnostics,
   runRichTableOp: dispatchRichTableOp,
+  simulateRichTablePaste,
   undo,
   redo,
   // TOC 相关功能

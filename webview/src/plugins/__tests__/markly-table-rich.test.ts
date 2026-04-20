@@ -91,19 +91,37 @@ describe('markly-table-rich parseCsvLineStrict', () => {
 describe('markly-table-rich parseHtmlTableToGrid', () => {
   it('parses a simple html table into a rectangular grid', () => {
     const html = `<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2</td></tr></table>`;
-    expect(parseHtmlTableToGrid(html)).toEqual([
-      ['a', 'b'],
-      ['1', '2'],
-    ]);
+    expect(parseHtmlTableToGrid(html)).toEqual({
+      grid: [
+        ['a', 'b'],
+        ['1', '2'],
+      ],
+      reason: null,
+    });
   });
 
-  it('returns null when html contains colspan/rowspan (unsupported)', () => {
-    const html = `<table><tr><td colspan="2">a</td></tr></table>`;
-    expect(parseHtmlTableToGrid(html)).toBeNull();
+  it('expands colspan/rowspan into a rectangular grid', () => {
+    const html = `<table><tr><td colspan="2">a</td></tr><tr><td>1</td><td>2</td></tr></table>`;
+    expect(parseHtmlTableToGrid(html)).toEqual({
+      grid: [
+        ['a', ''],
+        ['1', '2'],
+      ],
+      reason: null,
+    });
+
+    const html2 = `<table><tr><td rowspan="2">a</td><td>b</td></tr><tr><td>c</td></tr></table>`;
+    expect(parseHtmlTableToGrid(html2)).toEqual({
+      grid: [
+        ['a', 'b'],
+        ['', 'c'],
+      ],
+      reason: null,
+    });
   });
 
   it('returns null when html has only one column', () => {
     const html = `<table><tr><td>a</td></tr><tr><td>b</td></tr></table>`;
-    expect(parseHtmlTableToGrid(html)).toBeNull();
+    expect(parseHtmlTableToGrid(html).grid).toBeNull();
   });
 });

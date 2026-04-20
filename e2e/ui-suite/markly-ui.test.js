@@ -568,6 +568,37 @@ describe('Markly VS Code UI (ExTester)', function () {
     await driver.wait(async () => (await countPipeLines()) > n0, 30000, 'context menu add row below should increase pipe lines');
   });
 
+  it('Rich mode: E2E bridge simulates TSV paste inside table', async function () {
+    await resetEditorState();
+    await bridgeSetContent(driver, '# t\n\n');
+    await waitMarklyContent(driver, (t) => t.startsWith('# t'), 60000);
+
+    await clickToolbarButton(driver, 'Table');
+    await waitMarklyContent(driver, (t) => t.includes('| 列1 | 列2 | 列3 |'), 60000);
+
+    const deadline = Date.now() + 60000;
+    /** @type {import('selenium-webdriver').WebElement | null} */
+    let firstBodyCell = null;
+    while (Date.now() < deadline) {
+      // eslint-disable-next-line no-await-in-loop
+      const els = await driver.findElements(By.css('.milkdown-editor table tbody tr td'));
+      if (els.length > 0) {
+        firstBodyCell = els[0];
+        break;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.ok(firstBodyCell, 'rich table body cell exists');
+    await firstBodyCell.click();
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
+
+    const md0 = await bridgeGetContent(driver);
+    await driver.executeScript(() => window.__marklyE2E?.simulateRichTablePaste?.({ plain: 'A\tB\nC\tD\n' }));
+    const md1 = await waitMarklyContent(driver, (t) => t !== md0, 60000);
+    assert.ok(md1.includes('A') && md1.includes('D'), md1);
+  });
+
   it('insert Link uses prompt answers (no native dialog interaction)', async function () {
     await resetEditorState();
     await bridgeSwitchMode(driver, 'source');

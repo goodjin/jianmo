@@ -19,54 +19,106 @@ export const MARKLY_TABLE_PASTE_MAX_ROWS = 80;
 export const MARKLY_TABLE_PASTE_MAX_COLS = 40;
 export const MARKLY_TABLE_PASTE_MAX_CELLS = 800;
 
-function enforcePasteGridLimits(rows: string[][]): string[][] | null {
-  if (rows.length === 0) return null;
+function enforcePasteGridLimits(rows: string[][]): { grid: string[][] | null; reason: 'empty' | 'over_limit' | null } {
+  if (rows.length === 0) return { grid: null, reason: 'empty' };
   const h = rows.length;
   const w = Math.max(1, ...rows.map((r) => r.length));
-  if (h > MARKLY_TABLE_PASTE_MAX_ROWS || w > MARKLY_TABLE_PASTE_MAX_COLS) return null;
-  if (h * w > MARKLY_TABLE_PASTE_MAX_CELLS) return null;
-  return rows;
+  if (h > MARKLY_TABLE_PASTE_MAX_ROWS || w > MARKLY_TABLE_PASTE_MAX_COLS) return { grid: null, reason: 'over_limit' };
+  if (h * w > MARKLY_TABLE_PASTE_MAX_CELLS) return { grid: null, reason: 'over_limit' };
+  return { grid: rows, reason: null };
 }
 
 /** B1：表格内粘贴优先尝试 HTML table（Excel/网页复制），失败再回退到 plain TSV/CSV */
-export function parseHtmlTableToGrid(html: string): string[][] | null {
+export function parseHtmlTableToGrid(
+  html: string
+): { grid: string[][] | null; reason: 'no_table' | 'unsupported_merge' | 'over_limit' | 'invalid' | null } {
   const raw = (html ?? '').trim();
-  if (!raw) return null;
+  if (!raw) return { grid: null, reason: 'no_table' };
 
   try {
     const doc = new DOMParser().parseFromString(raw, 'text/html');
     const table = doc.querySelector('table');
-    if (!table) return null;
+    if (!table) return { grid: null, reason: 'no_table' };
 
-    const rows: string[][] = [];
-    for (const tr of Array.from(table.querySelectorAll('tr'))) {
+    const grid: string[][] = [];
+    const spans = new Map<string, { remaining: number; text: string }>();
+    const key = (r: number, c: number) => `${r}:${c}`;
+
+    const normalizeCellText = (cell: Element) =>
+      (cell.textContent || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+    const parseSpan = (v: string | null) => {
+      if (!v) return 1;
+      const n = Number.parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    };
+
+    const trs = Array.from(table.querySelectorAll('tr'));
+    let r = 0;
+    for (const tr of trs) {
       const cells = Array.from(tr.querySelectorAll('th,td'));
       if (cells.length === 0) continue;
 
-      const row: string[] = [];
+      if (!grid[r]) grid[r] = [];
+      let c = 0;
+
+      const fillSpanHoles = () => {
+        while (true) {
+          const s = spans.get(key(r, c));
+          if (!s) return;
+          grid[r]![c] = '';
+          s.remaining -= 1;
+          if (s.remaining <= 0) spans.delete(key(r, c));
+          else spans.set(key(r + 1, c), { remaining: s.remaining, text: s.text });
+          c += 1;
+        }
+      };
+
       for (const cell of cells) {
-        const rs = cell.getAttribute('rowspan');
-        const cs = cell.getAttribute('colspan');
-        // 合并单元格暂不支持：避免错误展开导致内容错位
-        if ((rs && rs !== '1') || (cs && cs !== '1')) return null;
-        const text = (cell.textContent || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        row.push(text.trim());
+        fillSpanHoles();
+
+        const rowspan = parseSpan(cell.getAttribute('rowspan'));
+        const colspan = parseSpan(cell.getAttribute('colspan'));
+        const text = normalizeCellText(cell);
+
+        // place anchor cell
+        grid[r]![c] = text;
+
+        // colspan: fill horizontally with empty cells
+        for (let k = 1; k < colspan; k++) {
+          grid[r]![c + k] = '';
+        }
+
+        // rowspan: mark cells below as spanned holes (also spanning colspan width)
+        if (rowspan > 1) {
+          for (let rr = r + 1; rr < r + rowspan; rr++) {
+            for (let cc = c; cc < c + colspan; cc++) {
+              spans.set(key(rr, cc), { remaining: 1, text });
+            }
+          }
+        }
+
+        c += colspan;
       }
-      rows.push(row);
+      fillSpanHoles();
+      r += 1;
     }
 
-    if (rows.length === 0) return null;
-    const w = Math.max(1, ...rows.map((r) => r.length));
-    if (w < 2) return null;
-    const rect = rows.map((r) => {
-      if (r.length >= w) return r;
-      const next = r.slice();
+    const rows = grid.filter((row) => row && row.length > 0);
+    if (rows.length === 0) return { grid: null, reason: 'invalid' };
+    const w = Math.max(1, ...rows.map((r2) => r2.length));
+    if (w < 2) return { grid: null, reason: 'invalid' };
+    const rect = rows.map((rr) => {
+      if (rr.length >= w) return rr;
+      const next = rr.slice();
       while (next.length < w) next.push('');
       return next;
     });
-    return enforcePasteGridLimits(rect);
+
+    const limited = enforcePasteGridLimits(rect);
+    return limited.grid ? { grid: limited.grid, reason: null } : { grid: null, reason: limited.reason === 'over_limit' ? 'over_limit' : 'invalid' };
   } catch {
-    return null;
+    return { grid: null, reason: 'invalid' };
   }
 }
 
@@ -97,7 +149,8 @@ export function parseDelimitedGridForTablePaste(raw: string): string[][] | null 
     if (lines.length === 0) return null;
     const rows = lines.map((ln) => ln.split('\t').map((c) => c.trim()));
     const rect = padRect(rows);
-    return rect ? enforcePasteGridLimits(rect) : null;
+    if (!rect) return null;
+    return enforcePasteGridLimits(rect).grid;
   }
 
   if (text.includes('\n')) {
@@ -113,12 +166,12 @@ export function parseDelimitedGridForTablePaste(raw: string): string[][] | null 
     const w = parsed[0]!.length;
     if (w < 2) return null;
     if (!parsed.every((r) => r.length === w)) return null;
-    return enforcePasteGridLimits(parsed);
+    return enforcePasteGridLimits(parsed).grid;
   }
 
   if (text.includes(',')) {
     const row = parseCsvLineStrict(text);
-    if (row && row.length >= 2) return enforcePasteGridLimits([row]);
+    if (row && row.length >= 2) return enforcePasteGridLimits([row]).grid;
   }
 
   return null;
@@ -259,6 +312,16 @@ export const marklyTableStructureKeymapPlugin = $prose(() =>
 
 const marklyTableGridPasteKey = new PluginKey('markly-table-grid-paste');
 
+function emitTablePasteToast(message: string) {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('markly:toast', { detail: { message, kind: 'warn' } }));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /** TSV / 简单 CSV → 交给 prosemirror-tables 的 insertCells 逻辑 */
 export const marklyTableGridPastePlugin = $prose(
   () =>
@@ -288,12 +351,47 @@ export const marklyTableGridPastePlugin = $prose(
 
           const html = event.clipboardData?.getData('text/html') ?? '';
           const plain = event.clipboardData?.getData('text/plain') ?? '';
-          const grid = parseHtmlTableToGrid(html) ?? parseDelimitedGridForTablePaste(plain);
+          const htmlRes = parseHtmlTableToGrid(html);
+          const grid = htmlRes.grid ?? parseDelimitedGridForTablePaste(plain);
+          if (!grid && htmlRes.reason === 'over_limit') {
+            emitTablePasteToast(
+              `粘贴表格过大，已拒绝（上限：${MARKLY_TABLE_PASTE_MAX_ROWS} 行 / ${MARKLY_TABLE_PASTE_MAX_COLS} 列 / ${MARKLY_TABLE_PASTE_MAX_CELLS} 格）。`
+            );
+          }
+          if (!grid && plain) {
+            // plain 存在但解析失败：多半是坏 CSV/非矩阵；给出轻提示避免“没反应”
+            emitTablePasteToast('未识别为矩阵数据（TSV/CSV），已按普通文本粘贴。');
+          }
           if (!grid) return false;
           const built = gridToRowsSlice(view.state.schema, grid, { preferHeaderCells });
           if (!built) return false;
           return pmTableHandlePaste(view, event, built);
         },
+      },
+      view(view) {
+        const handler = (e: Event) => {
+          const ce = e as CustomEvent;
+          const detail = (ce?.detail ?? {}) as { plain?: string; html?: string };
+          const html = detail.html ?? '';
+          const plain = detail.plain ?? '';
+          const htmlRes = parseHtmlTableToGrid(html);
+          const grid = htmlRes.grid ?? parseDelimitedGridForTablePaste(plain);
+          if (!grid) return;
+          const built = gridToRowsSlice(view.state.schema, grid, { preferHeaderCells: false });
+          if (!built) return;
+          pmTableHandlePaste(
+            view,
+            // 最小 fake event：只要求 clipboardData.getData 被访问时可用；pmTableHandlePaste 主要看 slice/selection
+            ({ clipboardData: { getData: () => '' } } as unknown) as ClipboardEvent,
+            built
+          );
+        };
+        window.addEventListener('markly:simulateTablePaste' as any, handler as any);
+        return {
+          destroy() {
+            window.removeEventListener('markly:simulateTablePaste' as any, handler as any);
+          },
+        };
       },
     })
 );

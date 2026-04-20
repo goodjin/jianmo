@@ -70,6 +70,11 @@
       @replace-all="handleReplaceAllFromPanel"
     />
 
+    <!-- Toast -->
+    <div v-if="toastOpen" class="markly-toast" role="status" aria-live="polite">
+      {{ toastMessage }}
+    </div>
+
     <!-- Rich 表格右键菜单 -->
     <div
       v-if="richTableMenuOpen"
@@ -207,6 +212,7 @@ declare global {
         cellType: string | null;
       } | null;
       runRichTableOp?: (op: string) => boolean;
+      simulateRichTablePaste?: (payload: { plain?: string; html?: string }) => boolean;
     };
   }
 }
@@ -224,6 +230,10 @@ const richTableHelpOpen = ref(false);
 const richTableMenuOpen = ref(false);
 const richTableMenuX = ref(0);
 const richTableMenuY = ref(0);
+
+const toastOpen = ref(false);
+const toastMessage = ref('');
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const RICH_TABLE_OPS = new Set<string>([
   'addRowAfter',
@@ -608,6 +618,10 @@ function ensureEditorFromInit(): boolean {
       if (currentMode.value !== 'rich') return false;
       if (!RICH_TABLE_OPS.has(op)) return false;
       return Boolean((milkdownRef.value as any)?.runRichTableOp?.(op));
+    },
+    simulateRichTablePaste: (payload: { plain?: string; html?: string }) => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.simulateRichTablePaste?.(payload));
     },
   };
 
@@ -1258,6 +1272,23 @@ function handleWindowPointerDownCapture(e: PointerEvent) {
   closeRichTableContextMenu();
 }
 
+function showToast(msg: string, durationMs = 2400) {
+  toastMessage.value = msg;
+  toastOpen.value = true;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastOpen.value = false;
+    toastTimer = null;
+  }, durationMs);
+}
+
+function handleToastEvent(e: Event) {
+  const ce = e as CustomEvent;
+  const detail = (ce?.detail ?? {}) as { message?: string };
+  const msg = typeof detail.message === 'string' ? detail.message : '';
+  if (msg) showToast(msg);
+}
+
 // Global context menu handler for images
 function handleGlobalContextMenu(e: MouseEvent) {
   const target = e.target as HTMLElement;
@@ -1432,6 +1463,7 @@ onMounted(() => {
   window.addEventListener('message', handleMessage);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('pointerdown', handleWindowPointerDownCapture, true);
+  window.addEventListener('markly:toast' as any, handleToastEvent as any);
 
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChangeListener);
@@ -1453,6 +1485,7 @@ onUnmounted(() => {
   window.removeEventListener('message', handleMessage);
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('pointerdown', handleWindowPointerDownCapture, true);
+  window.removeEventListener('markly:toast' as any, handleToastEvent as any);
   window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', themeChangeListener);
 
   if (editorContainerRef.value) {
@@ -1469,6 +1502,11 @@ onUnmounted(() => {
     zoomPersistTimer = null;
   }
   persistZoom();
+
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
 
   // Clear table format timeout
   if (tableFormatTimeout) {
@@ -1579,6 +1617,22 @@ onUnmounted(() => {
 .markly-context-menu-item:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 2px;
+}
+
+.markly-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 20050;
+  max-width: min(720px, calc(100vw - 32px));
+  background: var(--vscode-notifications-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-notifications-border, rgba(128, 128, 128, 0.35));
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
 .markly-table-help-panel {
