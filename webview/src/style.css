@@ -28,9 +28,51 @@ body {
   --vscode-font-size: 13px;
   --vscode-editor-font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
   --vscode-editor-font-size: 14px;
+
+  /* Markly UI tokens (VS Code-like) */
+  --markly-radius-sm: 4px;
+  --markly-radius-md: 6px;
+  --markly-shadow-elev: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --markly-shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --markly-border-color: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  --markly-border: 1px solid var(--markly-border-color);
+  --markly-pad-xs: 6px;
+  --markly-pad-sm: 8px;
+  --markly-pad-md: 12px;
+  --markly-gap-sm: 6px;
+}
+
+/* Focus ring (VS Code-like) */
+.toolbar-btn:focus-visible,
+.zoom-menu-item:focus-visible,
+.find-replace-panel button:focus-visible,
+.find-replace-panel input:focus-visible,
+.outline-panel button:focus-visible,
+.outline-panel [role='button']:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+  border-color: var(--vscode-focusBorder, #007acc);
 }
 
 /* Scrollbar */
+/* NOTE: Some environments require exact ::-webkit-scrollbar selectors. */
+::-webkit-scrollbar {
+  width: 15px;
+  height: 15px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
 ::-webkit-scrollbar {
   width: 15px;
   height: 15px;
@@ -49,9 +91,67 @@ body {
   background: var(--vscode-scrollbarSlider-hoverBackground);
 }
 
-/* Selection */
+/*
+ * 选区：若 webview 未注入 --vscode-editor-selectionBackground，浏览器默认可能为浅色，
+ * 暗色主题下会出现「白底 + 浅色字」不可读。亮/暗分别给回退色。
+ */
 ::selection {
-  background: var(--vscode-editor-selectionBackground);
+  background: var(--vscode-editor-selectionBackground, rgba(179, 215, 255, 0.92));
+  color: var(--vscode-editor-selectionForeground, inherit);
+}
+
+/* App.vue 根节点在暗色时为 .theme-dark */
+.theme-dark ::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.95));
+  color: var(--vscode-editor-selectionForeground, var(--vscode-editor-foreground, #d4d4d4));
+}
+
+/* CodeMirror 选区层（与 ::selection 双保险，优先级高于未定义变量） */
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background-color: var(--vscode-editor-selectionBackground, rgba(179, 215, 255, 0.92)) !important;
+}
+
+.theme-dark .cm-editor .cm-selectionBackground,
+.theme-dark .cm-editor.cm-focused .cm-selectionBackground {
+  background-color: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.95)) !important;
+}
+
+/* 查找命中高亮：比普通选区更深，便于定位 */
+.cm-editor.markly-find-highlight .cm-selectionBackground,
+.cm-editor.markly-find-highlight.cm-focused .cm-selectionBackground {
+  background-color: var(
+    --vscode-editor-findMatchBackground,
+    rgba(0, 102, 204, 0.55)
+  ) !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 102, 204, 0.75);
+}
+
+.theme-dark .cm-editor.markly-find-highlight .cm-selectionBackground,
+.theme-dark .cm-editor.markly-find-highlight.cm-focused .cm-selectionBackground {
+  background-color: var(
+    --vscode-editor-findMatchBackground,
+    rgba(255, 205, 0, 0.42)
+  ) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 205, 0, 0.7);
+}
+
+/* Rich（ProseMirror）：查找激活时略强化选区颜色（命中由 TextSelection 展示） */
+.milkdown-editor .ProseMirror.markly-find-highlight ::selection,
+.milkdown-editor.markly-find-highlight ::selection {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(0, 102, 204, 0.45));
+}
+
+.theme-dark .milkdown-editor .ProseMirror.markly-find-highlight ::selection,
+.theme-dark .milkdown-editor.markly-find-highlight ::selection {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(255, 205, 0, 0.35));
+}
+
+/* 插入光标：加粗并用 VS Code 光标色，缺省时用 focus 色 */
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-left: 2px solid
+    var(--vscode-editorCursor-foreground, var(--vscode-focusBorder, #007acc)) !important;
 }
 
 /* Focus outline */
@@ -71,4 +171,9 @@ body {
 
 .cm-hide-line-numbers .cm-content {
   margin-left: 0 !important;
+}
+
+/* 编辑器缩放（仅影响编辑区，工具栏不缩放） */
+.cm-editor {
+  font-size: calc(var(--vscode-editor-font-size, 14px) * var(--markly-zoom, 1));
 }

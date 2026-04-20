@@ -6,74 +6,119 @@
     </div>
 
     <div class="panel-body">
-      <div class="input-group">
-        <input
-          ref="findInputRef"
-          v-model="findText"
-          type="text"
-          class="panel-input"
-          placeholder="查找"
-          @keydown.enter.prevent="emitFindNext"
-        />
-        <div class="match-info" v-if="matchCount > 0">
-          {{ currentMatchIndex + 1 }} / {{ matchCount }}
+      <div class="row">
+        <div class="field">
+          <input
+            ref="findInputRef"
+            v-model="findText"
+            type="text"
+            class="panel-input"
+            placeholder="查找"
+            @keydown.enter.prevent="emitFindNext"
+          />
+          <div class="match-info" v-if="matchCount > 0">
+            {{ matchPositionLabel }} / {{ matchCount }}{{ matchCountTruncated ? '+' : '' }}
+          </div>
+          <div class="match-info no-match" v-else-if="findText.trim()">无匹配</div>
         </div>
-        <div class="match-info no-match" v-else-if="findText.trim()">无匹配</div>
+
+        <div class="icon-actions" role="group" aria-label="查找操作">
+          <button class="icon-btn" type="button" title="查找上一个" aria-label="查找上一个" @click="emitFindPrev">
+            ↑
+          </button>
+          <button class="icon-btn" type="button" title="查找下一个" aria-label="查找下一个" @click="emitFindNext">
+            ↓
+          </button>
+        </div>
       </div>
 
-      <div class="input-group">
-        <input
-          v-model="replaceText"
-          type="text"
-          class="panel-input"
-          placeholder="替换"
-          @keydown.enter.prevent="emitReplace"
-        />
+      <div class="row">
+        <div class="field">
+          <input
+            v-model="replaceText"
+            type="text"
+            class="panel-input"
+            placeholder="替换"
+            @keydown.enter.prevent="emitReplace"
+          />
+        </div>
+
+        <div class="icon-actions" role="group" aria-label="替换操作">
+          <button class="icon-btn" type="button" title="替换" aria-label="替换" @click="emitReplace">⤶</button>
+          <button class="icon-btn primary" type="button" title="全部替换" aria-label="全部替换" @click="emitReplaceAll">
+            ⤶⤶
+          </button>
+        </div>
       </div>
 
-      <div class="options">
-        <label class="option-item">
-          <input v-model="caseSensitive" type="checkbox" />
-          <span>区分大小写</span>
-        </label>
-        <label class="option-item">
-          <input v-model="wholeWord" type="checkbox" />
-          <span>全字匹配</span>
-        </label>
-      </div>
+      <div class="toggles" role="group" aria-label="查找选项">
+        <button
+          class="toggle-btn"
+          type="button"
+          :class="{ active: caseSensitive }"
+          title="区分大小写"
+          aria-label="区分大小写"
+          @click="caseSensitive = !caseSensitive"
+        >
+          Aa
+        </button>
+        <button
+          class="toggle-btn"
+          type="button"
+          :class="{ active: wholeWord }"
+          title="全字匹配"
+          aria-label="全字匹配"
+          @click="wholeWord = !wholeWord"
+        >
+          W
+        </button>
 
-      <div class="pattern-modes" role="radiogroup" aria-label="匹配方式">
-        <label class="option-item">
-          <input v-model="patternMode" type="radio" value="literal" name="patternMode" />
-          <span>普通文本</span>
-        </label>
-        <label class="option-item">
-          <input v-model="patternMode" type="radio" value="glob" name="patternMode" />
-          <span>通配符 (* ?)</span>
-        </label>
-        <label class="option-item">
-          <input v-model="patternMode" type="radio" value="regex" name="patternMode" />
-          <span>正则表达式</span>
-        </label>
-      </div>
+        <div class="toggle-divider" aria-hidden="true"></div>
 
-      <div class="actions">
-        <button type="button" class="action-btn" @click="emitFindNext">查找下一个</button>
-        <button type="button" class="action-btn" @click="emitFindPrev">查找上一个</button>
-        <button type="button" class="action-btn primary" @click="emitReplace">替换</button>
-        <button type="button" class="action-btn primary" @click="emitReplaceAll">全部替换</button>
+        <button
+          class="toggle-btn"
+          type="button"
+          :class="{ active: patternMode === 'literal' }"
+          title="普通文本"
+          aria-label="普通文本"
+          @click="patternMode = 'literal'"
+        >
+          ab
+        </button>
+        <button
+          class="toggle-btn"
+          type="button"
+          :class="{ active: patternMode === 'glob' }"
+          title="通配符 (* ?)"
+          aria-label="通配符 (* ?)"
+          @click="patternMode = 'glob'"
+        >
+          *?
+        </button>
+        <button
+          class="toggle-btn"
+          type="button"
+          :class="{ active: patternMode === 'regex' }"
+          title="正则表达式"
+          aria-label="正则表达式"
+          @click="patternMode = 'regex'"
+        >
+          .*
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import type { FindPatternMode } from '@/utils/findPattern';
 
 const props = defineProps<{
   visible: boolean;
   matchCount: number;
+  /** 匹配数已达上限（仅统计前 N 条），展示为「n / N+」 */
+  matchCountTruncated?: boolean;
   /** 当前高亮匹配，0..matchCount-1，无匹配时为 -1 */
   currentMatchIndex: number;
 }>();
@@ -95,6 +140,11 @@ const emit = defineEmits<{
     }
   ): void;
 }>();
+
+const matchPositionLabel = computed(() => {
+  if (props.currentMatchIndex < 0) return '—';
+  return String(props.currentMatchIndex + 1);
+});
 
 const findInputRef = ref<HTMLInputElement | null>(null);
 const findText = ref('');
@@ -151,13 +201,13 @@ function emitReplaceAll() {
 <style scoped>
 .find-replace-panel {
   position: absolute;
-  top: 66px;
-  right: 16px;
-  width: 320px;
-  background: var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  top: 42px;
+  right: 10px;
+  width: 360px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
+  box-shadow: var(--markly-shadow-elev);
   z-index: 100;
 }
 
@@ -165,8 +215,8 @@ function emitReplaceAll() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
 }
 
 .panel-title {
@@ -187,7 +237,7 @@ function emitReplaceAll() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--markly-radius-sm);
 }
 
 .close-btn:hover {
@@ -195,21 +245,28 @@ function emitReplaceAll() {
 }
 
 .panel-body {
-  padding: 16px;
+  padding: 12px;
 }
 
-.input-group {
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field {
   position: relative;
-  margin-bottom: 12px;
+  flex: 1;
 }
 
 .panel-input {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25)));
+  border-radius: var(--markly-radius-sm);
+  background: var(--vscode-input-background, var(--vscode-editor-background));
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
   font-size: 13px;
   box-sizing: border-box;
 }
@@ -233,62 +290,71 @@ function emitReplaceAll() {
   color: var(--vscode-errorForeground);
 }
 
-.options {
+.icon-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.pattern-modes {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.option-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--markly-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
 }
 
-.option-item input[type='checkbox'],
-.option-item input[type='radio'] {
-  cursor: pointer;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 4px;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.15s;
-}
-
-.action-btn:hover {
+.icon-btn:hover {
   background: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--vscode-contrastBorder, transparent);
 }
 
-.action-btn.primary {
+.icon-btn:active {
+  background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+.icon-btn.primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border-color: var(--vscode-button-background);
 }
 
-.action-btn.primary:hover {
-  background: var(--vscode-button-hoverBackground);
+.toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.toggle-btn {
+  height: 24px;
+  min-width: 28px;
+  padding: 0 6px;
+  border-radius: var(--markly-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toggle-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--vscode-contrastBorder, transparent);
+}
+
+.toggle-btn.active {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-toolbar-hoverBackground));
+  border-color: var(--vscode-focusBorder, var(--vscode-contrastBorder, transparent));
+}
+
+.toggle-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+  margin: 0 2px;
 }
 </style>

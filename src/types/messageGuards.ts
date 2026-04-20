@@ -17,7 +17,7 @@ function isNumber(x: unknown): x is number {
 }
 
 export function isEditorMode(x: unknown): x is EditorMode {
-  return x === 'ir' || x === 'source';
+  return x === 'ir' || x === 'source' || x === 'rich';
 }
 
 export function isExtensionConfig(x: unknown): x is ExtensionConfig {

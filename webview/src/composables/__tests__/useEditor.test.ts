@@ -59,9 +59,30 @@ describe('useEditor', () => {
       }));
 
       createEditor(container);
-      switchMode('preview');
+      switchMode('source');
 
-      expect(onModeChange).toHaveBeenCalledWith('preview');
+      expect(onModeChange).toHaveBeenCalledWith('source');
+    });
+
+    it('IR ↔ 源码 多次切换后 mode 与文档一致', () => {
+      const { result: { createEditor, switchMode, mode, getContent }, wrapper } = withSetup(() =>
+        useEditor({ initialContent: '# T\n' })
+      );
+
+      createEditor(container);
+      expect(mode.value).toBe('ir');
+
+      switchMode('source');
+      expect(mode.value).toBe('source');
+      expect(getContent()).toBe('# T\n');
+
+      switchMode('ir');
+      expect(mode.value).toBe('ir');
+      expect(getContent()).toBe('# T\n');
+
+      switchMode('source');
+      switchMode('ir');
+      expect(mode.value).toBe('ir');
     });
 
     it('相同模式不应该触发更新', () => {

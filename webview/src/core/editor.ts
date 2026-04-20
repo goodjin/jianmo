@@ -5,18 +5,24 @@
  */
 
 import { EditorState, Extension } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
-import { markdown } from '@codemirror/lang-markdown';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
+import { openSourceAtRangeEffect } from './decorators/openSourceEffect';
 import {
   headingDecorator,
   emphasisDecorator,
   linkDecorator,
   codeDecorator,
+  codeBlockDecorator,
   taskListDecorator,
   listDecorator,
+  hrDecorator,
+  tableDecorator,
+  tocDecorator,
+  footnoteDecorator,
   mathDecorator,
   diagramDecorator,
 } from './decorators';
@@ -31,13 +37,51 @@ const createIRDecorators = (): Extension[] => {
     emphasisDecorator(),
     linkDecorator(),
     codeDecorator(),
+    codeBlockDecorator(),
     taskListDecorator(),
     listDecorator(),
+    hrDecorator(),
+    tocDecorator(),
+    footnoteDecorator(),
+    tableDecorator(),
     // v6: IR 模式下直接预览数学公式与 Mermaid
     mathDecorator(),
     diagramDecorator(),
   ];
 };
+
+/** 点击编辑区时主动 focus，避免 webview 内偶发不显示插入光标 */
+const focusEditorOnPointerDown = EditorView.domEventHandlers({
+  mousedown: (_e, view) => {
+    view.focus();
+  },
+});
+
+/**
+ * 点击可视化块时：将光标定位到其源码起点，触发“回退源码”逻辑。
+ * 约定：widget 根节点带 data-markly-src-from / data-markly-src-to。
+ */
+const enterSourceWhenClickWidget = EditorView.domEventHandlers({
+  mousedown: (e, view) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return false;
+    const el = target.closest('[data-markly-src-from]') as HTMLElement | null;
+    if (!el) return false;
+    const rawFrom = el.getAttribute('data-markly-src-from');
+    if (!rawFrom) return false;
+    const rawTo = el.getAttribute('data-markly-src-to');
+    if (!rawTo) return false;
+    const from = Number(rawFrom);
+    const to = Number(rawTo);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    // atomic range 内通常无法直接放置光标：用 effect 让装饰器主动回退源码
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    view.focus();
+    return true;
+  },
+});
 
 /**
  * 覆盖 CM6 默认的删除线高亮 — 强制使用 line-through solid
@@ -57,9 +101,12 @@ const strikethroughOverride = syntaxHighlighting(
 export const createBaseExtensions = (mode: EditorMode): Extension[] => {
   const extensions: Extension[] = [
     minimalSetup,
+    enterSourceWhenClickWidget,
+    focusEditorOnPointerDown,
     // Markdown 解析
     markdown({
-      strikethrough: true,  // 启用删除线支持
+      // 使用 GFM base：支持删除线、管道表格等扩展语法
+      base: markdownLanguage,
     }),
   ];
 

@@ -14,6 +14,7 @@ A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing 
   - Image editing (crop, annotate, compress)
 - **Rich Syntax Support**:
   - GFM (GitHub Flavored Markdown)
+  - Rich table editing (Tab navigation, add/remove rows/cols, paste TSV/CSV with safety limits)
   - Math formulas (KaTeX)
   - Code highlighting (Shiki)
   - Diagrams (Mermaid)

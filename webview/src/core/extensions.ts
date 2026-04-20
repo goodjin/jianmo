@@ -27,11 +27,13 @@ export const editorTheme = EditorView.theme({
     backgroundColor: 'var(--markly-surface, #f5f5f5)',
   },
   '.cm-selectionBackground': {
-    backgroundColor: 'var(--markly-selection, #b3d7ff)',
+    backgroundColor:
+      'var(--vscode-editor-selectionBackground, var(--markly-selection, #b3d7ff))',
   },
-  '.cm-cursor': {
-    borderLeftColor: 'var(--markly-cursor, #333)',
-    borderLeftWidth: '2px',
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeft: '2px solid',
+    borderLeftColor:
+      'var(--vscode-editorCursor-foreground, var(--vscode-focusBorder, #007acc))',
   },
   '.cm-scroller': {
     fontFamily: 'inherit',

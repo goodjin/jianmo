@@ -12,7 +12,7 @@
 }
 
 .cm-heading-1 {
-  border-bottom: 2px solid var(--markly-border, var(--vscode-panel-border));
+  border-bottom: 2px solid var(--markly-border-color, var(--vscode-panel-border));
   padding-bottom: 0.3em;
 }
 
@@ -25,7 +25,7 @@
   font-style: italic;
 }
 
-.cm-strikethrough {
+.cm-strike {
   text-decoration: line-through;
   opacity: 0.7;
 }
@@ -90,4 +90,194 @@
 
 .cm-math-block .katex {
   font-size: 1.21em;
+}
+
+/* ========== Mermaid 图表样式 ========== */
+.cm-diagram {
+  display: block;
+  margin: 1em 0;
+  padding: 10px 12px;
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
+  background: var(--vscode-editorWidget-background, var(--markly-surface, rgba(0, 0, 0, 0.03)));
+  overflow-x: auto;
+}
+
+.cm-diagram-error {
+  border-color: var(--vscode-errorForeground, var(--markly-error, #d32f2f));
+}
+
+.cm-diagram-error-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-errorForeground, var(--markly-error, #d32f2f));
+  margin-bottom: 6px;
+}
+
+.cm-diagram-error-detail {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--markly-textSecondary, #666));
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cm-diagram-source {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--markly-radius-sm);
+  border: 1px dashed var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-editor-background, transparent);
+  color: var(--vscode-editor-foreground, var(--markly-text, #333));
+  font-family: var(--vscode-editor-font-family, var(--vscode-font-family, monospace));
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+}
+
+/* ========== GFM 表格样式 ========== */
+.cm-table-wrap {
+  overflow: auto;
+  max-width: 100%;
+  margin: 0.25rem 0;
+}
+
+.cm-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.95em;
+  color: var(--vscode-editor-foreground, #24292f);
+}
+
+.cm-table th,
+.cm-table td {
+  border: 1px solid var(--markly-border-color, rgba(175, 184, 193, 0.4));
+  padding: 6px 10px;
+  vertical-align: top;
+  background: var(--vscode-editor-background, #ffffff);
+}
+
+.cm-table thead th {
+  background: var(--vscode-sideBar-background, rgba(0, 0, 0, 0.03));
+  font-weight: 600;
+}
+
+.cm-table tr:nth-child(even) td {
+  background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.015));
+}
+
+.cm-table th[data-align='center'],
+.cm-table td[data-align='center'] {
+  text-align: center;
+}
+
+.cm-table th[data-align='right'],
+.cm-table td[data-align='right'] {
+  text-align: right;
+}
+
+/* ========== 围栏代码块 ========== */
+.cm-codeblock {
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
+  background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.03));
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+
+.cm-codeblock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--markly-border-color, rgba(175, 184, 193, 0.4));
+  color: var(--vscode-descriptionForeground, #666);
+  font-size: 12px;
+}
+
+.cm-codeblock-lang {
+  font-family: var(--vscode-font-family, system-ui);
+  background: var(--vscode-badge-background, rgba(0, 0, 0, 0.06));
+  color: var(--vscode-badge-foreground, var(--vscode-editor-foreground, #333));
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.cm-codeblock-body {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-editor-foreground, #24292f);
+  background: var(--vscode-editor-background, transparent);
+}
+
+/* ========== 分割线 ========== */
+.cm-hr {
+  height: 1px;
+  background: var(--markly-border-color, rgba(175, 184, 193, 0.6));
+  margin: 0.75rem 0;
+}
+
+/* ========== TOC 占位卡片 ========== */
+.cm-toc-card {
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
+  background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.03));
+  padding: 10px 12px;
+  margin: 0.5rem 0;
+}
+
+.cm-toc-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #24292f);
+  margin-bottom: 4px;
+}
+
+.cm-toc-desc {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #666);
+  line-height: 1.4;
+}
+
+/* ========== 脚注 ========== */
+.cm-footnote-ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: super;
+  font-size: 0.75em;
+  line-height: 1;
+  padding: 0.05em 0.35em;
+  margin: 0 0.05em;
+  border: 1px solid var(--markly-border-color, rgba(175, 184, 193, 0.5));
+  border-radius: 999px;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  background: var(--vscode-editor-background, transparent);
+}
+
+.cm-footnote-def {
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
+  background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.03));
+  padding: 10px 12px;
+  margin: 0.5rem 0;
+}
+
+.cm-footnote-def-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #666);
+  margin-bottom: 6px;
+}
+
+.cm-footnote-def-body {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--vscode-editor-foreground, #24292f);
 }

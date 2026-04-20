@@ -7,8 +7,8 @@
   display: block;
   margin: 0.75em 0;
   padding: 8px 10px;
-  border: 1px solid var(--markly-border, var(--vscode-panel-border));
-  border-radius: 6px;
+  border: var(--markly-border);
+  border-radius: var(--markly-radius-md);
   background: var(--markly-surface, var(--vscode-editor-background));
   overflow-x: auto;
 }

@@ -10,7 +10,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick } from 'vue';
-import type { EditorMode } from '../src/types/editor';
+import type { EditorMode, EditorOptions } from '../src/types/editor';
+import { openSourceAtRangeEffect } from '../src/core/decorators/openSourceEffect';
 
 // ============================================================
 // v6 回归：KaTeX / Mermaid 渲染与失败路径（动态 import 可 mock）
@@ -35,11 +36,11 @@ vi.mock('mermaid', () => ({
 import { useEditor } from '../src/composables/useEditor';
 import { withSetup } from '../src/utils/testUtils';
 
-function createTestEditor(initialContent = '') {
+function createTestEditor(initialContent = '', options: Omit<EditorOptions, 'initialContent'> = {}) {
   const container = document.createElement('div');
   container.style.cssText = 'width:100px;height:100px';
   document.body.appendChild(container);
-  const setup = withSetup(() => useEditor({ initialContent }));
+  const setup = withSetup(() => useEditor({ initialContent, ...options }));
   setup.result.createEditor(container);
   return {
     ...setup,
@@ -174,6 +175,13 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('codeBlock');
     expect(editor.result.getContent()).toContain('```');
+    // 围栏代码块：默认（光标不在块内）应渲染为可视化代码块
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await nextTick();
+    const cb = editor.container.querySelector('.cm-codeblock');
+    expect(cb).toBeTruthy();
+    expect(cb!.textContent).toContain('代码内容');
   });
 
   it('table: 插入表格', async () => {
@@ -181,6 +189,14 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('table');
     expect(editor.result.getContent()).toContain('|');
+    expect(editor.result.getContent()).toContain('列1');
+    // 表格：默认（光标不在表格内）应渲染为可视化 <table>
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await nextTick();
+    const tbl = editor.container.querySelector('table.cm-table');
+    expect(tbl).toBeTruthy();
+    expect(tbl!.textContent).toContain('列1');
   });
 
   it('hr: 插入分割线', async () => {
@@ -188,6 +204,10 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('hr');
     expect(editor.result.getContent()).toContain('---');
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-hr')).toBeTruthy();
   });
 
   it('math: 插入数学公式块', async () => {
@@ -195,6 +215,9 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('math');
     expect(editor.result.getContent()).toContain('$$');
+    await new Promise((r) => setTimeout(r, 0));
+    await nextTick();
+    expect(editor.container.querySelector('.cm-math-block')).toBeTruthy();
   });
 
   it('footnote: 插入脚注', async () => {
@@ -202,6 +225,11 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('footnote');
     expect(editor.result.getContent()).toContain('[^1]');
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-footnote-ref')).toBeTruthy();
+    expect(editor.container.querySelector('.cm-footnote-def')).toBeTruthy();
   });
 
   it('toc: 插入目录', async () => {
@@ -209,6 +237,94 @@ describe('insertNode 操作', () => {
     await nextTick();
     editor.result.insertNode('toc');
     expect(editor.result.getContent()).toContain('<!-- TOC -->');
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-toc-card')).toBeTruthy();
+  });
+
+  it('link: prompt 注入后 IR 应出现 .cm-link-text', async () => {
+    editor = createTestEditor('', {
+      promptInput: (msg) => {
+        if (msg.includes('链接文字')) return '链文';
+        if (msg.includes('链接地址')) return 'https://example.test/link';
+        return null;
+      },
+    });
+    await nextTick();
+    editor.result.insertNode('link');
+    await nextTick();
+    expect(editor.result.getContent()).toContain('[链文](https://example.test/link)');
+    const el = editor.container.querySelector('.cm-link-text');
+    expect(el).toBeTruthy();
+    expect(el!.textContent).toBe('链文');
+  });
+
+  it('image: prompt 注入后 IR 应出现 .cm-image-alt', async () => {
+    editor = createTestEditor('', {
+      promptInput: (msg) => {
+        if (msg.includes('图片描述')) return '图注';
+        if (msg.includes('图片地址')) return 'https://example.test/i.png';
+        return null;
+      },
+    });
+    await nextTick();
+    editor.result.insertNode('image');
+    await nextTick();
+    expect(editor.result.getContent()).toContain('![图注](https://example.test/i.png)');
+    const el = editor.container.querySelector('.cm-image-alt');
+    expect(el).toBeTruthy();
+    expect(el!.textContent).toBe('图注');
+  });
+});
+
+describe('GFM 管道表格：IR 契约（可视化渲染 + 光标回退源码）', () => {
+  let editor: ReturnType<typeof createTestEditor>;
+  afterEach(() => editor?.cleanup());
+
+  it('光标在表格外：应渲染为 <table>', async () => {
+    const md = `prefix
+
+| 需求 | 描述 | 优先级 |
+|------|------|--------|
+| 降级容灾 | Manager 宕机不影响 | P0 |
+| 熔断自愈 | 连续三次获取不到 | P0 |
+ 
+suffix`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+    // 光标放在 suffix，确保不与 Table 节点相交
+    view.dispatch({ selection: { anchor: md.indexOf('suffix') } });
+    await nextTick();
+    const tbl = editor.container.querySelector('table.cm-table');
+    expect(tbl).toBeTruthy();
+    expect(tbl!.textContent).toContain('降级容灾');
+    expect(tbl!.textContent).toContain('P0');
+  });
+
+  it('光标进入表格：应回退为源码（无 <table>）', async () => {
+    const md = `prefix
+
+| 需求 | 描述 | 优先级 |
+|------|------|--------|
+| 降级容灾 | Manager 宕机不影响 | P0 |
+| 熔断自愈 | 连续三次获取不到 | P0 |
+ 
+suffix`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+    // 通过 effect 打开源码（避免 atomic range 内无法直接放置光标）
+    view.dispatch({ selection: { anchor: md.indexOf('suffix') } });
+    await nextTick();
+    const wrap = editor.container.querySelector('.cm-table-wrap') as HTMLElement;
+    const from = Number(wrap.getAttribute('data-markly-src-from'));
+    const to = Number(wrap.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    await nextTick();
+    expect(editor.container.querySelector('table.cm-table')).toBeNull();
+    expect(editor.container.textContent).toContain('| 需求 | 描述 | 优先级 |');
   });
 });
 
@@ -415,7 +531,10 @@ describe('v6 回归 - Mermaid 渲染失败', () => {
 
     const el = editor.container.querySelector('.cm-diagram.cm-diagram-error') as HTMLElement | null;
     expect(el).toBeTruthy();
-    expect(el!.textContent).toContain('图表语法错误');
+    expect(el!.textContent).toContain('Mermaid 解析失败');
+    expect(el!.textContent).toContain('mermaid syntax error');
+    // 回退：至少展示源代码，避免用户看不到图时无从下手
+    expect(el!.textContent).toContain('flowchart TD');
     expect(el!.getAttribute('title')).toContain('mermaid syntax error');
   });
 

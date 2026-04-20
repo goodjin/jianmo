@@ -95,11 +95,16 @@ export function computeMathDecorations(doc: string): DecorationSet {
 
 const mathField = StateField.define<DecorationSet>({
   create(state) {
-    return computeMathDecorations(state.doc.toString());
+    const t = state.doc.sliceString(0, state.doc.length);
+    if (!t.includes('$')) return Decoration.set([]);
+    return computeMathDecorations(t);
   },
   update(decos, tr) {
     if (!tr.docChanged) return decos;
-    return computeMathDecorations(tr.newDoc.toString());
+    const doc = tr.newDoc;
+    const t = doc.sliceString(0, doc.length);
+    if (!t.includes('$')) return Decoration.set([]);
+    return computeMathDecorations(t);
   },
   provide(field) {
     return EditorView.decorations.from(field);

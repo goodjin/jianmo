@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   patternToRegExp,
   findAllMatchesInText,
+  findFirstMatchAfter,
+  findLastMatchBefore,
+  matchOrdinalInText,
   type FindPatternMode,
 } from '../findPattern';
 
@@ -14,7 +17,7 @@ function matches(
 ) {
   const re = patternToRegExp(pattern, { caseSensitive, patternMode, wholeWord });
   if (!re) return [];
-  return findAllMatchesInText(text, re);
+  return findAllMatchesInText(text, re).matches;
 }
 
 describe('findPattern', () => {
@@ -66,5 +69,39 @@ describe('findPattern', () => {
       { from: 0, to: 2 },
       { from: 6, to: 7 },
     ]);
+  });
+
+  it('maxResults 截断时 truncated 为 true', () => {
+    const re = patternToRegExp('a', { caseSensitive: true, patternMode: 'literal' });
+    expect(re).not.toBeNull();
+    const { matches, truncated } = findAllMatchesInText('aaaa', re!, 2);
+    expect(matches).toEqual([
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+    ]);
+    expect(truncated).toBe(true);
+  });
+
+  it('findFirstMatchAfter：严格在光标之后；无则回绕到第一个', () => {
+    const re = patternToRegExp('a', { caseSensitive: true, patternMode: 'literal' });
+    expect(re).not.toBeNull();
+    expect(findFirstMatchAfter('aba', re!, 0, false)).toEqual({ from: 2, to: 3 });
+    expect(findFirstMatchAfter('aba', re!, 2, false)).toBeNull();
+    expect(findFirstMatchAfter('aba', re!, 2, true)).toEqual({ from: 0, to: 1 });
+  });
+
+  it('findLastMatchBefore：严格在光标之前；无则回绕到最后一个', () => {
+    const re = patternToRegExp('a', { caseSensitive: true, patternMode: 'literal' });
+    expect(re).not.toBeNull();
+    expect(findLastMatchBefore('aba', re!, 2, false)).toEqual({ from: 0, to: 1 });
+    expect(findLastMatchBefore('aba', re!, 0, false)).toBeNull();
+    expect(findLastMatchBefore('aba', re!, 0, true)).toEqual({ from: 2, to: 3 });
+  });
+
+  it('matchOrdinalInText：与全量扫描顺序一致', () => {
+    const re = patternToRegExp('ping', { caseSensitive: true, patternMode: 'literal' });
+    expect(re).not.toBeNull();
+    expect(matchOrdinalInText('ping pong ping', re!, { from: 0, to: 4 })).toBe(0);
+    expect(matchOrdinalInText('ping pong ping', re!, { from: 10, to: 14 })).toBe(1);
   });
 });

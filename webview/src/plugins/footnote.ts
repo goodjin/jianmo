@@ -1,4 +1,4 @@
 import { $remark } from '@milkdown/utils';
-import remarkFootnotes from 'remark-footnotes';
+import remarkGfm from 'remark-gfm';
 
-export const footnote = $remark('footnote', () => remarkFootnotes);
+export const footnote = $remark('gfm', () => remarkGfm);

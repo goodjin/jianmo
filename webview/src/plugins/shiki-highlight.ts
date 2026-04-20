@@ -14,10 +14,7 @@ import { createHighlighter, type Highlighter } from 'shiki';
 let highlighter: Highlighter | null = null;
 
 // 默认主题配置
-const defaultThemes = {
-  light: 'github-light',
-  dark: 'github-dark',
-};
+const defaultThemes = ['github-light', 'github-dark'] as const;
 
 // 默认支持的语言
 const defaultLangs = [
@@ -36,7 +33,9 @@ const defaultLangs = [
 async function getHighlighter(): Promise<Highlighter> {
   if (!highlighter) {
     highlighter = await createHighlighter({
-      themes: defaultThemes,
+      // shiki@1.x/2.x/3.x 的 createHighlighter 期望 themes 为数组/可迭代，而不是 { light, dark } 这种对象；
+      // 传错会触发 `(s.themes ?? []).map is not a function` 并导致 Milkdown 初始化失败。
+      themes: [...defaultThemes],
       langs: defaultLangs,
     });
   }
@@ -70,11 +69,13 @@ export function shikiHighlight(options: ShikiHighlightOptions = {}) {
     light: options.themes?.light || 'github-light',
     dark: options.themes?.dark || 'github-dark',
   };
+  const langs = options.langs?.length ? options.langs : defaultLangs;
 
   // 创建配置上下文
   const highlightPluginConfig = $ctx(
     {
-      parser: null,
+      // prosemirror-highlight 要求 parser 是函数；保持一个永不抛错的默认实现，避免初始化阶段因高亮失败而把编辑器整体拖死
+      parser: () => [],
     },
     'highlightPluginConfig'
   );
@@ -89,34 +90,32 @@ export function shikiHighlight(options: ShikiHighlightOptions = {}) {
     const config = ctx.get(highlightPluginConfig.key);
     
     // 如果还没有 parser，创建一个
-    if (!config.parser) {
+    if ((config as any).parser?.__marklyShikiReady !== true) {
       try {
-        const hl = await getHighlighter();
-        
-        // 创建 parser，使用默认主题，添加错误处理
-        const baseParser = createParser(hl, {
-          theme: themes.light,
-        });
-        
-        // 包装 parser 以处理不支持的语言
-        const parser = (text: string, language: string) => {
+        if (!highlighter) {
+          highlighter = await createHighlighter({
+            themes: [themes.light, themes.dark],
+            langs,
+          });
+        }
+        const baseParser = createParser(highlighter, { theme: themes.light });
+        const safeParser = (opts: { content: string; language?: string; pos: number; size: number }) => {
           try {
-            // 检查语言是否支持
-            if (language && !isLanguageSupported(language)) {
-              console.warn(`Language "${language}" is not supported, falling back to plaintext`);
-              language = 'plaintext';
-            }
-            return baseParser(text, language);
+            const lang = opts.language && isLanguageSupported(opts.language) ? opts.language : 'plaintext';
+            return baseParser({ ...opts, language: lang });
           } catch (error) {
-            // 优雅降级：返回未高亮的纯文本
-            console.warn(`Failed to highlight code block with language "${language}":`, error);
-            return baseParser(text, 'plaintext');
+            console.warn(`[shikiHighlight] highlight failed, fallback to plaintext:`, error);
+            try {
+              return baseParser({ ...opts, language: 'plaintext' });
+            } catch {
+              return [];
+            }
           }
         };
-        
-        // 更新配置
-        ctx.set(highlightPluginConfig.key, { parser });
+        (safeParser as any).__marklyShikiReady = true;
+        ctx.set(highlightPluginConfig.key, { parser: safeParser });
       } catch (error) {
+        // 失败则保持默认 parser（空 decorations），不要阻断 Milkdown 初始化
         console.error('Failed to initialize Shiki highlighter:', error);
       }
     }

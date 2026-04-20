@@ -1,5 +1,8 @@
 // 编辑器模式
-export type EditorMode = 'ir' | 'source';
+// - ir: Markdown 源码 + decorators 的“所见即所得”视图（仍是 markdown 文本为真源）
+// - source: 纯 markdown 源码
+// - rich: 真富文本（ProseMirror/Milkdown 节点模型），保存时序列化为 markdown
+export type EditorMode = 'ir' | 'source' | 'rich';
 
 // 光标位置
 export interface SourceCursorPosition {

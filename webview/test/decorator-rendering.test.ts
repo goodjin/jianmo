@@ -12,11 +12,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { EditorView, Decoration } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { markdown } from '@codemirror/lang-markdown';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxTree } from '@codemirror/language';
 import { useEditor } from '../src/composables/useEditor';
 import { withSetup } from '../src/utils/testUtils';
 import { headingDecorator, emphasisDecorator, linkDecorator, codeDecorator, taskListDecorator, listDecorator } from '../src/core/decorators';
+import { openSourceAtRangeEffect } from '../src/core/decorators/openSourceEffect';
 
 function createTestEditor(initialContent = '') {
   const container = document.createElement('div');
@@ -182,16 +183,23 @@ describe('强调装饰器 - 渲染行为', () => {
     expect(hasEmphasis).toBe(true);
   });
 
-  it('删除线: ~~text~~ 应该能被编辑器处理', async () => {
+  it('删除线: ~~text~~ 应该被解析并应用 .cm-strike 样式', async () => {
     editor = createTestEditor('~~strike~~ text');
     await nextTick();
-
-    // 验证编辑器能处理删除线内容而不报错
-    expect(editor.result.getContent()).toBe('~~strike~~ text');
-
-    // 验证没有错误
     const view = editor.result.view.value!;
-    expect(view.state.doc.toString()).toBe('~~strike~~ text');
+
+    const tree = syntaxTree(view.state);
+    let hasStrike = false;
+    tree.iterate({
+      enter: (node) => {
+        if (node.type.name === 'Strikethrough') hasStrike = true;
+      },
+    });
+    expect(hasStrike).toBe(true);
+
+    const el = editor.container.querySelector('.cm-strike') as HTMLElement | null;
+    expect(el).toBeTruthy();
+    expect(el!.textContent).toContain('strike');
   });
 
   it('光标在强调文本内时，标记仍应隐藏', async () => {
@@ -433,52 +441,75 @@ describe('任务列表装饰器 - 渲染行为', () => {
 });
 
 // ============================================================
-// Markdown 解析器测试
+// GFM 管道表格（IR 契约）
+// ============================================================
+
+describe('GFM 管道表格 - 解析与 DOM 契约', () => {
+  let editor: ReturnType<typeof createTestEditor>;
+
+  afterEach(() => editor?.cleanup());
+
+  it('管道表格：语法树应含 Table 节点；光标在表格外时 DOM 出现 <table>', async () => {
+    const md = `before
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+after`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+    // 光标移到 after，确保不与 Table 相交
+    view.dispatch({ selection: { anchor: md.indexOf('after') } });
+    await nextTick();
+
+    const names = new Set<string>();
+    syntaxTree(view.state).iterate({
+      enter: (node) => {
+        names.add(node.type.name);
+      },
+    });
+    expect([...names].some((n) => n === 'Table')).toBe(true);
+    const tbl = editor.container.querySelector('table.cm-table');
+    expect(tbl).toBeTruthy();
+    expect(tbl!.textContent).toContain('A');
+    expect(tbl!.textContent).toContain('2');
+  });
+
+  it('管道表格：光标进入表格范围时回退源码（无 <table>）', async () => {
+    const md = `before
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+after`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+    view.dispatch({ selection: { anchor: md.indexOf('| A |') } });
+    await nextTick();
+
+    const tbl = editor.container.querySelector('table.cm-table') as HTMLElement;
+    const from = Number(tbl.closest('[data-markly-src-from]')?.getAttribute('data-markly-src-from'));
+    const to = Number(tbl.closest('[data-markly-src-from]')?.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    await nextTick();
+    expect(editor.container.querySelector('table.cm-table')).toBeNull();
+    expect(editor.container.textContent).toContain('| A | B |');
+  });
+});
+
+// ============================================================
+// IR 可视化块（codeBlock/hr/toc/footnote）
 // ============================================================
 
 describe('Markdown 解析器配置', () => {
-  it('markdown() 应该启用 strikethrough 支持', () => {
-    // 使用 EditorView 来确保语言扩展正确加载
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
+  it('GFM 基底：markdown({ base: markdownLanguage }) 下 ~~ 解析为 Strikethrough', () => {
     const state = EditorState.create({
       doc: '~~strike~~',
-      extensions: [
-        markdown({ strikethrough: true }),
-      ],
-    });
-
-    const view = new EditorView({ state, parent: container });
-
-    const tree = syntaxTree(view.state);
-    const nodeTypes: string[] = [];
-
-    tree.iterate({
-      enter: (node) => {
-        nodeTypes.push(node.type.name);
-      },
-    });
-
-    view.destroy();
-    document.body.removeChild(container);
-
-    // 检查是否有删除线相关节点
-    const hasStrikethrough = nodeTypes.some(t =>
-      t === 'Strikethrough' || t === 'Delete' || t.includes('Strike')
-    );
-
-    // 即使在 jsdom 环境中，只要语法树不为空就算通过
-    // 这个测试主要是确保 markdown 扩展能正确加载
-    expect(nodeTypes.length).toBeGreaterThan(0);
-  });
-
-  it('没有 strikethrough 配置时，~~ 默认不被解析为删除线', () => {
-    const state = EditorState.create({
-      doc: '~~strike~~',
-      extensions: [
-        markdown(), // 默认配置
-      ],
+      extensions: [markdown({ base: markdownLanguage })],
     });
 
     const tree = syntaxTree(state);
@@ -492,9 +523,122 @@ describe('Markdown 解析器配置', () => {
       },
     });
 
-    // 注意：默认 markdown() 可能已经启用 strikethrough，取决于 CM6 版本
-    // 这里我们只检查解析不会报错
-    expect(true).toBe(true);
+    expect(hasStrikethrough).toBe(true);
+  });
+});
+
+describe('IR 可视化块 - codeBlock/hr/toc/footnote', () => {
+  let editor: ReturnType<typeof createTestEditor>;
+  afterEach(() => editor?.cleanup());
+
+  it('codeBlock：光标在块外时渲染为 .cm-codeblock；进入块内回退源码', async () => {
+    const md = `before
+
+\`\`\`js
+console.log(1)
+\`\`\`
+
+after`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+
+    view.dispatch({ selection: { anchor: md.indexOf('after') } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-codeblock')).toBeTruthy();
+    expect(editor.container.textContent).toContain('console.log(1)');
+
+    // 模拟用户点击可视化块进入源码编辑
+    const cb = editor.container.querySelector('.cm-codeblock') as HTMLElement;
+    const from = Number(cb.getAttribute('data-markly-src-from'));
+    const to = Number(cb.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-codeblock')).toBeNull();
+    expect(editor.container.textContent).toContain('```js');
+  });
+
+  it('hr：光标在行外时渲染为 .cm-hr；进入行内回退源码', async () => {
+    const md = `a
+
+---
+
+b`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+
+    view.dispatch({ selection: { anchor: md.indexOf('b') } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-hr')).toBeTruthy();
+
+    const hr = editor.container.querySelector('.cm-hr') as HTMLElement;
+    const from = Number(hr.getAttribute('data-markly-src-from'));
+    const to = Number(hr.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-hr')).toBeNull();
+    expect(editor.container.textContent).toContain('---');
+  });
+
+  it('toc：光标在标记外时渲染为 .cm-toc-card；进入标记内回退源码', async () => {
+    const md = `before
+
+<!-- TOC -->
+
+after`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+
+    view.dispatch({ selection: { anchor: md.indexOf('after') } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-toc-card')).toBeTruthy();
+
+    const toc = editor.container.querySelector('.cm-toc-card') as HTMLElement;
+    const from = Number(toc.getAttribute('data-markly-src-from'));
+    const to = Number(toc.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from, to }) });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-toc-card')).toBeNull();
+    expect(editor.container.textContent).toContain('<!-- TOC -->');
+  });
+
+  it('footnote：引用渲染为 .cm-footnote-ref，定义渲染为 .cm-footnote-def；进入范围回退源码', async () => {
+    const md = `Text with [^1].
+
+[^1]: 脚注内容
+  续行`;
+    editor = createTestEditor(md);
+    await nextTick();
+    const view = editor.result.view.value!;
+
+    view.dispatch({ selection: { anchor: 0 } });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-footnote-ref')).toBeTruthy();
+    expect(editor.container.querySelector('.cm-footnote-def')).toBeTruthy();
+    expect(editor.container.textContent).toContain('脚注内容');
+
+    const ref = editor.container.querySelector('.cm-footnote-ref') as HTMLElement;
+    const refFrom = Number(ref.getAttribute('data-markly-src-from'));
+    const refTo = Number(ref.getAttribute('data-markly-src-to'));
+    expect(Number.isFinite(refFrom)).toBe(true);
+    expect(Number.isFinite(refTo)).toBe(true);
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from: refFrom, to: refTo }) });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-footnote-ref')).toBeNull();
+    expect(editor.container.textContent).toContain('[^1]');
+
+    // 重新渲染回可视化后，再点击定义块进入源码
+    view.dispatch({ selection: { anchor: 0 } });
+    await nextTick();
+    const def = editor.container.querySelector('.cm-footnote-def') as HTMLElement;
+    const defFrom = Number(def.getAttribute('data-markly-src-from'));
+    const defTo = Number(def.getAttribute('data-markly-src-to'));
+    view.dispatch({ effects: openSourceAtRangeEffect.of({ from: defFrom, to: defTo }) });
+    await nextTick();
+    expect(editor.container.querySelector('.cm-footnote-def')).toBeNull();
+    expect(editor.container.textContent).toContain('[^1]:');
   });
 });
 

@@ -171,9 +171,20 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
     // 创建新状态
     const newState = createEditorState(currentContent, newMode, [createUpdateListener()]);
 
-    // 更新视图
-    view.value.setState(newState);
+    /**
+     * 真实用户环境中，反复 view.setState()（尤其伴随 block replace widgets / selection 变化）
+     * 可能触发 CodeMirror 内部 DOM/selection 映射异常：
+     * RangeError: Invalid child in posBefore
+     *
+     * 这里改为“销毁并重建 EditorView”，以换取更稳定的模式切换。
+     */
+    const container = containerRef.value;
+    if (!container) return;
+
+    destroyEditor(view.value);
+    view.value = createEditorView(container, newState);
     mode.value = newMode;
+
     const root = view.value.dom;
     if (showLineNumbers.value) {
       root.classList.remove('cm-hide-line-numbers');

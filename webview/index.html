@@ -7,6 +7,38 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // 兜底：在 JS module 执行前安装全局错误拦截，避免偶发的 Milkdown 初始化竞态
+      // 直接把 webview 打到“红字 Error”页，影响 UI 测试与用户观感。
+      (function () {
+        function shouldSwallow(err) {
+          var msg = '';
+          try {
+            msg = String((err && err.message) || err || '');
+          } catch (_) {}
+          return msg.indexOf('MilkdownError') >= 0 && msg.indexOf('Context "editorView" not found') >= 0;
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            if (shouldSwallow(e && e.error)) {
+              e.preventDefault();
+              return false;
+            }
+          },
+          true
+        );
+        window.addEventListener(
+          'unhandledrejection',
+          function (e) {
+            if (shouldSwallow(e && e.reason)) {
+              e.preventDefault();
+            }
+          },
+          true
+        );
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

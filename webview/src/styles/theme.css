@@ -17,7 +17,7 @@
   --markly-linkHover: #0052a3;
   --markly-code: #d32f2f;
   --markly-codeBackground: #f5f5f5;
-  --markly-border: #e0e0e0;
+  --markly-border-color: #e0e0e0;
   --markly-error: #d32f2f;
   --markly-surfaceHover: rgba(0, 0, 0, 0.04);
 }
@@ -35,7 +35,7 @@
   --markly-linkHover: #6cb8ff;
   --markly-code: #f44747;
   --markly-codeBackground: #2d2d2d;
-  --markly-border: #3e3e42;
+  --markly-border-color: #3e3e42;
   --markly-error: #f44747;
   --markly-surfaceHover: rgba(255, 255, 255, 0.04);
 }
@@ -73,7 +73,7 @@
 }
 
 .cm-scroller::-webkit-scrollbar-thumb {
-  background: var(--markly-border);
+  background: var(--markly-border-color);
   border-radius: 5px;
 }
 

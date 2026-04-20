@@ -4,21 +4,33 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from '@milkdown/core';
+import {
+  Editor,
+  rootCtx,
+  defaultValueCtx,
+  editorViewCtx,
+  parserCtx,
+  serializerCtx,
+} from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
-import { gfm } from '@milkdown/preset-gfm';
+import { columnResizingPlugin, gfm } from '@milkdown/preset-gfm';
+import { marklyTableGridPastePlugin, marklyTableStructureKeymapPlugin } from '../plugins/markly-table-rich';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
+import { $prose } from '@milkdown/utils';
+import { Plugin } from '@milkdown/prose/state';
+import { isInTable } from 'prosemirror-tables';
 // 使用 Shiki 替代 Prism 做代码高亮
 import { shikiHighlight } from '../plugins/shiki-highlight';
 import { footnote } from '../plugins/footnote';
-import { listEdit } from '../plugins/listEdit';
+import mermaid from 'mermaid';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import { TextSelection } from '@milkdown/prose/state';
 import type { ExtensionConfig } from '../../src/types';
+import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
 
 // TOC 标记
 const TOC_PLACEHOLDER = '<!-- TOC -->';
@@ -58,7 +70,30 @@ const emit = defineEmits<{
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
   (e: 'ready', success: boolean): void;
+  (e: 'table-context', payload: { inTable: boolean }): void;
+  (e: 'table-context-menu', payload: { x: number; y: number }): void;
 }>();
+
+/** 随选区变化上报是否在表格内，供工具栏启用「表格结构」按钮 */
+const tableContextMilkdownPlugin = $prose(() => {
+  let lastInTable = false;
+  return new Plugin({
+    view(view) {
+      const init = isInTable(view.state);
+      lastInTable = init;
+      queueMicrotask(() => emit('table-context', { inTable: init }));
+      return {
+        update(v) {
+          const now = isInTable(v.state);
+          if (now !== lastInTable) {
+            lastInTable = now;
+            emit('table-context', { inTable: now });
+          }
+        },
+      };
+    },
+  });
+});
 
 const editorRef = ref<HTMLElement | null>(null);
 let editor: Editor | null = null;
@@ -70,6 +105,7 @@ let updateTimeout: ReturnType<typeof setTimeout> | null = null;
 // 图片事件处理函数引用（用于清理）
 let imageClickHandler: ((e: MouseEvent) => void) | null = null;
 let imageContextMenuHandler: ((e: MouseEvent) => void) | null = null;
+let tableContextMenuHandler: ((e: MouseEvent) => void) | null = null;
 
 // 提取 Markdown 标题生成目录
 interface TocItem {
@@ -150,20 +186,62 @@ function addIdsToHeadings(markdown: string): string {
   return result.join('\n');
 }
 
-// 跳转到的标题 ID
+/** 在已渲染 DOM 中定位标题（优先 id，否则按与大纲一致的 slug 规则匹配正文） */
+function findHeadingElement(headingId: string): HTMLElement | null {
+  if (!editorRef.value) return null;
+  const esc =
+    typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(headingId)
+      : headingId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const byId = editorRef.value.querySelector(`[id="${esc}"]`) as HTMLElement | null;
+  if (byId) return byId;
+  const hs = editorRef.value.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  for (const h of hs) {
+    const el = h as HTMLElement;
+    if (el.id === headingId) return el;
+    const raw = (el.textContent || '').trim().replace(/\{#[^}]+\}$/, '').trim();
+    if (generateHeadingId(raw) === headingId) return el;
+  }
+  return null;
+}
+
+/** 将标题滚入 `.milkdown-editor` 可视区（该节点自身 overflow-y:auto，scrollIntoView 常去滚外层，E2E/面板布局下不可靠） */
+function scrollHeadingIntoMilkdownRoot(heading: HTMLElement): void {
+  const root = editorRef.value;
+  if (!root) {
+    heading.scrollIntoView({ behavior: 'auto', block: 'center' });
+    return;
+  }
+  const rootRect = root.getBoundingClientRect();
+  const hRect = heading.getBoundingClientRect();
+  const rootCenterY = rootRect.top + rootRect.height / 2;
+  const hCenterY = hRect.top + hRect.height / 2;
+  root.scrollTop += hCenterY - rootCenterY;
+}
+
+/** 大纲 / TOC：滚动到标题并（若编辑器已就绪）将光标落入该标题附近 */
 function scrollToHeading(headingId: string): void {
-  if (!editorRef.value) return;
-  
-  // 查找具有对应 ID 的标题元素
-  const heading = editorRef.value.querySelector(`[id="${headingId}"]`) as HTMLElement;
-  
-  if (heading) {
-    heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // 添加高亮效果
-    heading.classList.add('toc-highlight');
-    setTimeout(() => {
-      heading.classList.remove('toc-highlight');
-    }, 2000);
+  const heading = findHeadingElement(headingId);
+  if (!heading) return;
+
+  scrollHeadingIntoMilkdownRoot(heading);
+  heading.classList.add('toc-highlight');
+  setTimeout(() => {
+    heading.classList.remove('toc-highlight');
+  }, 2000);
+
+  if (!editor) return;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const pos = view.posAtDOM(heading, 0);
+    if (!Number.isFinite(pos) || pos < 0) return;
+    const max = view.state.doc.content.size;
+    const clamped = Math.min(Math.max(1, pos), Math.max(1, max - 1));
+    const $p = view.state.doc.resolve(clamped);
+    view.dispatch(view.state.tr.setSelection(TextSelection.near($p)).scrollIntoView());
+    view.focus();
+  } catch (e) {
+    console.warn('[Milkdown] scrollToHeading: could not move caret:', e);
   }
 }
 
@@ -188,10 +266,6 @@ function updateTocInContent(markdown: string): string {
 }
 
 onMounted(() => {
-  console.log('[MilkdownEditor] onMounted called');
-  console.log('[MilkdownEditor] editorRef:', editorRef.value);
-  console.log('[MilkdownEditor] content length:', props.content?.length);
-
   if (!editorRef.value) {
     console.error('[MilkdownEditor] editorRef is null, cannot initialize');
     emit('ready', false);
@@ -204,8 +278,6 @@ onMounted(() => {
 
 async function initEditor(): Promise<void> {
   try {
-    console.log('[MilkdownEditor] Starting editor initialization...');
-
     // 检查必要的依赖是否加载
     if (!Editor || !commonmark || !gfm) {
       console.error('[MilkdownEditor] Required Milkdown modules not loaded');
@@ -213,54 +285,51 @@ async function initEditor(): Promise<void> {
       return;
     }
 
-    console.log('[MilkdownEditor] Creating editor instance...');
-
     // 逐步初始化，便于定位问题
-    let editorBuilder = Editor.make()
-      .config((ctx) => {
-        ctx.set(rootCtx, editorRef.value);
-        ctx.set(defaultValueCtx, props.content || '');
+    // 注意：部分 ctx（例如 listenerCtx / editorViewCtx）在插件注入完成前不可用；
+    // 在这里做“只设置基础 ctx”，避免初始化阶段因 ctx.get(...) 未捕获抛错导致整个 webview 进入红字 Error 页。
+    let editorBuilder = Editor.make().config((ctx) => {
+      ctx.set(rootCtx, editorRef.value);
+      ctx.set(defaultValueCtx, props.content || '');
+    });
 
-        ctx.get(listenerCtx).markdownUpdated((ctx, markdown) => {
-          if (!isInternalChange) {
-            lastEmittedContent = markdown;
-            emit('change', markdown);
-          }
-        });
-      });
-
-    console.log('[MilkdownEditor] Adding commonmark plugin...');
     editorBuilder = editorBuilder.use(commonmark);
 
-    console.log('[MilkdownEditor] Adding gfm plugin...');
     editorBuilder = editorBuilder.use(gfm);
+    // GFM preset 默认未启用列宽拖拽；补上后表格编辑体验更接近常见富文本编辑器
+    editorBuilder = editorBuilder.use(columnResizingPlugin);
+    editorBuilder = editorBuilder.use(marklyTableStructureKeymapPlugin);
+    editorBuilder = editorBuilder.use(marklyTableGridPastePlugin);
+    editorBuilder = editorBuilder.use(tableContextMilkdownPlugin);
 
-    // 暂时禁用 Shiki 高亮，看看是否是它导致的问题
-    console.log('[MilkdownEditor] Skipping Shiki highlight for debugging...');
-    // editorBuilder = editorBuilder.use(shikiHighlight({
-    //   themes: {
-    //     light: 'github-light',
-    //     dark: 'github-dark',
-    //   },
-    // }));
+    // shikiHighlight 在部分 ExTester/打包环境下会触发 prosemirror-highlight 初始化异常（reading 'state'），导致 Rich 无法启动；
+    // Rich 核心编辑能力不依赖语法高亮，先禁用以恢复可用性与 E2E 稳定性。
 
-    console.log('[MilkdownEditor] Adding footnote plugin...');
     editorBuilder = editorBuilder.use(footnote);
+    // listEdit 依赖 Prose schema/ctx 某些切片，在部分打包/运行环境下会触发 `schema.nodes.blockquote` 为 undefined 导致 Rich 初始化失败；
+    // Rich 基础能力不依赖它，先禁用以保证编辑器可用与 E2E 稳定。
 
-    // 暂时禁用 listEdit 插件，它可能访问未初始化的 schema
-    console.log('[MilkdownEditor] Skipping listEdit plugin for debugging...');
-    // editorBuilder = editorBuilder.use(listEdit);
-
-    console.log('[MilkdownEditor] Adding listener plugin...');
     editorBuilder = editorBuilder.use(listener);
 
-    console.log('[MilkdownEditor] Adding history plugin...');
     editorBuilder = editorBuilder.use(history);
 
-    console.log('[MilkdownEditor] Creating editor...');
     editor = await editorBuilder.create();
 
+    // 在 editor 创建完成后再注册 listener（此时 ctx 已完整注入）
+    try {
+      editor.ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
+        if (!isInternalChange) {
+          lastEmittedContent = markdown;
+          emit('change', markdown);
+        }
+      });
+    } catch (e) {
+      console.warn('[MilkdownEditor] listenerCtx not ready, skip markdownUpdated registration:', e);
+    }
+
     console.log('[MilkdownEditor] Editor created successfully');
+
+    // create() 完成后，watch 会接管后续 props.content 同步；避免在此处立即 setContent 触发早期 ctx 访问差异导致初始化失败。
 
     // 绑定图片点击事件
     bindImageEvents();
@@ -290,13 +359,20 @@ onUnmounted(() => {
   unbindImageEvents();
   
   if (editor) {
-    editor.destroy();
-    editor = null;
+    try {
+      editor.destroy();
+    } catch (e) {
+      // 关闭/重建 webview 时偶发触发 Milkdown ctx 清理竞态；不要让未捕获异常把 webview 打进红字 Error 页
+      console.warn('[MilkdownEditor] destroy failed (ignored):', e);
+    } finally {
+      editor = null;
+    }
   }
 });
 
 // 初始化 mermaid
 function initMermaid(): void {
+  if (!mermaid) return;
   // 确定主题
   let theme = 'default';
   const config = safeConfig.value;
@@ -306,25 +382,30 @@ function initMermaid(): void {
     theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
   }
   
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: theme,
-    securityLevel: 'loose',
-    flowchart: {
-      useMaxWidth: true,
-      htmlLabels: true,
-    },
-    sequence: {
-      useMaxWidth: true,
-      diagramMarginX: 50,
-      diagramMarginY: 10,
-      actorMargin: 50,
-      boxMargin: 10,
-      boxTextMargin: 5,
-      noteMargin: 10,
-      messageMargin: 35,
-    },
-  });
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: theme,
+      securityLevel: 'loose',
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+      },
+      sequence: {
+        useMaxWidth: true,
+        diagramMarginX: 50,
+        diagramMarginY: 10,
+        actorMargin: 50,
+        boxMargin: 10,
+        boxTextMargin: 5,
+        noteMargin: 10,
+        messageMargin: 35,
+      },
+    });
+  } catch (e) {
+    console.warn('[MilkdownEditor] Mermaid init skipped:', e);
+    return;
+  }
   
   // 延迟渲染 mermaid 代码块，确保 DOM 已准备好
   // 使用双 nextTick 确保编辑器 DOM 完全渲染
@@ -338,6 +419,7 @@ function initMermaid(): void {
 // 渲染 mermaid 代码块
 async function renderMermaidBlocks(): Promise<void> {
   if (!editorRef.value) return;
+  if (!mermaid) return;
   
   // 只查找未渲染的 mermaid 代码块
   // 注意：渲染后的 mermaid 会变成 div.mermaid，不再是 pre.language-mermaid
@@ -498,7 +580,14 @@ function applyFormat(format: string): void {
   if (!editor) return;
 
   const ctx = editor.ctx;
-  const view = ctx.get(editorViewCtx);
+  let view;
+  try {
+    view = ctx.get(editorViewCtx);
+  } catch (e) {
+    // 编辑器尚未完全注入 editorViewCtx（启动/重建瞬间）时直接跳过，避免抛出 MilkdownError 让整个 webview 崩溃
+    console.warn('[MilkdownEditor] applyFormat skipped (editorViewCtx not ready):', e);
+    return;
+  }
   const { state, dispatch } = view;
   const { marks, nodes } = state.schema;
 
@@ -592,7 +681,13 @@ function insertNode(type: string): void {
   if (!editor) return;
 
   const ctx = editor.ctx;
-  const view = ctx.get(editorViewCtx);
+  let view;
+  try {
+    view = ctx.get(editorViewCtx);
+  } catch (e) {
+    console.warn('[MilkdownEditor] insertNode skipped (editorViewCtx not ready):', e);
+    return;
+  }
   const { state, dispatch } = view;
   const parser = ctx.get(parserCtx);
 
@@ -709,8 +804,27 @@ function bindImageEvents(): void {
     }
   };
 
+  tableContextMenuHandler = (e: MouseEvent) => {
+    if (!editor) return;
+    try {
+      const view = editor.ctx.get(editorViewCtx);
+      const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (hit?.pos != null) {
+        const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, hit.pos)).scrollIntoView();
+        view.dispatch(tr);
+      }
+      const inTable = isInTable(view.state);
+      if (!inTable) return;
+      e.preventDefault();
+      emit('table-context-menu', { x: e.clientX, y: e.clientY });
+    } catch (err) {
+      console.warn('Failed to handle table context menu:', err);
+    }
+  };
+
   editorRef.value.addEventListener('click', imageClickHandler);
   editorRef.value.addEventListener('contextmenu', imageContextMenuHandler);
+  editorRef.value.addEventListener('contextmenu', tableContextMenuHandler);
 }
 
 // 移除图片事件监听
@@ -723,6 +837,10 @@ function unbindImageEvents(): void {
     if (imageContextMenuHandler) {
       editorRef.value.removeEventListener('contextmenu', imageContextMenuHandler);
       imageContextMenuHandler = null;
+    }
+    if (tableContextMenuHandler) {
+      editorRef.value.removeEventListener('contextmenu', tableContextMenuHandler);
+      tableContextMenuHandler = null;
     }
   }
 }
@@ -742,6 +860,45 @@ function redo(): void {
     callCommand(redoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to redo:', e);
+  }
+}
+
+/**
+ * 在 ProseMirror 文档的「扁平文本」中选中第 occurrence 次出现的 needle（UTF-16 索引与 JS 一致）。
+ * 用于 Rich 模式查找：与 markdown 上的第 n 个匹配尽量对齐。
+ */
+function selectPlainTextOccurrence(needle: string, occurrence: number): boolean {
+  if (!editor || !needle) return false;
+  if (occurrence < 0) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state } = view;
+    const units: Array<{ c: string; from: number }> = [];
+    state.doc.descendants((node, pos) => {
+      if (node.isText && node.text) {
+        const t = node.text;
+        for (let i = 0; i < t.length; i++) {
+          units.push({ c: t[i]!, from: pos + 1 + i });
+        }
+      }
+    });
+    const flat = units.map((u) => u.c).join('');
+    let at = -1;
+    for (let i = 0; i <= occurrence; i++) {
+      at = flat.indexOf(needle, at + 1);
+      if (at < 0) return false;
+    }
+    const endChar = at + needle.length - 1;
+    if (endChar >= units.length) return false;
+    const from = units[at]!.from;
+    const to = units[endChar]!.from + 1;
+    const sel = TextSelection.create(state.doc, from, to);
+    view.dispatch(state.tr.setSelection(sel).scrollIntoView());
+    view.focus();
+    return true;
+  } catch (e) {
+    console.warn('[Milkdown] selectPlainTextOccurrence failed:', e);
+    return false;
   }
 }
 
@@ -771,11 +928,59 @@ function clearFormat(): void {
   }
 }
 
+function dispatchRichTableOp(op: RichTableOp): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    return runRichTableOp(view, op);
+  } catch {
+    return false;
+  }
+}
+
+function getPmSelectionDiagnostics():
+  | {
+      from: number;
+      to: number;
+      parentType: string;
+      depth: number;
+      inTable: boolean;
+      cellType: string | null;
+    }
+  | null {
+  if (!editor) return null;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const sel = view.state.selection;
+    const $from = sel.$from;
+    let inTable = false;
+    let cellType: string | null = null;
+    for (let d = $from.depth; d > 0; d--) {
+      const name = $from.node(d).type.name;
+      if (name === 'table') inTable = true;
+      if (name === 'table_cell' || name === 'table_header') cellType = name;
+    }
+    return {
+      from: sel.from,
+      to: sel.to,
+      parentType: $from.parent.type.name,
+      depth: $from.depth,
+      inTable,
+      cellType,
+    };
+  } catch {
+    return null;
+  }
+}
+
 defineExpose({
   applyFormat,
   insertNode,
   getContent,
   setContent,
+  selectPlainTextOccurrence,
+  getPmSelectionDiagnostics,
+  runRichTableOp: dispatchRichTableOp,
   undo,
   redo,
   // TOC 相关功能

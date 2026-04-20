@@ -36,10 +36,6 @@ class CheckboxWidget extends WidgetType {
       height: 1.1em;
     `;
 
-    checkbox.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-    });
-
     return checkbox;
   }
 
@@ -61,35 +57,43 @@ export const taskListDecorator = (options: TaskListOptions = {}) => {
       }
 
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+        // 性能：装饰只依赖文档内容与视口范围（不依赖 selection）
+        if (update.docChanged || update.viewportChanged) {
           this.decorations = this.computeDecorations(update.view);
         }
       }
 
       computeDecorations(view: EditorView): DecorationSet {
         const decorations: Range<Decoration>[] = [];
-        const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+        const doc = view.state.doc;
+        const seenLineNumbers = new Set<number>();
 
-        for (let i = 1; i <= view.state.doc.lines; i++) {
-          const line = view.state.doc.line(i);
-          const match = line.text.match(TASK_RE);
-          if (!match) continue;
+        // 性能：只处理可见范围覆盖的行（滚动时由 viewportChanged 触发重算）
+        for (const vr of view.visibleRanges) {
+          const fromLine = doc.lineAt(vr.from).number;
+          const toLine = doc.lineAt(vr.to).number;
 
-          const isCursorLine = i === cursorLine;
-          const indent = match[1].length;
-          const markerStart = line.from + indent; // start of -
-          const checkboxText = match[3]; // [ ] or [x]
-          const checkboxStart = markerStart + match[2].length + 1; // after "- "
-          const checkboxEnd = checkboxStart + checkboxText.length;
-          const fullMarkerEnd = line.from + match[0].length; // end of "- [ ] "
-          const checked = checkboxText.toLowerCase().includes('x');
+          for (let i = fromLine; i <= toLine; i++) {
+            if (seenLineNumbers.has(i)) continue;
+            seenLineNumbers.add(i);
+            const line = doc.line(i);
+            const match = line.text.match(TASK_RE);
+            if (!match) continue;
 
-          // 始终隐藏所有标记，保持纯 WYSIWYG 样式
-          decorations.push(
-            Decoration.replace({
-              widget: new CheckboxWidget(checked, checkboxStart),
-            }).range(markerStart, fullMarkerEnd)
-          );
+            const indent = match[1].length;
+            const markerStart = line.from + indent; // start of -
+            const checkboxText = match[3]; // [ ] or [x]
+            const checkboxStart = markerStart + match[2].length + 1; // after "- "
+            const fullMarkerEnd = line.from + match[0].length; // end of "- [ ] "
+            const checked = checkboxText.toLowerCase().includes('x');
+
+            // 始终隐藏所有标记，保持纯 WYSIWYG 样式
+            decorations.push(
+              Decoration.replace({
+                widget: new CheckboxWidget(checked, checkboxStart),
+              }).range(markerStart, fullMarkerEnd)
+            );
+          }
         }
 
         return Decoration.set(decorations, true);
@@ -101,6 +105,7 @@ export const taskListDecorator = (options: TaskListOptions = {}) => {
         mousedown: (e, view) => {
           const target = e.target as HTMLElement;
           if (target.classList.contains('cm-task-checkbox')) {
+            e.preventDefault();
             const pos = view.posAtDOM(target);
             const line = view.state.doc.lineAt(pos);
             const lineText = line.text;

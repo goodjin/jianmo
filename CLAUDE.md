@@ -145,3 +145,40 @@ it('strike wraps with ~~', () => { ... });
 - Webview vitest config (`webview/vitest.config.ts`) uses jsdom environment with coverage thresholds (80% statements/functions/lines, 75% branches)
 - TypeScript strict mode, target ES2022
 - Extension is bundled as CJS (`--format=cjs`) for VSCode compatibility; `vscode` and `puppeteer` are external
+
+## 版本号规则（强制）
+
+使用语义化版本（SemVer）：`MAJOR.MINOR.PATCH`
+
+- **默认策略**：只要有改动并重新打包，至少做一次版本递增；若不确定，优先 `PATCH + 1`。
+
+### PATCH（修复/小改动）何时 +1
+
+满足任一项就用 `PATCH + 1`（例如 `1.0.0 -> 1.0.1`）：
+
+- **修 bug / 稳定性**：修 UI 测、修崩溃、修边界条件、减少偶发错误
+- **不改变对外行为的内部调整**：重构、性能优化、日志/诊断增强、构建/打包流程调整
+- **UI 细节**：样式微调、不影响用户使用习惯/快捷键/配置语义的改动
+
+### MINOR（新增功能/增强且兼容）何时 +1
+
+满足任一项就用 `MINOR + 1`（例如 `1.0.1 -> 1.1.0`）：
+
+- **新增功能**：新增命令、面板、装饰器、导出能力、编辑能力（且旧用法仍可用）
+- **可选增强**：新增配置项（默认值不改变旧行为）或新增 UI 开关（默认不影响现有用户）
+- **兼容性增强**：支持更多 Markdown 语法/更多平台差异处理，但不破坏旧输入输出
+
+### MAJOR（破坏兼容/需要适配）何时 +1
+
+满足任一项就用 `MAJOR + 1`（例如 `1.x.x -> 2.0.0`）：
+
+- **破坏兼容**：现有用户的使用方式会“直接坏掉”或必须改习惯/改配置才能继续用
+- **核心行为改变**：默认模式/默认快捷键/默认格式化规则/内容序列化结果发生显著变化
+- **协议/类型破坏**：extension ↔ webview 消息结构（`src/types`）不兼容旧版本
+- **重大架构迁移**：编辑器内核替换、持久化格式迁移、导出链路大改且不提供兼容路径
+
+### 具体操作（打包前必须完成）
+
+- **更新版本号**：根 `package.json` 与 `webview/package.json` 的 `version` 保持一致
+- **打包产物核对**：`vsce package` 产出的 VSIX 文件名应匹配版本号（例如 `markly-1.0.1.vsix`）
+

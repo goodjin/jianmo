@@ -11,6 +11,36 @@ import { spawnExtest } from './extest-spawn.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// vscode-extension-tester 在 darwin 上会在 os.tmpdir()/extest-code 建链接触发 EPERM unlink；改到仓库内可写目录
+const extestTmpDir = path.join(EXTEST_STORAGE, 'extest-tmp');
+try {
+  fs.mkdirSync(extestTmpDir, { recursive: true });
+} catch {
+  // ignore
+}
+// 注意：不要修改 TMPDIR（会影响 os.tmpdir()），否则 ExTester/Electron 启动可能失败（DevToolsActivePort 不存在）。
+
+function manualInstallVsix(vsixFile, extensionsDir) {
+  const tmp = fs.mkdtempSync(path.join(extestTmpDir, 'vsix-'));
+  try {
+    const r = spawnSync('unzip', ['-q', '-o', vsixFile, '-d', tmp], { stdio: 'inherit' });
+    if (r.status !== 0) throw new Error(`[extest] unzip vsix failed. status=${r.status}`);
+
+    const extRoot = path.join(tmp, 'extension');
+    const pkgPath = path.join(extRoot, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const id = `${pkg.publisher}.${pkg.name}-${pkg.version}`;
+    const target = path.join(extensionsDir, id);
+
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.mkdirSync(extensionsDir, { recursive: true });
+    fs.renameSync(extRoot, target);
+    console.log(`[extest] manual install ok: ${id}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 function cleanupLegacyElectronBackupOnMac() {
   if (process.platform !== 'darwin') return;
   const storageApp = path.join(EXTEST_STORAGE, 'Visual Studio Code.app');
@@ -113,15 +143,36 @@ if (!fs.existsSync(vsixFile)) {
   console.error(`[extest] 未找到 ${vsixFile}，vsce package 可能未生成预期文件名`);
   process.exit(1);
 }
-pr = spawnExtest(['install-vsix', '-s', EXTEST_STORAGE, '-e', extestExtensionsDir, '-f', vsixFile]);
-if (pr.status === null) process.exit(1);
-if (pr.status !== 0) process.exit(pr.status);
+console.log('[extest] install-vsix...');
+pr = spawnExtest(['install-vsix', '-s', EXTEST_STORAGE, '-e', extestExtensionsDir, '-f', vsixFile], { timeoutMs: 180000 });
+console.log(`[extest] install-vsix done. status=${pr.status} signal=${pr.signal ?? ''}`);
+if (pr.signal === 'SIGKILL') {
+  console.error('[extest] install-vsix 超时被终止（可能卡死）。将尝试手工解压 VSIX 安装到隔离 extensions 目录。');
+}
+if (pr.status === null) {
+  // 超时/信号终止也可能走到这里：先尝试手工安装
+  try {
+    manualInstallVsix(vsixFile, extestExtensionsDir);
+  } catch (e) {
+    console.error('[extest] 手工安装失败：', e);
+    process.exit(1);
+  }
+} else if (pr.status !== 0 || pr.signal === 'SIGKILL') {
+  try {
+    manualInstallVsix(vsixFile, extestExtensionsDir);
+  } catch (e) {
+    console.error('[extest] 手工安装也失败：', e);
+    process.exit(pr.status);
+  }
+}
 
 // 与 vscode-extension-tester 声明的 supported vscode-max 对齐；`-s` 必须与 `setup-extest-ui.mjs` 一致（内含 chromedriver）
 const args = [
   'run-tests',
   '-c',
   'max',
+  '-l',
+  'Debug',
   '-s',
   EXTEST_STORAGE,
   '-e',

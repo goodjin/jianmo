@@ -68,7 +68,8 @@ export const listDecorator = (options: ListOptions = {}) => {
       }
 
       update(update: ViewUpdate) {
-        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+        // 性能：仅在内容变化或视口变化时重算（装饰不依赖 selection）
+        if (update.docChanged || update.viewportChanged) {
           this.decorations = this.computeDecorations(update.view);
         }
       }
@@ -76,54 +77,65 @@ export const listDecorator = (options: ListOptions = {}) => {
       computeDecorations(view: EditorView): DecorationSet {
         const decorations: Range<Decoration>[] = [];
 
-        for (let i = 1; i <= view.state.doc.lines; i++) {
-          const line = view.state.doc.line(i);
+        // 性能：只处理可见范围覆盖的行（滚动时由 viewportChanged 触发重算）
+        const doc = view.state.doc;
+        const seenLineNumbers = new Set<number>();
 
-          // 始终隐藏标记，保持纯 WYSIWYG 样式
+        for (const vr of view.visibleRanges) {
+          const fromLine = doc.lineAt(vr.from).number;
+          const toLine = doc.lineAt(vr.to).number;
 
-          // 跳过任务列表行（由 taskListDecorator 处理）
-          if (/^\s*[-*+]\s+\[[ xX]\]/.test(line.text)) continue;
+          for (let i = fromLine; i <= toLine; i++) {
+            if (seenLineNumbers.has(i)) continue;
+            seenLineNumbers.add(i);
+            const line = doc.line(i);
 
-          const bulletMatch = line.text.match(BULLET_RE);
-          if (bulletMatch) {
-            const indent = bulletMatch[1].length;
-            const markerStart = line.from + indent;
-            const markerEnd = markerStart + bulletMatch[2].length + 1; // marker + space
-            decorations.push(
-              Decoration.replace({ widget: new BulletWidget() }).range(markerStart, markerEnd)
-            );
-            continue;
-          }
+            // 始终隐藏标记，保持纯 WYSIWYG 样式
 
-          const orderedMatch = line.text.match(ORDERED_RE);
-          if (orderedMatch) {
-            const indent = orderedMatch[1].length;
-            const markerStart = line.from + indent;
-            const markerEnd = markerStart + orderedMatch[2].length + 2; // number + . + space
-            decorations.push(
-              Decoration.replace({ widget: new OrderedNumberWidget(orderedMatch[2]) }).range(markerStart, markerEnd)
-            );
-            continue;
-          }
+            // 跳过任务列表行（由 taskListDecorator 处理）
+            if (/^\s*[-*+]\s+\[[ xX]\]/.test(line.text)) continue;
 
-          const quoteMatch = line.text.match(QUOTE_RE);
-          if (quoteMatch) {
-            const indent = quoteMatch[1].length;
-            const markerStart = line.from + indent;
-            const markerEnd = markerStart + quoteMatch[0].length - indent;
-            decorations.push(
-              Decoration.replace({ widget: new QuoteBarWidget() }).range(markerStart, markerEnd)
-            );
-            // 引用内容样式
-            if (markerEnd < line.to) {
+            const bulletMatch = line.text.match(BULLET_RE);
+            if (bulletMatch) {
+              const indent = bulletMatch[1].length;
+              const markerStart = line.from + indent;
+              const markerEnd = markerStart + bulletMatch[2].length + 1; // marker + space
               decorations.push(
-                Decoration.mark({
-                  class: 'cm-quote-content',
-                  attributes: {
-                    style: 'color: var(--vscode-textBlockQuote-foreground, #6a737d); font-style: italic;',
-                  },
-                }).range(markerEnd, line.to)
+                Decoration.replace({ widget: new BulletWidget() }).range(markerStart, markerEnd)
               );
+              continue;
+            }
+
+            const orderedMatch = line.text.match(ORDERED_RE);
+            if (orderedMatch) {
+              const indent = orderedMatch[1].length;
+              const markerStart = line.from + indent;
+              const markerEnd = markerStart + orderedMatch[2].length + 2; // number + . + space
+              decorations.push(
+                Decoration.replace({ widget: new OrderedNumberWidget(orderedMatch[2]) }).range(markerStart, markerEnd)
+              );
+              continue;
+            }
+
+            const quoteMatch = line.text.match(QUOTE_RE);
+            if (quoteMatch) {
+              const indent = quoteMatch[1].length;
+              const markerStart = line.from + indent;
+              const markerEnd = markerStart + quoteMatch[0].length - indent;
+              decorations.push(
+                Decoration.replace({ widget: new QuoteBarWidget() }).range(markerStart, markerEnd)
+              );
+              // 引用内容样式
+              if (markerEnd < line.to) {
+                decorations.push(
+                  Decoration.mark({
+                    class: 'cm-quote-content',
+                    attributes: {
+                      style: 'color: var(--vscode-textBlockQuote-foreground, #6a737d); font-style: italic;',
+                    },
+                  }).range(markerEnd, line.to)
+                );
+              }
             }
           }
         }

@@ -4,22 +4,24 @@
       <span class="outline-title">大纲</span>
     </div>
     <div class="outline-list">
-      <div
+      <button
         v-for="item in outline"
         :key="item.id"
         class="outline-item"
         :class="{ active: item.id === activeHeadingId }"
         :style="{ paddingLeft: (item.level - 1) * 12 + 8 + 'px' }"
+        type="button"
+        :aria-current="item.id === activeHeadingId ? 'true' : undefined"
         @click="handleClick(item)"
       >
         {{ item.text }}
-      </div>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import type { EditorMode } from '../../src/types';
 
 interface OutlineItem {
@@ -40,6 +42,9 @@ const emit = defineEmits<{
 
 const outline = ref<OutlineItem[]>([]);
 const activeHeadingId = ref<string>('');
+const OUTLINE_PARSE_DEBOUNCE_MS = 250;
+let parseTimer: ReturnType<typeof setTimeout> | null = null;
+let hasParsedOnce = false;
 
 // 生成标题 ID（与 MilkdownEditor 保持一致）
 function generateHeadingId(text: string): string {
@@ -83,10 +88,31 @@ function parseOutline(content: string): OutlineItem[] {
 watch(
   () => props.content,
   (newContent) => {
-    outline.value = parseOutline(newContent);
+    // 首次渲染保持立即解析，后续 content 变更使用 debounce（连续输入取消上一次）
+    if (!hasParsedOnce) {
+      hasParsedOnce = true;
+      outline.value = parseOutline(newContent);
+      return;
+    }
+
+    if (parseTimer) {
+      clearTimeout(parseTimer);
+      parseTimer = null;
+    }
+    parseTimer = setTimeout(() => {
+      outline.value = parseOutline(newContent);
+      parseTimer = null;
+    }, OUTLINE_PARSE_DEBOUNCE_MS);
   },
   { immediate: true }
 );
+
+onBeforeUnmount(() => {
+  if (parseTimer) {
+    clearTimeout(parseTimer);
+    parseTimer = null;
+  }
+});
 
 function handleClick(item: OutlineItem) {
   activeHeadingId.value = item.id;
@@ -100,25 +126,23 @@ const currentMode = computed(() => props.currentMode);
 .outline-panel {
   width: 200px;
   min-width: 200px;
-  background: var(--vscode-editorWidget-background);
-  border-left: 1px solid var(--vscode-editorWidget-border);
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border-left: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .outline-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border);
-  background: var(--vscode-editorWidget-background);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
 }
 
 .outline-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--vscode-foreground);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .outline-list {
@@ -133,7 +157,11 @@ const currentMode = computed(() => props.currentMode);
   font-size: 13px;
   color: var(--vscode-foreground);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--markly-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  width: calc(100% - 16px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
