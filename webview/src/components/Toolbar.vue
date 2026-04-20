@@ -367,6 +367,26 @@ const tableStructureButtons = computed(() => {
       label: `表格：右侧插入列（${m}+⌥+→）`,
     },
     {
+      id: 'toggleHeaderRow',
+      icon: 'H',
+      label: '表格：切换表头行',
+    },
+    {
+      id: 'alignLeft',
+      icon: 'L',
+      label: '表格：当前列左对齐',
+    },
+    {
+      id: 'alignCenter',
+      icon: 'C',
+      label: '表格：当前列居中',
+    },
+    {
+      id: 'alignRight',
+      icon: 'R',
+      label: '表格：当前列右对齐',
+    },
+    {
       id: 'deleteRow',
       icon: '\u2296',
       label: `表格：删除当前行（${m}+⌥+Backspace）`,

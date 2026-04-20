@@ -240,6 +240,10 @@ const RICH_TABLE_OPS = new Set<string>([
   'addRowBefore',
   'addColAfter',
   'addColBefore',
+  'toggleHeaderRow',
+  'alignLeft',
+  'alignCenter',
+  'alignRight',
   'deleteRow',
   'deleteCol',
 ]);
@@ -249,6 +253,10 @@ const RICH_TABLE_MENU_ITEMS: Array<{ op: RichTableOp; label: string }> = [
   { op: 'addRowAfter', label: '下方插入行' },
   { op: 'addColBefore', label: '左侧插入列' },
   { op: 'addColAfter', label: '右侧插入列' },
+  { op: 'toggleHeaderRow', label: '切换表头行' },
+  { op: 'alignLeft', label: '当前列左对齐' },
+  { op: 'alignCenter', label: '当前列居中' },
+  { op: 'alignRight', label: '当前列右对齐' },
   { op: 'deleteRow', label: '删除当前行' },
   { op: 'deleteCol', label: '删除当前列' },
 ];
