@@ -206,6 +206,7 @@ import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
+import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
 import {
   patternToRegExp,
   findAllMatchesInText,
@@ -625,7 +626,7 @@ function ensureEditorFromInit(): boolean {
   // e2e 调试桥：让真 UI 测试能稳定读取/驱动编辑器状态（不依赖 DOM 可见文本/落盘时序）
   patchConsoleOnce();
   installGlobalErrorGuards();
-  window.__marklyE2E = {
+  const bridge = {
     getContent: () => {
       if (currentMode.value === 'rich') {
         const c = content.value ?? '';
@@ -764,7 +765,23 @@ function ensureEditorFromInit(): boolean {
       if (currentMode.value !== 'rich') return false;
       return Boolean((milkdownRef.value as any)?.e2eOutdentListItem?.());
     },
-  };
+  } as const;
+
+  // M10-3：bridge 白名单契约（防止无意中暴露更多内部能力）
+  // 运行时校验：若有人修改了 bridge 但忘了更新 contract，会在控制台给出显式提示（E2E/单测也会门禁）。
+  try {
+    const actual = Object.keys(bridge).sort();
+    const expected = [...MARKLY_E2E_BRIDGE_KEYS].sort();
+    const same =
+      actual.length === expected.length && actual.every((k, i) => k === expected[i]);
+    if (!same) {
+      console.warn('[E2E bridge] contract mismatch:', { actual, expected });
+    }
+  } catch {
+    // ignore
+  }
+
+  window.__marklyE2E = Object.freeze({ ...bridge });
 
   return true;
 }
