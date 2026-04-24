@@ -183,7 +183,7 @@ async function enterMarklyEditorUi(editor) {
       // eslint-disable-next-line no-await-in-loop
       await driver.findElement(By.css('.cm-editor'));
       // eslint-disable-next-line no-await-in-loop
-      await driver.findElement(By.css('.toolbar-btn.mode-btn[title="IR Mode (WYSIWYG)"]'));
+      await driver.findElement(By.css('.toolbar-btn.mode-btn[title="Rich Mode (WYSIWYG)"]'));
       // eslint-disable-next-line no-await-in-loop
       await driver.findElement(By.css('.toolbar-btn.mode-btn[title="Source Mode"]'));
 

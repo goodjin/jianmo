@@ -19,11 +19,10 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
 import { Plugin } from '@milkdown/prose/state';
-import { isInTable } from 'prosemirror-tables';
-// 使用 Shiki 替代 Prism 做代码高亮
-import { shikiHighlight } from '../plugins/shiki-highlight';
+import { CellSelection, isInTable, TableMap, selectedRect } from 'prosemirror-tables';
+import { keymap } from 'prosemirror-keymap';
+import { Fragment, Slice } from '@milkdown/prose/model';
 import { footnote } from '../plugins/footnote';
-import mermaid from 'mermaid';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
@@ -31,16 +30,24 @@ import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import { TextSelection } from '@milkdown/prose/state';
 import type { ExtensionConfig } from '../../src/types';
 import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
+import type { RichPerfTier } from '../utils/richPerfTier';
+import { setRuntimeRichPerfTier } from '../utils/richPerfRuntime';
+import { decideTableGridSelectionFillMapping, parseTablePasteMatrix } from '../plugins/markly-table-rich';
 
 // TOC 标记
 const TOC_PLACEHOLDER = '<!-- TOC -->';
 const TOC_REGEX = /<!--\s*TOC\s*-->/gi;
 
-const props = defineProps<{
-  content: string;
-  config: ExtensionConfig;
-  baseUrl?: string; // 用于解析相对图片路径
-}>();
+const props = withDefaults(
+  defineProps<{
+    content: string;
+    config: ExtensionConfig;
+    baseUrl?: string; // 用于解析相对图片路径
+    /** M8：由 App 计算（含“仍要完整渲染”覆盖） */
+    richPerfEffectiveTier?: RichPerfTier;
+  }>(),
+  { richPerfEffectiveTier: 0 as RichPerfTier }
+);
 
 // 防御性 computed：为 config 提供默认值（优化：避免每次创建新对象）
 const defaultConfig = {
@@ -50,6 +57,10 @@ const defaultConfig = {
     theme: 'light',
     lineNumbers: false,
     wordWrap: 'on',
+    wrapPolicy: 'autoWrap',
+    tableCellWrap: 'wrap',
+    enableMermaid: true,
+    enableShiki: false,
   }
 };
 
@@ -101,6 +112,30 @@ let isInternalChange = false;
 let lastEmittedContent = '';
 let pendingUpdate: { content: string; cursorPos: number } | null = null;
 let updateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+let mermaidApi: (typeof import('mermaid')) | null = null;
+let mermaidObserver: IntersectionObserver | null = null;
+const mermaidRenderQueue: HTMLPreElement[] = [];
+let mermaidQueuePump = false;
+const mermaidSvgCache: Map<string, string> = new Map();
+const MERMAID_SVG_CACHE_MAX = 120;
+let mermaidRuntimeInitialized = false;
+
+async function ensureMermaidLoaded(): Promise<(typeof import('mermaid')) | null> {
+  if (mermaidApi) return mermaidApi;
+  const enabled = (safeConfig.value as any)?.editor?.enableMermaid !== false;
+  if (!enabled) return null;
+  // M8 档 2：关闭 Mermaid
+  if ((props.richPerfEffectiveTier ?? 0) >= 2) return null;
+  try {
+    const mod: any = await import('mermaid');
+    mermaidApi = (mod?.default ?? mod) as any;
+    return mermaidApi;
+  } catch (e) {
+    console.warn('[MilkdownEditor] mermaid lazy import failed (ignored):', e);
+    return null;
+  }
+}
 
 // 图片事件处理函数引用（用于清理）
 let imageClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -285,35 +320,73 @@ async function initEditor(): Promise<void> {
       return;
     }
 
-    // 逐步初始化，便于定位问题
-    // 注意：部分 ctx（例如 listenerCtx / editorViewCtx）在插件注入完成前不可用；
-    // 在这里做“只设置基础 ctx”，避免初始化阶段因 ctx.get(...) 未捕获抛错导致整个 webview 进入红字 Error 页。
-    let editorBuilder = Editor.make().config((ctx) => {
-      ctx.set(rootCtx, editorRef.value);
-      ctx.set(defaultValueCtx, props.content || '');
-    });
+    setRuntimeRichPerfTier(props.richPerfEffectiveTier ?? 0);
 
-    editorBuilder = editorBuilder.use(commonmark);
+    // M6-2 / M8-3：档 0 才加载 Shiki 插件；档 ≥1 不加载，减少首包与主线程压力。
+    const shikiEnabled = (safeConfig.value as any)?.editor?.enableShiki === true && (props.richPerfEffectiveTier ?? 0) === 0;
+    const buildEditor = async (withShiki: boolean): Promise<Editor> => {
+      let b = Editor.make().config((ctx) => {
+        ctx.set(rootCtx, editorRef.value);
+        ctx.set(defaultValueCtx, props.content || '');
+      });
 
-    editorBuilder = editorBuilder.use(gfm);
-    // GFM preset 默认未启用列宽拖拽；补上后表格编辑体验更接近常见富文本编辑器
-    editorBuilder = editorBuilder.use(columnResizingPlugin);
-    editorBuilder = editorBuilder.use(marklyTableStructureKeymapPlugin);
-    editorBuilder = editorBuilder.use(marklyTableGridPastePlugin);
-    editorBuilder = editorBuilder.use(tableContextMilkdownPlugin);
+      b = b.use(commonmark);
+      b = b.use(gfm);
+      // GFM preset 默认未启用列宽拖拽；补上后表格编辑体验更接近常见富文本编辑器
+      b = b.use(columnResizingPlugin);
+      b = b.use(marklyTableStructureKeymapPlugin);
+      b = b.use(marklyTableGridPastePlugin);
+      b = b.use(tableContextMilkdownPlugin);
+      b = b.use(
+        $prose(() =>
+          keymap({
+            Tab: (state, dispatch) => {
+              try {
+                if (isInTable(state)) return false;
+              } catch {
+                // ignore
+              }
+              const li = state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
+              if (!li) return false;
+              return sinkListItem(li)(state, dispatch);
+            },
+            'Shift-Tab': (state, dispatch) => {
+              try {
+                if (isInTable(state)) return false;
+              } catch {
+                // ignore
+              }
+              const li = state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
+              if (!li) return false;
+              return liftListItem(li)(state, dispatch);
+            },
+          })
+        )
+      );
 
-    // shikiHighlight 在部分 ExTester/打包环境下会触发 prosemirror-highlight 初始化异常（reading 'state'），导致 Rich 无法启动；
-    // Rich 核心编辑能力不依赖语法高亮，先禁用以恢复可用性与 E2E 稳定性。
+      if (withShiki) {
+        // M7-1：避免把 shiki 大包强行打进主 chunk；仅在启用时再动态加载插件实现
+        const mod: any = await import('../plugins/shiki-highlight');
+        const shikiHighlight = mod?.shikiHighlight;
+        if (typeof shikiHighlight === 'function') b = b.use(shikiHighlight());
+      }
 
-    editorBuilder = editorBuilder.use(footnote);
-    // listEdit 依赖 Prose schema/ctx 某些切片，在部分打包/运行环境下会触发 `schema.nodes.blockquote` 为 undefined 导致 Rich 初始化失败；
-    // Rich 基础能力不依赖它，先禁用以保证编辑器可用与 E2E 稳定。
+      b = b.use(footnote);
+      b = b.use(listener);
+      b = b.use(history);
+      return await b.create();
+    };
 
-    editorBuilder = editorBuilder.use(listener);
-
-    editorBuilder = editorBuilder.use(history);
-
-    editor = await editorBuilder.create();
+    try {
+      editor = await buildEditor(shikiEnabled);
+    } catch (e) {
+      if (shikiEnabled) {
+        console.warn('[MilkdownEditor] create failed with shikiHighlight, retry without shiki:', e);
+        editor = await buildEditor(false);
+      } else {
+        throw e;
+      }
+    }
 
     // 在 editor 创建完成后再注册 listener（此时 ctx 已完整注入）
     try {
@@ -334,12 +407,19 @@ async function initEditor(): Promise<void> {
     // 绑定图片点击事件
     bindImageEvents();
 
-    // 初始化 mermaid
-    initMermaid();
-
-    // 通知父组件编辑器已准备好
+    // M8-1：先让 Rich 可交互，再排队初始化 Mermaid/视口渲染
     console.log('[MilkdownEditor] Emitting ready event');
     emit('ready', true);
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(
+        () => {
+          initMermaid();
+        },
+        { timeout: 2000 }
+      );
+    } else {
+      setTimeout(() => initMermaid(), 0);
+    }
   } catch (error) {
     console.error('[MilkdownEditor] Failed to create editor:', error);
     console.error('[MilkdownEditor] Error stack:', (error as Error).stack);
@@ -354,7 +434,10 @@ onUnmounted(() => {
     clearTimeout(updateTimeout);
     updateTimeout = null;
   }
-  
+  teardownMermaidObserver();
+  mermaidRenderQueue.length = 0;
+  mermaidQueuePump = false;
+
   // 移除图片事件监听器
   unbindImageEvents();
   
@@ -370,90 +453,161 @@ onUnmounted(() => {
   }
 });
 
-// 初始化 mermaid
-function initMermaid(): void {
-  if (!mermaid) return;
-  // 确定主题
-  let theme = 'default';
-  const config = safeConfig.value;
-  if (config?.editor?.theme === 'dark') {
-    theme = 'dark';
-  } else if (config?.editor?.theme === 'auto') {
-    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
-  }
-  
-  try {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: theme,
-      securityLevel: 'loose',
-      flowchart: {
-        useMaxWidth: true,
-        htmlLabels: true,
-      },
-      sequence: {
-        useMaxWidth: true,
-        diagramMarginX: 50,
-        diagramMarginY: 10,
-        actorMargin: 50,
-        boxMargin: 10,
-        boxTextMargin: 5,
-        noteMargin: 10,
-        messageMargin: 35,
-      },
-    });
-  } catch (e) {
-    console.warn('[MilkdownEditor] Mermaid init skipped:', e);
-    return;
-  }
-  
-  // 延迟渲染 mermaid 代码块，确保 DOM 已准备好
-  // 使用双 nextTick 确保编辑器 DOM 完全渲染
-  nextTick(() => {
-    nextTick(() => {
-      renderMermaidBlocks();
-    });
-  });
+function teardownMermaidObserver(): void {
+  mermaidObserver?.disconnect();
+  mermaidObserver = null;
+  mermaidRenderQueue.length = 0;
+  mermaidQueuePump = false;
 }
 
-// 渲染 mermaid 代码块
-async function renderMermaidBlocks(): Promise<void> {
+function setupMermaidAfterDom(): void {
   if (!editorRef.value) return;
-  if (!mermaid) return;
-  
-  // 只查找未渲染的 mermaid 代码块
-  // 注意：渲染后的 mermaid 会变成 div.mermaid，不再是 pre.language-mermaid
-  // 所以直接查询 pre.language-mermaid 即可，无需依赖 dataset 标记
-  const codeBlocks = editorRef.value.querySelectorAll('pre.language-mermaid');
-  
-  for (const pre of codeBlocks) {
-    const code = pre.querySelector('code');
-    if (!code) continue;
-    
-    const mermaidCode = code.textContent || '';
-    if (!mermaidCode.trim()) continue;
-    
-    try {
-      // 生成唯一 ID
-      const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      // 使用 mermaid 渲染
-      const { svg } = await mermaid.render(id, mermaidCode);
-      
-      // 创建容器
-      const container = document.createElement('div');
-      container.className = 'mermaid';
-      container.dataset.mermaidRendered = 'true'; // 标记已渲染
-      container.innerHTML = svg;
-      
-      // 替换原来的 pre 元素
-      pre.parentNode?.replaceChild(container, pre);
-    } catch (error) {
-      console.error('Mermaid render error:', error);
-      // 标记渲染失败
-      pre.dataset.mermaidRendered = 'error';
-    }
+  if ((props.richPerfEffectiveTier ?? 0) >= 2) return;
+  teardownMermaidObserver();
+  if (typeof IntersectionObserver === 'undefined') {
+    void renderMermaidBlocksLegacy();
+    return;
   }
+  mermaidObserver = new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (en.isIntersecting) {
+          const pre = en.target as HTMLPreElement;
+          if (pre.dataset.mermaidRenderDone) continue;
+          if (pre.dataset.mermaidRendered === 'error') continue;
+          enqueueMermaidPre(pre);
+        }
+      }
+    },
+    { root: null, rootMargin: '200px 0px', threshold: 0.01 }
+  );
+  for (const pre of editorRef.value.querySelectorAll('pre.language-mermaid')) {
+    mermaidObserver!.observe(pre);
+  }
+}
+
+function enqueueMermaidPre(pre: HTMLPreElement): void {
+  if (!pre.isConnected) return;
+  if (pre.dataset.mermaidRenderDone) return;
+  if (pre.dataset.mermaidRendered === 'error') return;
+  if (pre.dataset.mermaidQueued) return;
+  pre.dataset.mermaidQueued = '1';
+  mermaidRenderQueue.push(pre);
+  void pumpMermaidRenderQueue();
+}
+
+async function pumpMermaidRenderQueue(): Promise<void> {
+  if (mermaidQueuePump) return;
+  mermaidQueuePump = true;
+  while (mermaidRenderQueue.length) {
+    const pre = mermaidRenderQueue.shift()!;
+    delete pre.dataset.mermaidQueued;
+    if (!pre.isConnected) continue;
+    if ((props.richPerfEffectiveTier ?? 0) >= 2) break;
+    const m = await ensureMermaidLoaded();
+    if (!m) break;
+    await renderMermaidForPre(pre, m);
+    await new Promise<void>((resolve) => {
+      const w = window as unknown as { requestIdleCallback?: (c: () => void, o?: { timeout: number }) => void };
+      if (w.requestIdleCallback) w.requestIdleCallback(() => resolve(), { timeout: 200 });
+      else setTimeout(() => resolve(), 16);
+    });
+  }
+  mermaidQueuePump = false;
+}
+
+async function renderMermaidForPre(
+  pre: HTMLPreElement,
+  m: NonNullable<Awaited<ReturnType<typeof ensureMermaidLoaded>>>
+): Promise<void> {
+  if ((props.richPerfEffectiveTier ?? 0) >= 2) return;
+  const code = pre.querySelector('code');
+  if (!code) {
+    pre.dataset.mermaidRenderDone = '1';
+    return;
+  }
+  const mermaidCode = code.textContent || '';
+  if (!mermaidCode.trim()) {
+    pre.dataset.mermaidRenderDone = '1';
+    return;
+  }
+  try {
+    const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    let svg: string | null = mermaidSvgCache.get(mermaidCode) ?? null;
+    if (!svg) {
+      const r = await m.render(id, mermaidCode);
+      svg = r.svg;
+      mermaidSvgCache.set(mermaidCode, svg);
+      if (mermaidSvgCache.size > MERMAID_SVG_CACHE_MAX) {
+        const first = mermaidSvgCache.keys().next().value as string;
+        mermaidSvgCache.delete(first);
+      }
+    }
+    if (!pre.isConnected) return;
+    const container = document.createElement('div');
+    container.className = 'mermaid';
+    container.dataset.mermaidRendered = 'true';
+    container.innerHTML = svg;
+    pre.parentNode?.replaceChild(container, pre);
+  } catch (error) {
+    console.error('Mermaid render error:', error);
+    pre.dataset.mermaidRendered = 'error';
+    pre.dataset.mermaidRenderDone = '1';
+  }
+}
+
+async function renderMermaidBlocksLegacy(): Promise<void> {
+  if (!editorRef.value) return;
+  const m = await ensureMermaidLoaded();
+  if (!m) return;
+  for (const pre of editorRef.value.querySelectorAll('pre.language-mermaid')) {
+    await renderMermaidForPre(pre as HTMLPreElement, m);
+    await new Promise<void>((r) => setTimeout(r, 0));
+  }
+}
+
+// 初始化 mermaid（可重复调用；initialize 只执行一次）
+function initMermaid(): void {
+  void ensureMermaidLoaded()
+    .then((m) => {
+      if (!m) return;
+      if (!mermaidRuntimeInitialized) {
+        let theme = 'default';
+        const config = safeConfig.value;
+        if (config?.editor?.theme === 'dark') {
+          theme = 'dark';
+        } else if (config?.editor?.theme === 'auto') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+        }
+        try {
+          m.initialize({
+            startOnLoad: false,
+            theme: theme,
+            securityLevel: 'loose',
+            flowchart: { useMaxWidth: true, htmlLabels: true },
+            sequence: {
+              useMaxWidth: true,
+              diagramMarginX: 50,
+              diagramMarginY: 10,
+              actorMargin: 50,
+              boxMargin: 10,
+              boxTextMargin: 5,
+              noteMargin: 10,
+              messageMargin: 35,
+            },
+          });
+          mermaidRuntimeInitialized = true;
+        } catch (e) {
+          console.warn('[MilkdownEditor] Mermaid init skipped:', e);
+        }
+      }
+      nextTick(() => {
+        nextTick(() => {
+          if (mermaidApi && mermaidRuntimeInitialized) setupMermaidAfterDom();
+        });
+      });
+    })
+    .catch(() => {});
 }
 
 watch(
@@ -478,6 +632,24 @@ watch(
   }
 );
 
+watch(
+  () => props.richPerfEffectiveTier,
+  (t) => {
+    setRuntimeRichPerfTier(t ?? 0);
+    if (t === 2) {
+      teardownMermaidObserver();
+    } else {
+      nextTick(() => {
+        nextTick(() => {
+          if ((props.richPerfEffectiveTier ?? 0) >= 2) return;
+          if (mermaidApi && mermaidRuntimeInitialized) setupMermaidAfterDom();
+          else initMermaid();
+        });
+      });
+    }
+  }
+);
+
 function scheduleUpdate(): void {
   if (updateTimeout) {
     clearTimeout(updateTimeout);
@@ -488,11 +660,10 @@ function scheduleUpdate(): void {
       isInternalChange = true;
       setContent(pendingUpdate.content);
 
-      // 使用 requestAnimationFrame 确保在下一帧重置标志
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          isInternalChange = false;
-        });
+      // 注意：这里的 internalChange 只用于屏蔽“props 同步”引发的回传；不能覆盖用户紧随其后的真实编辑。
+      // 用 microtask 尽快释放标志，避免 E2E/用户在 setContent 后立即插入节点时 content 回传被吞掉。
+      queueMicrotask(() => {
+        isInternalChange = false;
       });
 
       pendingUpdate = null;
@@ -567,9 +738,13 @@ function setContent(content: string): void {
 
     editorView.dispatch(tr);
 
-    // 渲染 mermaid 代码块
+    // Mermaid：视口可见时再渲染；档 2 跳过
     nextTick(() => {
-      renderMermaidBlocks();
+      nextTick(() => {
+        if ((props.richPerfEffectiveTier ?? 0) >= 2) return;
+        if (mermaidApi && mermaidRuntimeInitialized) setupMermaidAfterDom();
+        else initMermaid();
+      });
     });
   } catch (e) {
     console.error('Failed to set content:', e);
@@ -654,14 +829,16 @@ function applyFormat(format: string): void {
       return;
     case 'indent':
       // 缩进：使用 sinkListItem
-      if (nodes.list_item) {
-        command = sinkListItem(nodes.list_item);
+      {
+        const li = nodes.list_item ?? state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
+        if (li) command = sinkListItem(li);
       }
       break;
     case 'outdent':
       // 取消缩进：使用 liftListItem
-      if (nodes.list_item) {
-        command = liftListItem(nodes.list_item);
+      {
+        const li = nodes.list_item ?? state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
+        if (li) command = liftListItem(li);
       }
       break;
     case 'clearFormat':
@@ -942,14 +1119,299 @@ function simulateRichTablePaste(payload: { plain?: string; html?: string }): boo
   if (!editor) return false;
   try {
     const view = editor.ctx.get(editorViewCtx);
-    if (!isInTable(view.state)) return false;
-    // 通过 window 事件把剪贴板数据传给 paste 插件（用于 E2E：避免受系统剪贴板权限影响）
-    window.dispatchEvent(
-      new CustomEvent('markly:simulateTablePaste', {
-        detail: { plain: payload.plain ?? '', html: payload.html ?? '' },
-      })
-    );
+    view.focus();
+    const html = payload.html ?? '';
+    const plain = payload.plain ?? '';
+
+    // CellSelection：直接按“填充粘贴（不扩表）”规则执行（用于 E2E，避免 DOM paste 丢失 CellSelection）
+    if (view.state.selection instanceof CellSelection) {
+      const parsed = parseTablePasteMatrix(html, plain);
+      const normPlain = String(plain ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const grid =
+        parsed.grid ??
+        // 单列多行：作为 Hx1，允许 repeatCol
+        (() => {
+          if (!normPlain.trim()) return null;
+          if (normPlain.includes('\t')) return null;
+          if (normPlain.includes(',')) return null;
+          if (!normPlain.includes('\n')) return null;
+          const lines = normPlain.split('\n');
+          while (lines.length && lines[lines.length - 1]!.trim() === '') lines.pop();
+          if (lines.length <= 1) return null;
+          return lines.map((ln) => [String(ln ?? '').trim()]);
+        })() ??
+        // 单值：作为 1x1，走 broadcast
+        (normPlain.trim() && !normPlain.includes('\n') && !normPlain.includes('\t') ? [[normPlain.trim()]] : null);
+      if (!grid) return false;
+
+      const rect = selectedRect(view.state);
+      const table = view.state.doc.nodeAt(rect.tableStart - 1);
+      if (!table) return false;
+      const map = TableMap.get(table);
+      const selHeight = rect.bottom - rect.top;
+      const selWidth = rect.right - rect.left;
+      const mapping = decideTableGridSelectionFillMapping({
+        gridHeight: grid.length,
+        gridWidth: Math.max(1, ...grid.map((r) => r.length)),
+        selHeight,
+        selWidth,
+      });
+      if (mapping.mode === 'reject') return false;
+
+      let tr = view.state.tr;
+      const { schema } = view.state;
+      for (let r = 0; r < selHeight; r++) {
+        for (let c = 0; c < selWidth; c++) {
+          const row = rect.top + r;
+          const col = rect.left + c;
+          const cellOffset = map.map[row * map.width + col];
+          if (cellOffset == null) continue;
+          const cellPos = rect.tableStart + cellOffset;
+          const cellNode = tr.doc.nodeAt(cellPos);
+          if (!cellNode) continue;
+
+          const pick = () => {
+            if (mapping.mode === 'broadcast') return grid[0]?.[0] ?? '';
+            if (mapping.mode === 'exact') return grid[r]?.[c] ?? '';
+            if (mapping.mode === 'repeatRow') return grid[0]?.[c] ?? '';
+            if (mapping.mode === 'repeatCol') return grid[r]?.[0] ?? '';
+            return '';
+          };
+
+          const text = String(pick() ?? '');
+          const para = schema.nodes.paragraph?.create(null, text ? schema.text(text) : null);
+          if (!para) continue;
+          tr = tr.replaceWith(cellPos + 1, cellPos + cellNode.nodeSize - 1, Fragment.from(para));
+        }
+      }
+      if (!tr.docChanged) return false;
+      view.dispatch(tr.scrollIntoView());
+      return true;
+    }
+
+    // 其它场景：复用真实 paste 事件链
+    try {
+      const evt = new Event('paste', { bubbles: true, cancelable: true }) as any;
+      Object.defineProperty(evt, 'clipboardData', {
+        value: {
+          getData: (t: string) => (t === 'text/html' ? html : t === 'text/plain' ? plain : ''),
+        },
+      });
+      view.dom.dispatchEvent(evt);
+      return true;
+    } catch {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function setRichTableCellSelection(payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state } = view;
+    const sel = state.selection;
+    const $from = sel.$from;
+    let tableDepth = -1;
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type.name === 'table') {
+        tableDepth = d;
+        break;
+      }
+    }
+    if (tableDepth < 0) return false;
+
+    const table = $from.node(tableDepth);
+    const tablePos = $from.before(tableDepth);
+    const tableStart = tablePos + 1;
+    const map = TableMap.get(table);
+
+    const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+    const rs = clamp(Math.floor(payload.rowStart), 0, map.height - 1);
+    const re = clamp(Math.floor(payload.rowEnd), 0, map.height - 1);
+    const cs = clamp(Math.floor(payload.colStart), 0, map.width - 1);
+    const ce = clamp(Math.floor(payload.colEnd), 0, map.width - 1);
+    const rowStart = Math.min(rs, re);
+    const rowEnd = Math.max(rs, re);
+    const colStart = Math.min(cs, ce);
+    const colEnd = Math.max(cs, ce);
+
+    const anchorCell = tableStart + map.positionAt(rowStart, colStart, table);
+    const headCell = tableStart + map.positionAt(rowEnd, colEnd, table);
+    const nextSel = new CellSelection(state.doc.resolve(anchorCell), state.doc.resolve(headCell));
+    view.dispatch(state.tr.setSelection(nextSel).scrollIntoView());
+    view.focus();
     return true;
+  } catch (e) {
+    console.warn('[Milkdown] setRichTableCellSelection failed:', e);
+    return false;
+  }
+}
+
+function e2eSelectFirstTableBodyCell(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state } = view;
+    let tablePos: number | null = null;
+    let tableNode: any = null;
+    state.doc.descendants((node, pos) => {
+      if (tablePos != null) return false;
+      if (node?.type?.name === 'table') {
+        tablePos = pos;
+        tableNode = node;
+        return false;
+      }
+      return true;
+    });
+    if (tablePos == null || !tableNode) return false;
+    const map = TableMap.get(tableNode);
+    const row = Math.min(1, Math.max(0, map.height - 1));
+    const col = 0;
+    const cellOffset = map.positionAt(row, col, tableNode);
+    const cellPos = tablePos + 1 + cellOffset;
+    const tr = state.tr.setSelection(TextSelection.create(state.doc, cellPos + 1)).scrollIntoView();
+    view.dispatch(tr);
+    view.focus();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function e2eSetCellSelectionInFirstTable(payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state } = view;
+    let tablePos: number | null = null;
+    let tableNode: any = null;
+    state.doc.descendants((node, pos) => {
+      if (tablePos != null) return false;
+      if (node?.type?.name === 'table') {
+        tablePos = pos;
+        tableNode = node;
+        return false;
+      }
+      return true;
+    });
+    if (tablePos == null || !tableNode) return false;
+    const map = TableMap.get(tableNode);
+    const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+    const rs = clamp(Math.floor(payload.rowStart), 0, map.height - 1);
+    const re = clamp(Math.floor(payload.rowEnd), 0, map.height - 1);
+    const cs = clamp(Math.floor(payload.colStart), 0, map.width - 1);
+    const ce = clamp(Math.floor(payload.colEnd), 0, map.width - 1);
+    const rowStart = Math.min(rs, re);
+    const rowEnd = Math.max(rs, re);
+    const colStart = Math.min(cs, ce);
+    const colEnd = Math.max(cs, ce);
+    const anchor = tablePos + 1 + map.positionAt(rowStart, colStart, tableNode);
+    const head = tablePos + 1 + map.positionAt(rowEnd, colEnd, tableNode);
+    const nextSel = new CellSelection(state.doc.resolve(anchor), state.doc.resolve(head));
+    view.dispatch(state.tr.setSelection(nextSel).scrollIntoView());
+    view.focus();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function e2eSelectListItemText(payload: { index: number }): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state } = view;
+    const want = Math.max(0, Math.floor(payload.index));
+    let seen = 0;
+    let foundPos: number | null = null;
+    let foundNodeSize = 0;
+    state.doc.descendants((node, pos) => {
+      if (foundPos != null) return false;
+      const name = node?.type?.name;
+      if (name === 'list_item' || name === 'listItem') {
+        if (seen === want) {
+          foundPos = pos;
+          foundNodeSize = node.nodeSize;
+          return false;
+        }
+        seen++;
+      }
+      return true;
+    });
+    if (foundPos == null) return false;
+
+    // 在该 list_item 内部找第一个 textblock，把 selection 放到它的起始位置
+    let textblockPos: number | null = null;
+    state.doc.nodesBetween(foundPos, foundPos + foundNodeSize, (node, pos) => {
+      if (textblockPos != null) return false;
+      if (node.isTextblock) {
+        textblockPos = pos + 1;
+        return false;
+      }
+      return true;
+    });
+    const target = textblockPos ?? foundPos + 2;
+    const tr = state.tr.setSelection(TextSelection.create(state.doc, target)).scrollIntoView();
+    view.dispatch(tr);
+    view.focus();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function e2ePressTab(payload?: { shift?: boolean }): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    view.focus();
+    const shift = Boolean(payload?.shift);
+    const evt: any = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      code: 'Tab',
+      keyCode: 9,
+      which: 9,
+      shiftKey: shift,
+      bubbles: true,
+      cancelable: true,
+    });
+    view.dom.dispatchEvent(evt);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function e2eIndentListItem(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state, dispatch } = view;
+    const li =
+      state.schema.nodes.list_item ??
+      (state.schema.nodes as any).listItem ??
+      Object.values(state.schema.nodes).find((n: any) => n?.name === 'list_item' || n?.name === 'listItem');
+    if (!li) return false;
+    return Boolean(sinkListItem(li as any)(state, dispatch));
+  } catch {
+    return false;
+  }
+}
+
+function e2eOutdentListItem(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { state, dispatch } = view;
+    const li =
+      state.schema.nodes.list_item ??
+      (state.schema.nodes as any).listItem ??
+      Object.values(state.schema.nodes).find((n: any) => n?.name === 'list_item' || n?.name === 'listItem');
+    if (!li) return false;
+    return Boolean(liftListItem(li as any)(state, dispatch));
   } catch {
     return false;
   }
@@ -962,6 +1424,7 @@ function getPmSelectionDiagnostics():
       parentType: string;
       depth: number;
       inTable: boolean;
+      inList: boolean;
       cellType: string | null;
     }
   | null {
@@ -971,11 +1434,13 @@ function getPmSelectionDiagnostics():
     const sel = view.state.selection;
     const $from = sel.$from;
     let inTable = false;
+    let inList = false;
     let cellType: string | null = null;
     for (let d = $from.depth; d > 0; d--) {
       const name = $from.node(d).type.name;
       if (name === 'table') inTable = true;
       if (name === 'table_cell' || name === 'table_header') cellType = name;
+      if (name === 'list_item' || name === 'listItem') inList = true;
     }
     return {
       from: sel.from,
@@ -983,6 +1448,7 @@ function getPmSelectionDiagnostics():
       parentType: $from.parent.type.name,
       depth: $from.depth,
       inTable,
+      inList,
       cellType,
     };
   } catch {
@@ -999,6 +1465,13 @@ defineExpose({
   getPmSelectionDiagnostics,
   runRichTableOp: dispatchRichTableOp,
   simulateRichTablePaste,
+  setRichTableCellSelection,
+  e2eSelectFirstTableBodyCell,
+  e2eSetCellSelectionInFirstTable,
+  e2eSelectListItemText,
+  e2ePressTab,
+  e2eIndentListItem,
+  e2eOutdentListItem,
   undo,
   redo,
   // TOC 相关功能
@@ -1023,6 +1496,10 @@ defineExpose({
   outline: none;
   padding: 24px;
   overflow-y: auto;
+  overflow-x: auto;
+  /* 允许长英文/URL 在编辑区内断行，避免被裁切 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ProseMirror 编辑器样式 */
@@ -1280,7 +1757,9 @@ defineExpose({
 
 .milkdown-editor table {
   border-collapse: collapse;
-  width: 100%;
+  /* 让表格既能占满可视宽度，又能在内容过宽时触发横向滚动 */
+  width: max-content;
+  min-width: 100%;
   margin: 0.5em 0;
 }
 
@@ -1289,6 +1768,9 @@ defineExpose({
   border: 1px solid var(--vscode-editorWidget-border);
   padding: 12px 18px;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .milkdown-editor th {

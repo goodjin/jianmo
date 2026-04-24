@@ -18,6 +18,10 @@ const validConfig: ExtensionConfig = {
     theme: 'auto',
     fontSize: 14 as any,
     fontFamily: 'sans-serif',
+    wrapPolicy: 'autoWrap',
+    tableCellWrap: 'wrap',
+    enableMermaid: true,
+    enableShiki: false,
   },
   image: {
     saveDirectory: './assets',

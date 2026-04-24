@@ -44,6 +44,14 @@ export interface EditorConfig {
   theme: 'auto' | 'light' | 'dark';
   fontSize: FontSize;
   fontFamily: string;
+  /** 超宽内容策略：自动换行优先 / 横向滚动优先 */
+  wrapPolicy: 'autoWrap' | 'preferScroll';
+  /** 表格单元格：允许换行 / 强制不换行（横向滚动） */
+  tableCellWrap: 'wrap' | 'nowrap';
+  /** Rich：是否启用 Mermaid 渲染（重渲染，可按需关闭） */
+  enableMermaid: boolean;
+  /** Rich：是否启用 Shiki 高亮（可能影响启动稳定性，默认关闭） */
+  enableShiki: boolean;
 }
 
 export interface ImageConfig {

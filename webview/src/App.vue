@@ -1,5 +1,5 @@
 <template>
-  <div class="md-editor-app" :class="{ 'theme-dark': isDark }">
+  <div class="md-editor-app" :class="appClasses">
     <Toolbar
       v-if="editorReady"
       :mode="currentMode"
@@ -70,6 +70,49 @@
       @replace-all="handleReplaceAllFromPanel"
     />
 
+    <!-- Rich 降级提示条：只在非 rich 且最近一次 Rich 启动失败/超时时显示 -->
+    <div
+      v-if="editorReady && currentMode !== 'rich' && richFallbackBannerVisible"
+      class="rich-fallback-banner"
+      role="status"
+      aria-live="polite"
+      data-testid="rich-fallback-banner"
+    >
+      <span class="msg">
+        Rich 启动{{ richFallbackBannerReason === 'timeout' ? '超时' : '失败' }}，已切换到 Source。
+      </span>
+      <button type="button" class="retry-btn" @click="retryRichFromFallback">重试 Rich</button>
+    </div>
+
+    <!-- 大文档分级提示 + 可选手动恢复（M8） -->
+    <div
+      v-if="editorReady && perfDegradeBannerVisible"
+      class="rich-fallback-banner"
+      role="status"
+      aria-live="polite"
+      data-testid="perf-degrade-banner"
+    >
+      <span class="msg">{{ perfDegradeReason }}</span>
+      <button
+        v-if="!richPerfDegradeUserFull"
+        type="button"
+        class="retry-btn"
+        data-testid="perf-degrade-cta-full"
+        @click="requestFullRichRender"
+      >
+        仍要完整渲染
+      </button>
+      <button
+        v-else
+        type="button"
+        class="retry-btn"
+        data-testid="perf-degrade-cta-restore"
+        @click="restoreAutoRichRender"
+      >
+        恢复自动
+      </button>
+    </div>
+
     <!-- Toast -->
     <div v-if="toastOpen" class="markly-toast" role="status" aria-live="polite">
       {{ toastMessage }}
@@ -109,7 +152,7 @@
     />
 
     <div class="editor-main">
-      <div class="editor-container">
+      <div class="editor-container" :style="editorContainerStyle">
         <!-- 编辑器容器 (IR/source 由 CM6；rich 由 Milkdown/PM) -->
         <div
           ref="editorContainerRef"
@@ -122,6 +165,7 @@
           v-show="currentMode === 'rich'"
           :content="content"
           :config="config!"
+          :rich-perf-effective-tier="richPerfEffectiveTier"
           @change="onRichContentChange"
           @ready="onRichReady"
           @table-context="onRichTableContext"
@@ -158,6 +202,7 @@ import { hasToc, updateTocInContent } from './utils/toc';
 import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
+import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import {
   patternToRegExp,
   findAllMatchesInText,
@@ -213,6 +258,7 @@ declare global {
       } | null;
       runRichTableOp?: (op: string) => boolean;
       simulateRichTablePaste?: (payload: { plain?: string; html?: string }) => boolean;
+      setRichTableCellSelection?: (payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }) => boolean;
     };
   }
 }
@@ -222,9 +268,26 @@ const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const editorReady = ref(false);
 const currentMode = ref<EditorMode>('rich');
+const editorContainerStyle = computed(() => ({
+  overflowX: 'auto',
+  overflowY: 'auto',
+}));
 const editorContainerRef = ref<HTMLElement | null>(null);
 const milkdownRef = ref<any>(null);
 const richReadySuccess = ref<boolean | null>(null);
+let richStartupWatchdog: ReturnType<typeof setTimeout> | null = null;
+let richStartupAttemptId = 0;
+const richAutoFallbackOnce = ref(false);
+const richFallbackBannerVisible = ref(false);
+const richFallbackBannerReason = ref<'fail' | 'timeout' | null>(null);
+const perfDegradeBannerVisible = ref(false);
+const perfDegradeReason = ref<string>('');
+const richPerfDegradeUserFull = ref(false);
+const computedRichPerfTier = computed(() => getRichPerfTier(content.value ?? ''));
+const richPerfEffectiveTier = computed((): RichPerfTier => {
+  if (richPerfDegradeUserFull.value) return 0;
+  return computedRichPerfTier.value;
+});
 const richTableInTable = ref(false);
 const richTableHelpOpen = ref(false);
 const richTableMenuOpen = ref(false);
@@ -241,6 +304,8 @@ const RICH_TABLE_OPS = new Set<string>([
   'addColAfter',
   'addColBefore',
   'toggleHeaderRow',
+  'mergeCells',
+  'splitCell',
   'alignLeft',
   'alignCenter',
   'alignRight',
@@ -257,6 +322,8 @@ const RICH_TABLE_MENU_ITEMS: Array<{ op: RichTableOp; label: string }> = [
   { op: 'alignLeft', label: '当前列左对齐' },
   { op: 'alignCenter', label: '当前列居中' },
   { op: 'alignRight', label: '当前列右对齐' },
+  { op: 'mergeCells', label: '合并单元格' },
+  { op: 'splitCell', label: '拆分单元格' },
   { op: 'deleteRow', label: '删除当前行' },
   { op: 'deleteCol', label: '删除当前列' },
 ];
@@ -367,6 +434,22 @@ function onRichContentChange(newContent: string): void {
 function onRichReady(_success: boolean): void {
   // Rich 编辑器自身 ready 由组件内部处理；这里不改变 editorReady（由 CM6 INIT 流程控制）
   richReadySuccess.value = _success;
+  if (_success) {
+    if (richStartupWatchdog) {
+      clearTimeout(richStartupWatchdog);
+      richStartupWatchdog = null;
+    }
+    return;
+  }
+
+  // Rich 初始化失败：自动降级到 Source，保证编辑不中断
+  if (currentMode.value === 'rich' && !richAutoFallbackOnce.value) {
+    richAutoFallbackOnce.value = true;
+    richFallbackBannerVisible.value = true;
+    richFallbackBannerReason.value = 'fail';
+    showToast('Rich 编辑器启动失败，已自动切换到 Source 模式。');
+    switchMode('source');
+  }
 }
 
 function onToolbarFindReplace(): void {
@@ -512,6 +595,16 @@ const isDark = computed(() => {
   return config.value.editor.theme === 'dark';
 });
 
+const wrapPolicy = computed(() => config.value?.editor?.wrapPolicy ?? 'autoWrap');
+const tableCellWrap = computed(() => config.value?.editor?.tableCellWrap ?? 'wrap');
+const appClasses = computed(() => ({
+  'theme-dark': isDark.value,
+  'wrap-auto': wrapPolicy.value === 'autoWrap',
+  'wrap-scroll': wrapPolicy.value === 'preferScroll',
+  'table-cell-wrap': tableCellWrap.value === 'wrap',
+  'table-cell-nowrap': tableCellWrap.value === 'nowrap',
+}));
+
 /** 确保 CM6 已挂载到容器并完成 INIT（避免宿主过早 postMessage INIT 时 ref 未就绪 → 永久 Loading） */
 function ensureEditorFromInit(): boolean {
   const el = editorContainerRef.value;
@@ -534,7 +627,7 @@ function ensureEditorFromInit(): boolean {
       if (currentMode.value === 'rich') {
         const c = content.value ?? '';
         // Rich 初始化早期 milkdownRef 可能尚未 ready；以单一真源 content 兜底，保证 E2E 与消息回路稳定
-        return c || milkdownRef.value?.getContent?.() || '';
+        return milkdownRef.value?.getContent?.() || c || '';
       }
       return editor.getContent();
     },
@@ -627,9 +720,46 @@ function ensureEditorFromInit(): boolean {
       if (!RICH_TABLE_OPS.has(op)) return false;
       return Boolean((milkdownRef.value as any)?.runRichTableOp?.(op));
     },
+    runRichFormat: (format: string) => {
+      if (currentMode.value !== 'rich') return false;
+      try {
+        (milkdownRef.value as any)?.applyFormat?.(format);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     simulateRichTablePaste: (payload: { plain?: string; html?: string }) => {
       if (currentMode.value !== 'rich') return false;
       return Boolean((milkdownRef.value as any)?.simulateRichTablePaste?.(payload));
+    },
+    setRichTableCellSelection: (payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }) => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.setRichTableCellSelection?.(payload));
+    },
+    e2eSelectFirstTableBodyCell: () => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2eSelectFirstTableBodyCell?.());
+    },
+    e2eSetCellSelectionInFirstTable: (payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }) => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2eSetCellSelectionInFirstTable?.(payload));
+    },
+    e2eSelectListItemText: (payload: { index: number }) => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2eSelectListItemText?.(payload));
+    },
+    e2ePressTab: (payload?: { shift?: boolean }) => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2ePressTab?.(payload));
+    },
+    e2eIndentListItem: () => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2eIndentListItem?.());
+    },
+    e2eOutdentListItem: () => {
+      if (currentMode.value !== 'rich') return false;
+      return Boolean((milkdownRef.value as any)?.e2eOutdentListItem?.());
     },
   };
 
@@ -718,7 +848,32 @@ function switchMode(mode: EditorMode) {
       milkdownRef.value?.setContent?.(content.value ?? '');
     } catch (e) {
       console.warn('[Rich] sync content on enter failed:', e);
+      if (!richAutoFallbackOnce.value) {
+        richAutoFallbackOnce.value = true;
+        richFallbackBannerVisible.value = true;
+        richFallbackBannerReason.value = 'fail';
+        showToast('Rich 编辑器启动失败，已自动切换到 Source 模式。');
+        switchMode('source');
+      }
+      return;
     }
+
+    // 启动 watchdog：如果 Rich 一直没 ready（或 ready=false），也要降级
+    richReadySuccess.value = null;
+    richStartupAttemptId += 1;
+    const attempt = richStartupAttemptId;
+    if (richStartupWatchdog) clearTimeout(richStartupWatchdog);
+    richStartupWatchdog = setTimeout(() => {
+      if (attempt !== richStartupAttemptId) return;
+      if (currentMode.value !== 'rich') return;
+      if (richReadySuccess.value === true) return;
+      if (richAutoFallbackOnce.value) return;
+      richAutoFallbackOnce.value = true;
+      richFallbackBannerVisible.value = true;
+      richFallbackBannerReason.value = 'timeout';
+      showToast('Rich 编辑器启动超时，已自动切换到 Source 模式。');
+      switchMode('source');
+    }, 2500);
     return;
   }
 
@@ -753,6 +908,14 @@ function switchMode(mode: EditorMode) {
     }
     editor.view.value?.focus();
   }, 50);
+}
+
+function retryRichFromFallback(): void {
+  // 允许再次尝试；但降级 toast 仍会通过 richAutoFallbackOnce 防止刷屏
+  richAutoFallbackOnce.value = false;
+  richFallbackBannerVisible.value = false;
+  richFallbackBannerReason.value = null;
+  switchMode('rich');
 }
 
 // Event handlers
@@ -1184,7 +1347,11 @@ watch(content, () => {
     // content 变化只调度一次 debounce 的全量扫描，避免每次输入都 doc.toString() + regex 全量遍历
     scheduleFindRecompute();
   }
+  // M7-3：大文档自动降级（重渲染按需关闭）
+  recomputePerfDegradeUi();
 });
+
+watch(richPerfDegradeUserFull, () => recomputePerfDegradeUi());
 
 watch(zoom, () => {
   applyZoomToDom();
@@ -1288,6 +1455,39 @@ function showToast(msg: string, durationMs = 2400) {
     toastOpen.value = false;
     toastTimer = null;
   }, durationMs);
+}
+
+function recomputePerfDegradeUi(): void {
+  const comp = computedRichPerfTier.value;
+  if (comp === 0) {
+    richPerfDegradeUserFull.value = false;
+  }
+  if (comp === 0) {
+    perfDegradeBannerVisible.value = false;
+    perfDegradeReason.value = '';
+    return;
+  }
+  perfDegradeBannerVisible.value = true;
+  if (richPerfDegradeUserFull.value) {
+    perfDegradeReason.value = '已手动开启完整渲染，若卡顿可点「恢复自动」。';
+  } else {
+    perfDegradeReason.value =
+      comp === 1
+        ? '中等规模文档：已降低 Mermaid/语法高亮强度以保证流畅。'
+        : '检测到大文档，已自动关闭 Mermaid/语法高亮。';
+  }
+}
+
+function requestFullRichRender() {
+  richPerfDegradeUserFull.value = true;
+  recomputePerfDegradeUi();
+  showToast('已尽量开启完整渲染，若变卡可恢复自动。');
+}
+
+function restoreAutoRichRender() {
+  richPerfDegradeUserFull.value = false;
+  recomputePerfDegradeUi();
+  showToast('已恢复按文档规模自动调整。');
 }
 
 function handleToastEvent(e: Event) {
@@ -1544,7 +1744,9 @@ onUnmounted(() => {
 .editor-container {
   flex: 1;
   min-height: 0;
+  /* 文档滚动容器：纵向滚动 + 横向滚动（长行/超宽内容不再被裁切） */
   overflow-y: auto;
+  overflow-x: auto;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -1641,6 +1843,39 @@ onUnmounted(() => {
   padding: 10px 12px;
   font-size: 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.rich-fallback-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 8px 12px 0;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.04));
+  color: var(--vscode-foreground);
+}
+
+.rich-fallback-banner .msg {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.rich-fallback-banner .retry-btn {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rich-fallback-banner .retry-btn:hover {
+  background: var(--vscode-button-hoverBackground);
 }
 
 .markly-table-help-panel {

@@ -21,19 +21,6 @@
       </button>
       <button
         class="toolbar-btn mode-btn"
-        :class="{ active: mode === 'ir' }"
-        title="IR Mode (WYSIWYG)"
-        aria-label="IR Mode (WYSIWYG)"
-        type="button"
-        :tabindex="mode === 'ir' ? 0 : -1"
-        @keydown="onModeKeydown"
-        @click="switchModeFromToolbar('ir')"
-        ref="irBtnRef"
-      >
-        <span class="btn-icon">&#x270E;</span>
-      </button>
-      <button
-        class="toolbar-btn mode-btn"
         :class="{ active: mode === 'source' }"
         title="Source Mode"
         aria-label="Source Mode"
@@ -310,7 +297,6 @@ const headingButtons = [
 ];
 
 const richBtnRef = ref<HTMLButtonElement | null>(null);
-const irBtnRef = ref<HTMLButtonElement | null>(null);
 const sourceBtnRef = ref<HTMLButtonElement | null>(null);
 
 const formatButtons = [
@@ -385,6 +371,16 @@ const tableStructureButtons = computed(() => {
       id: 'alignRight',
       icon: 'R',
       label: '表格：当前列右对齐',
+    },
+    {
+      id: 'mergeCells',
+      icon: '⇔',
+      label: '表格：合并单元格',
+    },
+    {
+      id: 'splitCell',
+      icon: '⇕',
+      label: '表格：拆分单元格',
     },
     {
       id: 'deleteRow',
@@ -523,7 +519,8 @@ function onZoomMenuKeydown(e: KeyboardEvent) {
 function onModeKeydown(e: KeyboardEvent) {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   e.preventDefault();
-  const order: EditorMode[] = ['rich', 'ir', 'source'];
+  // IR 已降级为隐藏 fallback，不再作为主打模式在工具栏暴露
+  const order: EditorMode[] = ['rich', 'source'];
   const cur = order.indexOf(props.mode);
   const dir = e.key === 'ArrowRight' ? 1 : -1;
   const next = order[(cur + dir + order.length) % order.length]!;
@@ -535,7 +532,7 @@ function switchModeFromToolbar(next: EditorMode, opts?: { focus?: boolean }) {
   if (opts?.focus) {
     // roving tabindex：切换后把焦点移动到当前激活段
     queueMicrotask(() => {
-      (next === 'rich' ? richBtnRef.value : next === 'ir' ? irBtnRef.value : sourceBtnRef.value)?.focus();
+      (next === 'rich' ? richBtnRef.value : sourceBtnRef.value)?.focus();
     });
   }
 }

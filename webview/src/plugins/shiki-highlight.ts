@@ -9,22 +9,45 @@ import { $ctx, $prose } from '@milkdown/utils';
 import { createHighlightPlugin } from 'prosemirror-highlight';
 import { createParser } from 'prosemirror-highlight/shiki';
 import { createHighlighter, type Highlighter } from 'shiki';
+import { getRuntimeRichPerfTier } from '../utils/richPerfRuntime';
 
 // 全局高亮器实例
 let highlighter: Highlighter | null = null;
 
+// M7-2：高亮结果缓存（避免大文档/频繁 transaction 时重复解析同一段代码）
+const highlightCache = new Map<string, any[]>();
+const HIGHLIGHT_CACHE_MAX = 400;
+
+function cacheGet(key: string): any[] | null {
+  const v = highlightCache.get(key);
+  if (!v) return null;
+  // 简单 LRU：命中时刷新顺序
+  highlightCache.delete(key);
+  highlightCache.set(key, v);
+  return v;
+}
+
+function cacheSet(key: string, value: any[]): void {
+  highlightCache.set(key, value);
+  if (highlightCache.size <= HIGHLIGHT_CACHE_MAX) return;
+  const first = highlightCache.keys().next().value as string | undefined;
+  if (first) highlightCache.delete(first);
+}
+
 // 默认主题配置
 const defaultThemes = ['github-light', 'github-dark'] as const;
 
-// 默认支持的语言
+// 默认支持的语言（刻意收敛：避免把大量语言包打进 webview 产物导致 VSIX 体积/文件数暴涨）
 const defaultLangs = [
-  'javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'csharp',
-  'go', 'rust', 'ruby', 'php', 'swift', 'kotlin', 'scala',
-  'html', 'css', 'scss', 'json', 'yaml', 'xml', 'markdown',
-  'sql', 'bash', 'shell', 'powershell', 'dockerfile', 'graphql',
-  'lua', 'perl', 'r', 'matlab', 'latex', 'vim', 'makefile',
-  'cmake', 'nginx', 'toml', 'ini', 'diff', 'plaintext',
-  'mermaid',
+  'plaintext',
+  'markdown',
+  'javascript',
+  'typescript',
+  'json',
+  'html',
+  'css',
+  'bash',
+  'python',
 ];
 
 /**
@@ -100,13 +123,25 @@ export function shikiHighlight(options: ShikiHighlightOptions = {}) {
         }
         const baseParser = createParser(highlighter, { theme: themes.light });
         const safeParser = (opts: { content: string; language?: string; pos: number; size: number }) => {
+          // M8-3：档 ≥1 时直接跳过，避免大文档/中等文档持续重算 decorations
+          if (getRuntimeRichPerfTier() >= 1) return [];
           try {
             const lang = opts.language && isLanguageSupported(opts.language) ? opts.language : 'plaintext';
-            return baseParser({ ...opts, language: lang });
+            const key = `${themes.light}::${lang}::${opts.content}`;
+            const hit = cacheGet(key);
+            if (hit) return hit;
+            const out = baseParser({ ...opts, language: lang });
+            cacheSet(key, out);
+            return out;
           } catch (error) {
             console.warn(`[shikiHighlight] highlight failed, fallback to plaintext:`, error);
             try {
-              return baseParser({ ...opts, language: 'plaintext' });
+              const key = `${themes.light}::plaintext::${opts.content}`;
+              const hit = cacheGet(key);
+              if (hit) return hit;
+              const out = baseParser({ ...opts, language: 'plaintext' });
+              cacheSet(key, out);
+              return out;
             } catch {
               return [];
             }

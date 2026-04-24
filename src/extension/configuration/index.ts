@@ -59,6 +59,24 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     errors.push(`editor.theme 必须是 "auto", "light" 或 "dark"，当前值: ${config.editor.theme}`);
   }
 
+  // 验证 editor.wrapPolicy
+  if (!['autoWrap', 'preferScroll'].includes((config.editor as any).wrapPolicy)) {
+    errors.push(`editor.wrapPolicy 必须是 "autoWrap" 或 "preferScroll"，当前值: ${(config.editor as any).wrapPolicy}`);
+  }
+
+  // 验证 editor.tableCellWrap
+  if (!['wrap', 'nowrap'].includes((config.editor as any).tableCellWrap)) {
+    errors.push(`editor.tableCellWrap 必须是 "wrap" 或 "nowrap"，当前值: ${(config.editor as any).tableCellWrap}`);
+  }
+
+  // 验证 enableMermaid/enableShiki
+  if (typeof (config.editor as any).enableMermaid !== 'boolean') {
+    errors.push(`editor.enableMermaid 必须是 boolean，当前值: ${(config.editor as any).enableMermaid}`);
+  }
+  if (typeof (config.editor as any).enableShiki !== 'boolean') {
+    errors.push(`editor.enableShiki 必须是 boolean，当前值: ${(config.editor as any).enableShiki}`);
+  }
+
   // 验证 image.compressThreshold (支持字节或百分比，> 0 即可)
   if (typeof config.image.compressThreshold !== 'number' || config.image.compressThreshold <= 0) {
     errors.push(`image.compressThreshold 必须大于 0，当前值: ${config.image.compressThreshold}`);
@@ -102,6 +120,10 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     theme: 'auto',
     fontSize: 14,
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    wrapPolicy: 'autoWrap',
+    tableCellWrap: 'wrap',
+    enableMermaid: true,
+    enableShiki: false,
   },
   image: {
     saveDirectory: './assets',
