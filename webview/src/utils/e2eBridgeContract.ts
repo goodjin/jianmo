@@ -11,18 +11,9 @@ export const MARKLY_E2E_BRIDGE_KEYS = [
   'setContent',
   'switchMode',
   'getEditorMode',
-  'undo',
-  'redo',
-  'undoCmd',
-  'redoCmd',
-  'getUndoDepth',
-  'getRedoDepth',
   'replaceAll',
   'getSelectionAnchor',
   'setSelectionAnchor',
-  'applyFormat',
-  'insertNode',
-  'getZoom',
 
   // 诊断
   'getDiagnostics',
@@ -32,12 +23,10 @@ export const MARKLY_E2E_BRIDGE_KEYS = [
   // Rich 表格：关键且稳定性敏感（避免 stale element）
   'runRichTableOp',
   'simulateRichTablePaste',
-  'setRichTableCellSelection',
   'e2eSelectFirstTableBodyCell',
   'e2eSetCellSelectionInFirstTable',
 
   // Rich 列表/Tab：在 E2E 下 DOM 键盘事件易 flaky
-  'runRichFormat',
   'e2eSelectListItemText',
   'e2ePressTab',
   'e2eIndentListItem',

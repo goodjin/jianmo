@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "publisher": "jianmo",
   "icon": "images/icon.png",
   "engines": {

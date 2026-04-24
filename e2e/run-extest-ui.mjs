@@ -184,9 +184,32 @@ const args = [
   EXTEST_TEST_GLOB,
 ];
 const r = spawnExtest(args);
+// M11-4：稳定性门禁——关键用例支持连跑 N 次（默认 1；设置 MARKLY_UI_REPEAT=3 即连跑 3 次）
+const repeat = Math.max(1, Number(process.env.MARKLY_UI_REPEAT || '1') || 1);
+let status = r.status === null ? 1 : r.status;
+for (let i = 1; i < repeat; i++) {
+  if (status !== 0) break;
+  console.log(`[extest] repeat run ${i + 1}/${repeat}`);
+  // 清理上一次的 user-data-dir，避免 SingletonLock/残留进程导致 flaky
+  try {
+    fs.rmSync(extestSettings, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+  for (const pattern of cleanupPatterns) {
+    // eslint-disable-next-line no-await-in-loop
+    killProcessesMatchingCommand(pattern);
+  }
+  if (process.platform !== 'win32') {
+    spawnSync('sleep', ['1'], { stdio: 'ignore' });
+  }
+  const rr = spawnExtest(args);
+  status = rr.status === null ? 1 : rr.status;
+}
+
 // 无论成功/失败都做一次兜底清理，避免残留 VS Code/ChromeDriver 影响下一次跑（以及你看到的“反复启动”）
 for (const pattern of cleanupPatterns) {
   // eslint-disable-next-line no-await-in-loop
   killProcessesMatchingCommand(pattern);
 }
-process.exit(r.status === null ? 1 : r.status);
+process.exit(status);

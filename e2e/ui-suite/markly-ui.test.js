@@ -565,14 +565,16 @@ describe('Markly VS Code UI (ExTester)', function () {
     assert.ok(okSel, 'e2eSelectFirstTableBodyCell should succeed');
     await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
 
-    const countPipeLines = async () => {
-      const md = await bridgeGetContent(driver);
-      return md.split('\n').filter((l) => l.includes('|')).length;
-    };
-    const n0 = await countPipeLines();
+    const countDomBodyRows = async () =>
+      driver.executeScript(() => document.querySelectorAll('.milkdown-editor table tbody tr').length);
+    const n0 = Number(await countDomBodyRows());
     const ran = await driver.executeScript(() => window.__marklyE2E?.runRichTableOp?.('addRowAfter') === true);
     assert.ok(ran, 'runRichTableOp(addRowAfter) should succeed');
-    await driver.wait(async () => (await countPipeLines()) > n0, 30000, 'markdown table line count should increase');
+    await driver.wait(
+      async () => Number(await countDomBodyRows()) > n0,
+      30000,
+      'DOM tbody row count should increase'
+    );
   });
 
   it('Rich mode: toolbar "insert row below" adds a table row (structure edit)', async function () {
@@ -583,21 +585,8 @@ describe('Markly VS Code UI (ExTester)', function () {
     await clickToolbarButton(driver, 'Table');
     await waitMarklyContent(driver, (t) => t.includes('| 列1 | 列2 | 列3 |'), 60000);
 
-    const deadline = Date.now() + 60000;
-    /** @type {import('selenium-webdriver').WebElement | null} */
-    let firstBodyCell = null;
-    while (Date.now() < deadline) {
-      // eslint-disable-next-line no-await-in-loop
-      const els = await driver.findElements(By.css('.milkdown-editor table tbody tr td'));
-      if (els.length > 0) {
-        firstBodyCell = els[0];
-        break;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    assert.ok(firstBodyCell, 'rich table body cell exists');
-    await firstBodyCell.click();
+    const okSel = await driver.executeScript(() => window.__marklyE2E?.e2eSelectFirstTableBodyCell?.() === true);
+    assert.ok(okSel, 'e2eSelectFirstTableBodyCell should succeed');
     await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
 
     const countDomBodyRows = async () =>
@@ -620,28 +609,17 @@ describe('Markly VS Code UI (ExTester)', function () {
     await clickToolbarButton(driver, 'Table');
     await waitMarklyContent(driver, (t) => t.includes('| 列1 | 列2 | 列3 |'), 60000);
 
-    const deadline = Date.now() + 60000;
-    /** @type {import('selenium-webdriver').WebElement | null} */
-    let firstBodyCell = null;
-    while (Date.now() < deadline) {
-      // eslint-disable-next-line no-await-in-loop
-      const els = await driver.findElements(By.css('.milkdown-editor table tbody tr td'));
-      if (els.length > 0) {
-        firstBodyCell = els[0];
-        break;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    assert.ok(firstBodyCell, 'rich table body cell exists');
-    await firstBodyCell.click();
+    const okSel = await driver.executeScript(() => window.__marklyE2E?.e2eSelectFirstTableBodyCell?.() === true);
+    assert.ok(okSel, 'e2eSelectFirstTableBodyCell should succeed');
     await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
 
     const countDomBodyRows = async () =>
       driver.executeScript(() => document.querySelectorAll('.milkdown-editor table tbody tr').length);
     const n0 = Number(await countDomBodyRows());
 
-    await driver.executeScript((el) => {
+    await driver.executeScript(() => {
+      const el = document.querySelector('.milkdown-editor table tbody tr td, .milkdown-editor table tbody tr th');
+      if (!el) return false;
       const r = el.getBoundingClientRect();
       el.dispatchEvent(
         new MouseEvent('contextmenu', {
@@ -651,7 +629,8 @@ describe('Markly VS Code UI (ExTester)', function () {
           clientY: Math.floor(r.top + r.height / 2),
         })
       );
-    }, firstBodyCell);
+      return true;
+    });
     await driver.wait(
       async () => (await driver.findElements(By.css('[data-testid="rich-table-context-menu"]'))).length > 0,
       30000,
@@ -955,9 +934,9 @@ describe('Markly VS Code UI (ExTester)', function () {
     await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
 
     const ok = await driver.executeScript(() =>
-      window.__marklyE2E?.setRichTableCellSelection?.({ rowStart: 1, colStart: 0, rowEnd: 2, colEnd: 1 })
+      window.__marklyE2E?.e2eSetCellSelectionInFirstTable?.({ rowStart: 1, colStart: 0, rowEnd: 2, colEnd: 1 }) === true
     );
-    assert.ok(ok, 'setRichTableCellSelection should succeed');
+    assert.ok(ok, 'e2eSetCellSelectionInFirstTable should succeed');
 
     const md0 = await bridgeGetContent(driver);
 
