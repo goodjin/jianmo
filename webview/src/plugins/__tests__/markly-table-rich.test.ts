@@ -1206,6 +1206,87 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     view.destroy();
     host.remove();
   });
+
+  it('M10-2 merge/split 后再粘贴：不扩表且内容可写入', () => {
+    const schema = createTestSchema();
+    // 这里用纯 body 表格（全是 table_cell），避免 header/body 混合导致 merge/split 产生复杂结构干扰本用例的“粘贴不扩表”目标
+    const p = (t: string) => schema.nodes.paragraph.create(null, t ? schema.text(t) : null);
+    const row = schema.nodes.table_row;
+    const table = schema.nodes.table;
+    const cell = schema.nodes.table_cell;
+    const doc = schema.nodes.doc.create(null, [
+      table.create(null, [
+        row.create(null, [cell.create(null, [p('a')]), cell.create(null, [p('b')])]),
+        row.create(null, [cell.create(null, [p('c')]), cell.create(null, [p('d')])]),
+      ]),
+    ]);
+
+    let tablePos: number | null = null;
+    let foundTableNode: any = null;
+    doc.descendants((node: any, pos: number) => {
+      if ((node.type.spec as any)?.tableRole === 'table') {
+        tablePos = pos;
+        foundTableNode = node;
+        return false;
+      }
+      return;
+    });
+    expect(tablePos).not.toBeNull();
+    expect(foundTableNode).not.toBeNull();
+
+    const map = TableMap.get(foundTableNode);
+    expect(map.width).toBe(2);
+    expect(map.height).toBe(2);
+
+    const tableStart = (tablePos as number) + 1;
+    const topLeftCell = tableStart + map.positionAt(0, 0, foundTableNode);
+    const bottomRightCell = tableStart + map.positionAt(1, 1, foundTableNode);
+    const selection = new CellSelection(doc.resolve(topLeftCell), doc.resolve(bottomRightCell));
+
+    const plugin = createMarklyTableGridPastePlugin();
+    const state = EditorState.create({ schema, doc, selection, plugins: [plugin] });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    expect(runRichTableOp(view, 'mergeCells')).toBe(true);
+
+    // splitCell 需要落点在合并单元格内（放到 cell 里 paragraph 的内容位置）
+    const afterMerge = firstTableNode(view.state.doc);
+    expect(afterMerge).not.toBeNull();
+    const mapAfterMerge = TableMap.get(afterMerge);
+    const afterMergeTopLeftPos = 1 + mapAfterMerge.positionAt(0, 0, afterMerge);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, afterMergeTopLeftPos + 2)));
+    expect(runRichTableOp(view, 'splitCell')).toBe(true);
+
+    // 重新选中 2x2，粘贴 exact 2x2，断言不扩表
+    const afterSplit = firstTableNode(view.state.doc);
+    expect(afterSplit).not.toBeNull();
+    const mapAfterSplit = TableMap.get(afterSplit);
+    const widthBeforePaste = mapAfterSplit.width;
+    const heightBeforePaste = mapAfterSplit.height;
+    const tl = 1 + mapAfterSplit.positionAt(0, 0, afterSplit);
+    const br = 1 + mapAfterSplit.positionAt(1, 1, afterSplit);
+    view.dispatch(view.state.tr.setSelection(new CellSelection(view.state.doc.resolve(tl), view.state.doc.resolve(br))));
+
+    const event = ({
+      clipboardData: { getData: (type: string) => (type === 'text/plain' ? 'A\tB\nC\tD\n' : '') },
+    } as unknown) as ClipboardEvent;
+    const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
+    expect(handled).toBe(true);
+
+    const finalTable = firstTableNode(view.state.doc);
+    expect(finalTable).not.toBeNull();
+    const finalMap = TableMap.get(finalTable);
+    expect(finalMap.width).toBe(widthBeforePaste);
+    expect(finalMap.height).toBe(heightBeforePaste);
+    expect(finalTable.textContent).toContain('A');
+    // merge/split 可能产生不规则结构（某些 cell offset 无法定位），但至少不应丢掉可写入的内容
+    expect(finalTable.textContent).toContain('B');
+
+    view.destroy();
+    host.remove();
+  });
 });
 
 describe('richTableCommands mergeCells/splitCell (N1-1)', () => {

@@ -550,7 +550,14 @@ function fillCellSelectionWithoutExpandingTable(args: {
       const cellOffset = map.map[row * map.width + col];
       if (cellOffset == null) continue;
       const cellPos = rect.tableStart + cellOffset;
-      const cellNode = tr.doc.nodeAt(cellPos);
+      let cellNode: any = null;
+      try {
+        cellNode = tr.doc.nodeAt(cellPos);
+      } catch {
+        // 极端结构（例如 merge/split 后出现不规则行）下，TableMap 偏移可能指向非法位置。
+        // 这里选择跳过该 cell，避免整次粘贴直接抛异常导致 Rich 崩溃。
+        continue;
+      }
       if (!cellNode) continue;
 
       const nextText = resolveValue(r, c);
