@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
-import type { ExtensionConfig, WebViewMessage, ExtensionMessage } from '@types';
+import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
 
@@ -18,6 +18,25 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     private config: ExtensionConfig,
     private readonly modeController: ModeController
   ) {}
+
+  private buildHostDiagnostics(): HostDiagnostics {
+    // 注意：这里不包含任何 workspace 路径（避免泄露用户信息）
+    const editor = this.config.editor;
+    return {
+      vscodeVersion: String(vscode.version || ''),
+      extensionVersion: String((this.context.extension.packageJSON as any)?.version ?? ''),
+      platform: process.platform,
+      arch: process.arch,
+      configSnapshot: {
+        theme: editor.theme,
+        fontSize: editor.fontSize,
+        wrapPolicy: editor.wrapPolicy,
+        tableCellWrap: editor.tableCellWrap,
+        enableMermaid: editor.enableMermaid,
+        enableShiki: editor.enableShiki,
+      },
+    };
+  }
 
   async openCustomDocument(
     uri: vscode.Uri,
@@ -94,7 +113,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     if (doc) {
       webviewPanel.webview.postMessage({
         type: 'INIT',
-        payload: { content: doc.content, config: this.config, version },
+        payload: { content: doc.content, config: this.config, version, hostDiagnostics: this.buildHostDiagnostics() },
       });
       console.log('Proactively sent INIT for:', uri);
     }
@@ -140,7 +159,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         if (doc) {
           this.postMessage(uri, {
             type: 'INIT',
-            payload: { content: doc.content, config: this.config, version },
+            payload: { content: doc.content, config: this.config, version, hostDiagnostics: this.buildHostDiagnostics() },
           });
         }
         break;

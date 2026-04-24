@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDiagnosticsPackageText, redactDiagnosticsJson } from '../diagnosticsPackage';
+import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown, redactDiagnosticsJson } from '../diagnosticsPackage';
 
 describe('diagnosticsPackage', () => {
   it('redacts absolute paths in strings', () => {
@@ -28,6 +28,16 @@ describe('diagnosticsPackage', () => {
     expect(text.length).toBeLessThanOrEqual(2048);
     expect(truncated).toBe(true);
     expect(text).not.toContain('/Users/jin/');
+  });
+
+  it('wraps payload into an Issue-ready markdown template', () => {
+    const { text, truncated } = buildDiagnosticsPackageText({ base: { mode: 'source', p: '/Users/jin/x' }, maxChars: 4096 });
+    const md = buildIssueTemplateMarkdown({ payloadText: text, truncated, title: 'Rich 启动失败' });
+    expect(md).toContain('## Rich 启动失败');
+    expect(md).toContain('<details>');
+    expect(md).toContain('```json');
+    expect(md).toContain('"mode"');
+    expect(md).not.toContain('/Users/jin/');
   });
 });
 

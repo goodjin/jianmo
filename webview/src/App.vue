@@ -210,7 +210,7 @@ import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
-import { buildDiagnosticsPackageText } from './utils/diagnosticsPackage';
+import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown } from './utils/diagnosticsPackage';
 import {
   patternToRegExp,
   findAllMatchesInText,
@@ -264,6 +264,7 @@ declare global {
 // State
 const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
+const hostDiagnostics = ref<any>(null);
 const editorReady = ref(false);
 const currentMode = ref<EditorMode>('rich');
 const editorContainerStyle = computed(() => ({
@@ -278,6 +279,10 @@ let richStartupAttemptId = 0;
 const richAutoFallbackOnce = ref(false);
 const richFallbackBannerVisible = ref(false);
 const richFallbackBannerReason = ref<'fail' | 'timeout' | null>(null);
+const richRetryCount = ref(0);
+const webviewReloadCount = ref(0);
+const richStartupWatchdogFired = ref(false);
+const richLastError = ref<string>('');
 const perfDegradeBannerVisible = ref(false);
 const perfDegradeReason = ref<string>('');
 const richPerfDegradeUserFull = ref(false);
@@ -437,6 +442,7 @@ function onRichReady(_success: boolean): void {
       clearTimeout(richStartupWatchdog);
       richStartupWatchdog = null;
     }
+    richStartupWatchdogFired.value = false;
     return;
   }
 
@@ -772,6 +778,7 @@ function handleMessage(event: MessageEvent) {
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       content.value = message.payload.content;
       config.value = message.payload.config;
+      hostDiagnostics.value = (message.payload as any)?.hostDiagnostics ?? null;
       scheduleEnsureEditorFromInit();
       break;
 
@@ -834,6 +841,7 @@ function switchMode(mode: EditorMode) {
       milkdownRef.value?.setContent?.(content.value ?? '');
     } catch (e) {
       console.warn('[Rich] sync content on enter failed:', e);
+      richLastError.value = String((e as any)?.message ?? e ?? '');
       if (!richAutoFallbackOnce.value) {
         richAutoFallbackOnce.value = true;
         richFallbackBannerVisible.value = true;
@@ -846,6 +854,7 @@ function switchMode(mode: EditorMode) {
 
     // 启动 watchdog：如果 Rich 一直没 ready（或 ready=false），也要降级
     richReadySuccess.value = null;
+    richStartupWatchdogFired.value = false;
     richStartupAttemptId += 1;
     const attempt = richStartupAttemptId;
     if (richStartupWatchdog) clearTimeout(richStartupWatchdog);
@@ -854,6 +863,7 @@ function switchMode(mode: EditorMode) {
       if (currentMode.value !== 'rich') return;
       if (richReadySuccess.value === true) return;
       if (richAutoFallbackOnce.value) return;
+      richStartupWatchdogFired.value = true;
       richAutoFallbackOnce.value = true;
       richFallbackBannerVisible.value = true;
       richFallbackBannerReason.value = 'timeout';
@@ -898,6 +908,7 @@ function switchMode(mode: EditorMode) {
 
 function retryRichFromFallback(): void {
   // 允许再次尝试；但降级 toast 仍会通过 richAutoFallbackOnce 防止刷屏
+  richRetryCount.value += 1;
   richAutoFallbackOnce.value = false;
   richFallbackBannerVisible.value = false;
   richFallbackBannerReason.value = null;
@@ -906,6 +917,7 @@ function retryRichFromFallback(): void {
 
 function reloadWebview(): void {
   // 幂等：多次点击等价于 reload；失败时不影响当前编辑（只 toast）
+  webviewReloadCount.value += 1;
   try {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     (globalThis as any)?.location?.reload?.();
@@ -1459,11 +1471,17 @@ function buildDiagnosticsPayload() {
     const pkg = buildDiagnosticsPackageText({
       base,
       extra: {
+        host: hostDiagnostics.value,
         app: {
           mode: currentMode.value,
           richReadySuccess: richReadySuccess.value,
           richFallbackBannerVisible: richFallbackBannerVisible.value,
           richFallbackBannerReason: richFallbackBannerReason.value,
+          richStartupAttemptId,
+          richStartupWatchdogFired: richStartupWatchdogFired.value,
+          richRetryCount: richRetryCount.value,
+          webviewReloadCount: webviewReloadCount.value,
+          richLastError: richLastError.value,
         },
         doc: {
           chars: charCount.value,
@@ -1490,7 +1508,15 @@ function buildDiagnosticsPayload() {
 
 async function copyDiagnosticsToClipboard() {
   const pkg = buildDiagnosticsPayload() as any;
-  const text = String(pkg?.text ?? JSON.stringify(pkg ?? {}, null, 2));
+  const payloadText = String(pkg?.text ?? JSON.stringify(pkg ?? {}, null, 2));
+  const text = buildIssueTemplateMarkdown({
+    payloadText,
+    truncated: Boolean(pkg?.truncated),
+    title:
+      currentMode.value !== 'rich' && richFallbackBannerVisible.value
+        ? `Rich 启动${richFallbackBannerReason.value === 'timeout' ? '超时' : '失败'}`
+        : 'Markly Rich 问题反馈',
+  });
   try {
     await navigator.clipboard.writeText(text);
     showToast(pkg?.truncated ? '诊断信息已复制（已裁剪过长字段）。' : '诊断信息已复制到剪贴板。');

@@ -2,7 +2,7 @@
  * Extension ⇄ Webview 消息运行时校验（契约测试与防守式解析用）
  * @module types/messageGuards
  */
-import type { EditorMode, ExtensionConfig, ExtensionMessage, WebViewMessage } from './index';
+import type { EditorMode, ExtensionConfig, ExtensionMessage, HostDiagnostics, WebViewMessage } from './index';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
@@ -47,6 +47,26 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   );
 }
 
+function isHostDiagnostics(x: unknown): x is HostDiagnostics {
+  if (!isRecord(x)) return false;
+  if (!isString(x.vscodeVersion)) return false;
+  if (!isString(x.extensionVersion)) return false;
+  if (!isString(x.platform)) return false;
+  if (!isString(x.arch)) return false;
+  const snap = x.configSnapshot;
+  if (!isRecord(snap)) return false;
+  const wrap = (snap as any).wrapPolicy;
+  const cellWrap = (snap as any).tableCellWrap;
+  const theme = (snap as any).theme;
+  if (wrap !== 'autoWrap' && wrap !== 'preferScroll') return false;
+  if (cellWrap !== 'wrap' && cellWrap !== 'nowrap') return false;
+  if (theme !== 'auto' && theme !== 'light' && theme !== 'dark') return false;
+  if (!isNumber((snap as any).fontSize)) return false;
+  if (typeof (snap as any).enableMermaid !== 'boolean') return false;
+  if (typeof (snap as any).enableShiki !== 'boolean') return false;
+  return true;
+}
+
 export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
   if (!isRecord(msg) || !isString(msg.type)) return false;
 
@@ -55,6 +75,7 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.content) || !isExtensionConfig(p.config)) return false;
       if (p.version !== undefined && !isNumber(p.version)) return false;
+      if (p.hostDiagnostics !== undefined && !isHostDiagnostics(p.hostDiagnostics)) return false;
       return true;
     }
     case 'CONTENT_UPDATE': {

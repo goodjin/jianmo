@@ -59,6 +59,7 @@ describe('copy diagnostics button', () => {
 
     expect((navigator as any).clipboard.writeText).toHaveBeenCalled();
     const arg = (navigator as any).clipboard.writeText.mock.calls[0][0] as string;
+    expect(arg).toContain('```json');
     expect(arg).toContain('"mode"');
     expect(arg).toContain('"source"');
   });

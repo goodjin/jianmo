@@ -25,6 +25,27 @@ describe('messageGuards — Extension → Webview', () => {
   const samples: ExtensionMessage[] = [
     { type: 'INIT', payload: { content: '# x', config: minimalConfig, version: 3 } },
     { type: 'INIT', payload: { content: '# x', config: minimalConfig } },
+    {
+      type: 'INIT',
+      payload: {
+        content: '# x',
+        config: minimalConfig,
+        hostDiagnostics: {
+          vscodeVersion: '1.99.0',
+          extensionVersion: '1.5.4',
+          platform: 'darwin',
+          arch: 'arm64',
+          configSnapshot: {
+            theme: 'auto',
+            fontSize: 14,
+            wrapPolicy: 'autoWrap',
+            tableCellWrap: 'wrap',
+            enableMermaid: true,
+            enableShiki: false,
+          },
+        },
+      },
+    },
     { type: 'CONTENT_UPDATE', payload: { content: 'a', version: 2 } },
     { type: 'CONTENT_UPDATE', payload: { content: 'a' } },
     { type: 'CONFIG_CHANGE', payload: { config: { editor: { theme: 'dark' } } } },

@@ -78,6 +78,17 @@ export interface ExtensionConfig {
   };
 }
 
+export interface HostDiagnostics {
+  vscodeVersion: string;
+  extensionVersion: string;
+  platform: string;
+  arch: string;
+  configSnapshot: Pick<
+    ExtensionConfig['editor'],
+    'wrapPolicy' | 'tableCellWrap' | 'enableMermaid' | 'enableShiki' | 'theme' | 'fontSize'
+  >;
+}
+
 // 消息类型（Extension ⇄ Webview 自定义编辑器协议）
 //
 // Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
@@ -87,7 +98,7 @@ export interface ExtensionConfig {
 //
 // 注：`markly.toggleMode` 仍可能下发 `preview`（历史命名），Webview 侧与 `ir` 同义入口。
 export type ExtensionMessage =
-  | { type: 'INIT'; payload: { content: string; config: ExtensionConfig; version?: number } }
+  | { type: 'INIT'; payload: { content: string; config: ExtensionConfig; version?: number; hostDiagnostics?: HostDiagnostics } }
   | { type: 'CONTENT_UPDATE'; payload: { content: string; version?: number } }
   | { type: 'CONFIG_CHANGE'; payload: { config: Partial<ExtensionConfig> } }
   | { type: 'SWITCH_MODE'; payload: { mode: EditorMode | 'preview' } }

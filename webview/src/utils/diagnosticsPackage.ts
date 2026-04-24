@@ -110,3 +110,38 @@ export function buildDiagnosticsPackageText(args: {
   return { payload: p, text, truncated };
 }
 
+export function buildIssueTemplateMarkdown(args: {
+  payloadText: string;
+  truncated: boolean;
+  title?: string;
+}): string {
+  const title = (args.title ?? 'Markly Rich 问题反馈').trim() || 'Markly Rich 问题反馈';
+  const hint = args.truncated ? '\n> 注：诊断信息过长已自动裁剪（__truncated__）。\n' : '';
+  return [
+    `## ${title}`,
+    '',
+    '### 复现步骤',
+    '1. ',
+    '2. ',
+    '',
+    '### 期望结果',
+    '- ',
+    '',
+    '### 实际结果',
+    '- ',
+    hint.trimEnd(),
+    '',
+    '### 诊断信息（请勿删除）',
+    '<details>',
+    '<summary>展开</summary>',
+    '',
+    '```json',
+    args.payloadText.trimEnd(),
+    '```',
+    '</details>',
+    '',
+  ]
+    .filter((x) => x !== '')
+    .join('\n');
+}
+
