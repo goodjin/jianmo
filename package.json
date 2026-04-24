@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.4.0",
+  "version": "1.5.1",
   "publisher": "jianmo",
   "icon": "images/icon.png",
   "engines": {
@@ -99,6 +99,34 @@
           "default": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           "description": "Editor font family"
         },
+        "markly.editor.wrapPolicy": {
+          "type": "string",
+          "default": "autoWrap",
+          "enum": [
+            "autoWrap",
+            "preferScroll"
+          ],
+          "description": "Overflow policy for long lines: auto wrap or prefer horizontal scroll"
+        },
+        "markly.editor.tableCellWrap": {
+          "type": "string",
+          "default": "wrap",
+          "enum": [
+            "wrap",
+            "nowrap"
+          ],
+          "description": "Rich table cell wrapping: wrap text or keep single-line with horizontal scroll"
+        },
+        "markly.editor.enableMermaid": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Mermaid rendering in Rich mode (may impact performance)"
+        },
+        "markly.editor.enableShiki": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Shiki syntax highlighting in Rich mode (may impact stability)"
+        },
         "markly.editor.defaultForMarkdown": {
           "type": "boolean",
           "default": true,
@@ -145,6 +173,8 @@
     "build": "npm run build:extension && npm run build:webview",
     "build:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --external:puppeteer --format=cjs --platform=node --minify --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "build:webview": "cd webview && npm run build",
+    "check:bundle": "node ./scripts/check_webview_bundle.mjs",
+    "m8:baseline": "node ./scripts/m8-baseline.mjs",
     "dev:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --format=cjs --platform=node --watch --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "dev:webview": "cd webview && npm run dev",
     "test": "vitest run && cd webview && npm test",
