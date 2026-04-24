@@ -82,6 +82,9 @@
         Rich 启动{{ richFallbackBannerReason === 'timeout' ? '超时' : '失败' }}，已切换到 Source。
       </span>
       <button type="button" class="retry-btn" @click="retryRichFromFallback">重试 Rich</button>
+      <button type="button" class="retry-btn" data-testid="reload-webview-btn" @click="reloadWebview">
+        重载 Webview
+      </button>
       <button type="button" class="retry-btn" data-testid="copy-diagnostics-btn" @click="copyDiagnosticsToClipboard">
         复制诊断信息
       </button>
@@ -207,6 +210,7 @@ import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
+import { buildDiagnosticsPackageText } from './utils/diagnosticsPackage';
 import {
   patternToRegExp,
   findAllMatchesInText,
@@ -216,7 +220,7 @@ import {
   type FindPatternMode,
 } from './utils/findPattern';
 import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
-import { undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
+import { undoDepth, redoDepth } from '@codemirror/commands';
 
 import { useVSCode } from './composables/useVSCode';
 const { postMessage, getState, setState } = useVSCode();
@@ -228,10 +232,6 @@ declare global {
       setContent: (c: string) => void;
       getSelectionAnchor: () => number;
       setSelectionAnchor: (anchor: number, head?: number | null) => void;
-      applyFormat: (format: string) => void;
-      insertNode: (type: string) => void;
-      undo: () => void;
-      redo: () => void;
       switchMode: (mode: EditorMode) => void;
       getEditorMode: () => EditorMode;
       replaceAll: (
@@ -244,11 +244,6 @@ declare global {
           useWholeWord?: boolean;
         }
       ) => void;
-      getUndoDepth: () => number;
-      getRedoDepth: () => number;
-      undoCmd: () => boolean;
-      redoCmd: () => boolean;
-      getZoom?: () => number;
       getDiagnostics?: () => unknown;
       /** E2E：Rich 渲染就绪（5s 门控）：Vue 文稿含 Section B + 子树文本含 + 存在对应 h1–h6 + ProseMirror/textbox + 序列化非空时须含 Section B */
       isRichDocumentPainted?: () => boolean;
@@ -262,7 +257,6 @@ declare global {
       } | null;
       runRichTableOp?: (op: string) => boolean;
       simulateRichTablePaste?: (payload: { plain?: string; html?: string }) => boolean;
-      setRichTableCellSelection?: (payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }) => boolean;
     };
   }
 }
@@ -652,10 +646,6 @@ function ensureEditorFromInit(): boolean {
       const h = head == null ? a : Math.min(Math.max(0, head), len);
       v.dispatch({ selection: { anchor: a, head: h } });
     },
-    applyFormat: (format: string) => handleFormat(format),
-    insertNode: (type: string) => handleInsert(type),
-    undo: () => handleUndo(),
-    redo: () => handleRedo(),
     switchMode: (mode: EditorMode) => switchMode(mode),
     /** 对外语义以 UI 模式为准（rich/ir/source） */
     getEditorMode: (): EditorMode => currentMode.value,
@@ -665,17 +655,6 @@ function ensureEditorFromInit(): boolean {
         patternMode: options.useRegex ? 'regex' : options.useGlob ? 'glob' : 'literal',
         wholeWord: options.useWholeWord ?? false,
       }),
-    getUndoDepth: () => (editor.view.value ? undoDepth(editor.view.value.state) : 0),
-    getRedoDepth: () => (editor.view.value ? redoDepth(editor.view.value.state) : 0),
-    undoCmd: () => {
-      const v = editor.view.value;
-      return v ? undo({ state: v.state, dispatch: v.dispatch }) : false;
-    },
-    redoCmd: () => {
-      const v = editor.view.value;
-      return v ? redo({ state: v.state, dispatch: v.dispatch }) : false;
-    },
-    getZoom: () => zoom.value,
     getDiagnostics: () => {
       const root = document.querySelector('.milkdown-editor') as HTMLElement | null;
       const headings = root ? root.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]') : null;
@@ -724,22 +703,9 @@ function ensureEditorFromInit(): boolean {
       if (!RICH_TABLE_OPS.has(op)) return false;
       return Boolean((milkdownRef.value as any)?.runRichTableOp?.(op));
     },
-    runRichFormat: (format: string) => {
-      if (currentMode.value !== 'rich') return false;
-      try {
-        (milkdownRef.value as any)?.applyFormat?.(format);
-        return true;
-      } catch {
-        return false;
-      }
-    },
     simulateRichTablePaste: (payload: { plain?: string; html?: string }) => {
       if (currentMode.value !== 'rich') return false;
       return Boolean((milkdownRef.value as any)?.simulateRichTablePaste?.(payload));
-    },
-    setRichTableCellSelection: (payload: { rowStart: number; colStart: number; rowEnd: number; colEnd: number }) => {
-      if (currentMode.value !== 'rich') return false;
-      return Boolean((milkdownRef.value as any)?.setRichTableCellSelection?.(payload));
     },
     e2eSelectFirstTableBodyCell: () => {
       if (currentMode.value !== 'rich') return false;
@@ -936,6 +902,16 @@ function retryRichFromFallback(): void {
   richFallbackBannerVisible.value = false;
   richFallbackBannerReason.value = null;
   switchMode('rich');
+}
+
+function reloadWebview(): void {
+  // 幂等：多次点击等价于 reload；失败时不影响当前编辑（只 toast）
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    (globalThis as any)?.location?.reload?.();
+  } catch {
+    showToast('重载失败：当前环境不支持 reload。');
+  }
 }
 
 // Event handlers
@@ -1480,21 +1456,44 @@ function showToast(msg: string, durationMs = 2400) {
 function buildDiagnosticsPayload() {
   try {
     const base = (window.__marklyE2E as any)?.getDiagnostics?.() ?? {};
-    return {
-      ts: new Date().toISOString(),
-      ...base,
-    };
+    const pkg = buildDiagnosticsPackageText({
+      base,
+      extra: {
+        app: {
+          mode: currentMode.value,
+          richReadySuccess: richReadySuccess.value,
+          richFallbackBannerVisible: richFallbackBannerVisible.value,
+          richFallbackBannerReason: richFallbackBannerReason.value,
+        },
+        doc: {
+          chars: charCount.value,
+          lines: lineCount.value,
+          computedRichPerfTier: computedRichPerfTier.value,
+          richPerfEffectiveTier: richPerfEffectiveTier.value,
+        },
+        config: {
+          wrapPolicy: wrapPolicy.value,
+          tableCellWrap: tableCellWrap.value,
+          enableMermaid: config.value?.editor?.enableMermaid ?? null,
+          enableShiki: config.value?.editor?.enableShiki ?? null,
+        },
+      },
+    });
+    return pkg;
   } catch {
-    return { ts: new Date().toISOString(), mode: currentMode.value, richReadySuccess: richReadySuccess.value };
+    return buildDiagnosticsPackageText({
+      base: {},
+      extra: { app: { mode: currentMode.value, richReadySuccess: richReadySuccess.value } },
+    });
   }
 }
 
 async function copyDiagnosticsToClipboard() {
-  const payload = buildDiagnosticsPayload();
-  const text = JSON.stringify(payload, null, 2);
+  const pkg = buildDiagnosticsPayload() as any;
+  const text = String(pkg?.text ?? JSON.stringify(pkg ?? {}, null, 2));
   try {
     await navigator.clipboard.writeText(text);
-    showToast('诊断信息已复制到剪贴板。');
+    showToast(pkg?.truncated ? '诊断信息已复制（已裁剪过长字段）。' : '诊断信息已复制到剪贴板。');
     return;
   } catch {
     // ignore → fallback
@@ -1509,7 +1508,7 @@ async function copyDiagnosticsToClipboard() {
     ta.select();
     const ok = document.execCommand('copy');
     document.body.removeChild(ta);
-    if (ok) showToast('诊断信息已复制到剪贴板。');
+    if (ok) showToast(pkg?.truncated ? '诊断信息已复制（已裁剪过长字段）。' : '诊断信息已复制到剪贴板。');
     else showToast('复制失败：浏览器不支持剪贴板写入。');
   } catch {
     showToast('复制失败：浏览器不支持剪贴板写入。');

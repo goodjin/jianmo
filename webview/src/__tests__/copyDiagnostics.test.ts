@@ -62,5 +62,39 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('"mode"');
     expect(arg).toContain('"source"');
   });
+
+  it('has reload webview self-heal action', async () => {
+    const reloadSpy = vi.fn();
+    const prevLoc = (globalThis as any).location;
+    // jsdom 的 window.location.reload 可能是只读；用 defineProperty 替换为可控 stub
+    Object.defineProperty(globalThis as any, 'location', {
+      value: { ...(prevLoc ?? {}), reload: reloadSpy },
+      configurable: true,
+      writable: true,
+    });
+
+    const wrapper = mount(App as any, {
+      global: {
+        stubs: {
+          MilkdownEditor: true,
+          Toolbar: ToolbarStub,
+          ImagePreview: true,
+          FindReplacePanel: true,
+        },
+      },
+    });
+
+    await wrapper.setData?.({});
+    (wrapper.vm as any).editorReady = true;
+    (wrapper.vm as any).currentMode = 'source';
+    (wrapper.vm as any).richFallbackBannerVisible = true;
+    (wrapper.vm as any).richFallbackBannerReason = 'failed';
+    await wrapper.vm.$nextTick();
+
+    const btn = wrapper.find('[data-testid="reload-webview-btn"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(reloadSpy).toHaveBeenCalled();
+  });
 });
 
