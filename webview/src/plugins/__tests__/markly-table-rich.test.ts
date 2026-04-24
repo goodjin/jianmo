@@ -11,6 +11,7 @@ import { runRichTableOp } from '../../core/richTableCommands';
 import {
   MARKLY_TABLE_PASTE_MAX_COLS,
   MARKLY_TABLE_PASTE_MAX_ROWS,
+  MARKLY_TABLE_PASTE_MAX_CELLS,
   createMarklyTableGridPastePlugin,
   decideTableGridSelectionFillMapping,
   parseHtmlTableToGrid,
@@ -19,6 +20,13 @@ import {
   parseDelimitedGridForTablePaste,
   parseTablePasteMatrix,
 } from '../markly-table-rich';
+
+describe('table edge regressions (M10-2)', () => {
+  it('CellSelection mismatch should reject (avoid expanding table)', () => {
+    const m = decideTableGridSelectionFillMapping({ gridHeight: 2, gridWidth: 2, selHeight: 2, selWidth: 3 });
+    expect(m.mode).toBe('reject');
+  });
+});
 
 describe('markly-table-rich decideTableGridSelectionFillMapping (N3-1)', () => {
   it('exact：grid 与选区尺寸完全一致', () => {
@@ -227,6 +235,37 @@ describe('markly-table-rich parseTablePasteMatrix', () => {
     });
   });
 
+  it('parses TSV with CRLF and trailing newline as 2x2 grid', () => {
+    expect(parseTablePasteMatrix('', 'A\tB\r\nC\tD\r\n')).toEqual({
+      grid: [
+        ['A', 'B'],
+        ['C', 'D'],
+      ],
+      source: 'plain',
+      reason: null,
+      htmlReason: 'no_table',
+      htmlCandidate: false,
+      plainReason: null,
+      plainCandidate: true,
+    });
+  });
+
+  it('keeps empty strings for empty HTML table cells', () => {
+    const html = '<table><tbody><tr><td>A</td><td></td></tr><tr><td></td><td>D</td></tr></tbody></table>';
+    expect(parseTablePasteMatrix(html, '')).toEqual({
+      grid: [
+        ['A', ''],
+        ['', 'D'],
+      ],
+      source: 'html',
+      reason: null,
+      htmlReason: null,
+      htmlCandidate: true,
+      plainReason: null,
+      plainCandidate: false,
+    });
+  });
+
   it('returns html over_limit as terminal failure', () => {
     const rows = Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 1 }, (_, r) => `<tr><td>r${r}c1</td><td>r${r}c2</td></tr>`).join('');
     const html = `<table>${rows}</table>`;
@@ -256,6 +295,20 @@ describe('markly-table-rich parseTablePasteMatrix', () => {
     });
   });
 
+  it('returns plain over_limit when grid exceeds max cells (MARKLY_TABLE_PASTE_MAX_CELLS)', () => {
+    const cols = MARKLY_TABLE_PASTE_MAX_CELLS + 1;
+    const row = Array.from({ length: cols }, (_, i) => `c${i}`).join('\t');
+    expect(parseTablePasteMatrix('', row)).toEqual({
+      grid: null,
+      source: 'plain',
+      reason: 'over_limit',
+      htmlReason: 'no_table',
+      htmlCandidate: false,
+      plainReason: 'over_limit',
+      plainCandidate: true,
+    });
+  });
+
   it('returns plain not_grid when plain cannot be parsed as a grid', () => {
     expect(parseTablePasteMatrix('', 'hello world')).toEqual({
       grid: null,
@@ -264,6 +317,18 @@ describe('markly-table-rich parseTablePasteMatrix', () => {
       htmlReason: 'no_table',
       htmlCandidate: false,
       plainReason: 'not_grid',
+      plainCandidate: false,
+    });
+  });
+
+  it('treats single-line CSV as 1xN grid (auto-create table outside table)', () => {
+    expect(parseTablePasteMatrix('', 'a,b,c')).toEqual({
+      grid: [['a', 'b', 'c']],
+      source: 'plain',
+      reason: null,
+      htmlReason: 'no_table',
+      htmlCandidate: false,
+      plainReason: null,
       plainCandidate: false,
     });
   });

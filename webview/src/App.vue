@@ -82,6 +82,9 @@
         Rich 启动{{ richFallbackBannerReason === 'timeout' ? '超时' : '失败' }}，已切换到 Source。
       </span>
       <button type="button" class="retry-btn" @click="retryRichFromFallback">重试 Rich</button>
+      <button type="button" class="retry-btn" data-testid="copy-diagnostics-btn" @click="copyDiagnosticsToClipboard">
+        复制诊断信息
+      </button>
     </div>
 
     <!-- 大文档分级提示 + 可选手动恢复（M8） -->
@@ -1455,6 +1458,45 @@ function showToast(msg: string, durationMs = 2400) {
     toastOpen.value = false;
     toastTimer = null;
   }, durationMs);
+}
+
+function buildDiagnosticsPayload() {
+  try {
+    const base = (window.__marklyE2E as any)?.getDiagnostics?.() ?? {};
+    return {
+      ts: new Date().toISOString(),
+      ...base,
+    };
+  } catch {
+    return { ts: new Date().toISOString(), mode: currentMode.value, richReadySuccess: richReadySuccess.value };
+  }
+}
+
+async function copyDiagnosticsToClipboard() {
+  const payload = buildDiagnosticsPayload();
+  const text = JSON.stringify(payload, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('诊断信息已复制到剪贴板。');
+    return;
+  } catch {
+    // ignore → fallback
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'true');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) showToast('诊断信息已复制到剪贴板。');
+    else showToast('复制失败：浏览器不支持剪贴板写入。');
+  } catch {
+    showToast('复制失败：浏览器不支持剪贴板写入。');
+  }
 }
 
 function recomputePerfDegradeUi(): void {
