@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "publisher": "jianmo",
   "icon": "images/icon.png",
   "engines": {
@@ -182,6 +182,7 @@
     "test:vscode": "npm run build && node ./e2e/compile-suite-mocha-tests.mjs && node ./e2e/index.js",
     "test:vscode:ui:setup": "npx -y node@20.18.1 ./e2e/setup-extest-ui.mjs",
     "test:vscode:ui": "npm run build && npx -y node@20.18.1 ./e2e/run-extest-ui.mjs",
+    "test:vscode:ui:stable": "MARKLY_UI_REPEAT=3 npm run test:vscode:ui",
     "vscode:ui": "npm run build && node ./e2e/vscode-ui-launch.mjs",
     "lint": "eslint src --ext .ts,.tsx",
     "package": "vsce package"
