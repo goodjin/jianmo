@@ -68,5 +68,75 @@ describe('Rich fallback banner + retry', () => {
 
     expect(() => vi.fn()).not.toThrow();
   });
+
+  it('records retry cleanup and retry result in diagnostics', async () => {
+    (window as any).matchMedia =
+      (window as any).matchMedia ||
+      (() => ({
+        matches: false,
+        media: '',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        onchange: null,
+        dispatchEvent: () => false,
+      }));
+    vi.useFakeTimers();
+
+    try {
+      const MilkdownEditorStub = {
+        name: 'MilkdownEditor',
+        template: '<div class="milkdown-stub"></div>',
+      };
+      const ToolbarStub = {
+        name: 'Toolbar',
+        template: '<div class="toolbar-stub"></div>',
+        props: {
+          mode: { type: String, required: false },
+        },
+      };
+
+      const w = mount(App as any, {
+        global: {
+          stubs: {
+            Toolbar: ToolbarStub,
+            OutlinePanel: true,
+            FindReplacePanel: true,
+            ImagePreview: true,
+            MilkdownEditor: MilkdownEditorStub,
+          },
+        },
+      });
+
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.editorReady = true;
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.currentMode = 'source';
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.milkdownRef = { setContent: () => {} };
+      await w.vm.$nextTick();
+
+      // @ts-expect-error setup function
+      w.vm.switchMode('rich');
+      vi.advanceTimersByTime(2600);
+      await w.vm.$nextTick();
+      expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(true);
+
+      await w.find('button.retry-btn').trigger('click');
+      await w.vm.$nextTick();
+
+      // @ts-expect-error setup function
+      w.vm.onRichReady(true);
+      const successPkg = (w.vm as any).buildDiagnosticsPayload();
+      const successText = String(successPkg.text);
+      expect(successText).toContain('"retry:rich"');
+      expect(successText).toContain('"retry:cleanup"');
+      expect(successText).toContain('"rich:ready:true"');
+      expect(successText).toContain('"richRetryCount": 1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 

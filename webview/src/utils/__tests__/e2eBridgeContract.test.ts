@@ -23,6 +23,7 @@ describe('M10-3 E2E bridge contract', () => {
       'simulateRichTablePaste',
       'e2eSelectFirstTableBodyCell',
       'e2eSetCellSelectionInFirstTable',
+      'e2eSelectPlainTextOccurrence',
       'e2eSelectListItemText',
       'e2ePressTab',
       'e2eIndentListItem',

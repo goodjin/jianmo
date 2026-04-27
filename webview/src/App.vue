@@ -174,6 +174,7 @@
           :rich-perf-effective-tier="richPerfEffectiveTier"
           @change="onRichContentChange"
           @ready="onRichReady"
+          @startup-event="onRichStartupEvent"
           @table-context="onRichTableContext"
           @table-context-menu="onRichTableContextMenu"
           ref="milkdownRef"
@@ -257,6 +258,7 @@ declare global {
       } | null;
       runRichTableOp?: (op: string) => boolean;
       simulateRichTablePaste?: (payload: { plain?: string; html?: string }) => boolean;
+      e2eSelectPlainTextOccurrence?: (payload: { needle: string; occurrence?: number }) => boolean;
     };
   }
 }
@@ -276,6 +278,7 @@ const milkdownRef = ref<any>(null);
 const richReadySuccess = ref<boolean | null>(null);
 let richStartupWatchdog: ReturnType<typeof setTimeout> | null = null;
 let richStartupAttemptId = 0;
+let richStartupWatchdogDeferredAttemptId = 0;
 const richAutoFallbackOnce = ref(false);
 const richFallbackBannerVisible = ref(false);
 const richFallbackBannerReason = ref<'fail' | 'timeout' | null>(null);
@@ -283,6 +286,14 @@ const richRetryCount = ref(0);
 const webviewReloadCount = ref(0);
 const richStartupWatchdogFired = ref(false);
 const richLastError = ref<string>('');
+type RichStartupEvent = {
+  ts: string;
+  stage: string;
+  attemptId: number;
+  mode: EditorMode;
+  detail?: Record<string, unknown>;
+};
+const richStartupEvents: RichStartupEvent[] = [];
 const perfDegradeBannerVisible = ref(false);
 const perfDegradeReason = ref<string>('');
 const richPerfDegradeUserFull = ref(false);
@@ -300,6 +311,9 @@ const richTableMenuY = ref(0);
 const toastOpen = ref(false);
 const toastMessage = ref('');
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+const RICH_STARTUP_WATCHDOG_MS = 2500;
+const RICH_STARTUP_WATCHDOG_DEFER_MS = 1500;
 
 const RICH_TABLE_OPS = new Set<string>([
   'addRowAfter',
@@ -330,6 +344,23 @@ const RICH_TABLE_MENU_ITEMS: Array<{ op: RichTableOp; label: string }> = [
   { op: 'deleteRow', label: '删除当前行' },
   { op: 'deleteCol', label: '删除当前列' },
 ];
+
+function recordRichStartupEvent(stage: string, detail?: Record<string, unknown>): void {
+  try {
+    richStartupEvents.push({
+      ts: new Date().toISOString(),
+      stage,
+      attemptId: richStartupAttemptId,
+      mode: currentMode.value,
+      detail,
+    });
+    if (richStartupEvents.length > 20) {
+      richStartupEvents.splice(0, richStartupEvents.length - 20);
+    }
+  } catch {
+    // Diagnostics must never affect editor startup.
+  }
+}
 
 // E2E/诊断：抓取最近的 console.error/warn，帮助定位 Webview 内部初始化失败
 const consoleRing: Array<{ level: 'error' | 'warn'; text: string }> = [];
@@ -368,6 +399,8 @@ function installGlobalErrorGuards(): void {
     if (msg.includes('MilkdownError') && msg.includes('Context "editorView" not found')) {
       try {
         // 只在 rich 下处理；避免误伤其它错误
+        richLastError.value = msg;
+        recordRichStartupEvent('global-error:milkdown-editorView-missing', { message: msg.slice(0, 240) });
         if (currentMode.value === 'rich') currentMode.value = 'source';
       } catch {
         // ignore
@@ -437,11 +470,9 @@ function onRichContentChange(newContent: string): void {
 function onRichReady(_success: boolean): void {
   // Rich 编辑器自身 ready 由组件内部处理；这里不改变 editorReady（由 CM6 INIT 流程控制）
   richReadySuccess.value = _success;
+  recordRichStartupEvent(_success ? 'rich:ready:true' : 'rich:ready:false');
   if (_success) {
-    if (richStartupWatchdog) {
-      clearTimeout(richStartupWatchdog);
-      richStartupWatchdog = null;
-    }
+    clearRichStartupWatchdog('watchdog:cleared', { reason: 'ready' });
     richStartupWatchdogFired.value = false;
     return;
   }
@@ -451,9 +482,36 @@ function onRichReady(_success: boolean): void {
     richAutoFallbackOnce.value = true;
     richFallbackBannerVisible.value = true;
     richFallbackBannerReason.value = 'fail';
+    recordRichStartupEvent('fallback:source', { reason: 'fail' });
     showToast('Rich 编辑器启动失败，已自动切换到 Source 模式。');
     switchMode('source');
   }
+}
+
+function onRichStartupEvent(payload: { stage: string; detail?: Record<string, unknown> }): void {
+  const stage = typeof payload?.stage === 'string' ? payload.stage : 'milkdown:unknown';
+  recordRichStartupEvent(stage, payload?.detail);
+}
+
+function hasRichEditableDom(): boolean {
+  const root = document.querySelector('.milkdown-editor') as HTMLElement | null;
+  if (!root) return false;
+  const editable =
+    root.querySelector('[role="textbox"]') ||
+    root.querySelector('.ProseMirror') ||
+    root.querySelector('[contenteditable="true"]');
+  return !!editable;
+}
+
+function clearRichStartupWatchdog(stage = 'watchdog:cleared', detail?: Record<string, unknown>): void {
+  if (richStartupWatchdog) {
+    clearTimeout(richStartupWatchdog);
+    richStartupWatchdog = null;
+    recordRichStartupEvent(stage, { cleared: true, ...(detail ?? {}) });
+  } else if (detail) {
+    recordRichStartupEvent(stage, { cleared: false, ...detail });
+  }
+  richStartupWatchdogDeferredAttemptId = 0;
 }
 
 function onToolbarFindReplace(): void {
@@ -612,6 +670,7 @@ const appClasses = computed(() => ({
 /** 确保 CM6 已挂载到容器并完成 INIT（避免宿主过早 postMessage INIT 时 ref 未就绪 → 永久 Loading） */
 function ensureEditorFromInit(): boolean {
   const el = editorContainerRef.value;
+  recordRichStartupEvent('ensureEditor:start', { hasContainer: !!el, hasCmView: !!editor.view.value });
   if (!el) return false;
   if (!editor.view.value) {
     editor.createEditor(el);
@@ -621,6 +680,7 @@ function ensureEditorFromInit(): boolean {
   editor.setContent(content.value);
   editorReady.value = true;
   console.log('[Webview] editorReady set to true');
+  recordRichStartupEvent('ensureEditor:done', { hasCmView: !!editor.view.value });
   applyZoomToDom();
 
   // e2e 调试桥：让真 UI 测试能稳定读取/驱动编辑器状态（不依赖 DOM 可见文本/落盘时序）
@@ -678,6 +738,7 @@ function ensureEditorFromInit(): boolean {
         headingTextSample: headings && headings.length > 0 ? (headings[0].textContent || '').slice(0, 80) : '',
         editableExists: !!editable,
         consoleRecent: consoleRing.slice(-10),
+        richStartupEvents: richStartupEvents.slice(-20),
       };
     },
     isRichDocumentPainted: (): boolean => {
@@ -712,6 +773,12 @@ function ensureEditorFromInit(): boolean {
     simulateRichTablePaste: (payload: { plain?: string; html?: string }) => {
       if (currentMode.value !== 'rich') return false;
       return Boolean((milkdownRef.value as any)?.simulateRichTablePaste?.(payload));
+    },
+    e2eSelectPlainTextOccurrence: (payload: { needle: string; occurrence?: number }) => {
+      if (currentMode.value !== 'rich') return false;
+      const needle = typeof payload?.needle === 'string' ? payload.needle : '';
+      const occurrence = Number.isFinite(Number(payload?.occurrence)) ? Number(payload.occurrence) : 0;
+      return Boolean((milkdownRef.value as any)?.selectPlainTextOccurrence?.(needle, occurrence));
     },
     e2eSelectFirstTableBodyCell: () => {
       if (currentMode.value !== 'rich') return false;
@@ -779,6 +846,10 @@ function handleMessage(event: MessageEvent) {
       content.value = message.payload.content;
       config.value = message.payload.config;
       hostDiagnostics.value = (message.payload as any)?.hostDiagnostics ?? null;
+      recordRichStartupEvent('init:message', {
+        chars: message.payload.content?.length ?? 0,
+        hasHostDiagnostics: !!hostDiagnostics.value,
+      });
       scheduleEnsureEditorFromInit();
       break;
 
@@ -833,6 +904,7 @@ function handleEditorReady(success: boolean) {
 function switchMode(mode: EditorMode) {
   if (mode === 'rich') {
     currentMode.value = 'rich';
+    recordRichStartupEvent('switchRich:start', { retryCount: richRetryCount.value });
     // 退出 CM6 视图焦点态，避免快捷键冲突；内容以 content 为准
     cancelPendingFindRecompute();
     findReplaceVisible.value = false;
@@ -842,10 +914,12 @@ function switchMode(mode: EditorMode) {
     } catch (e) {
       console.warn('[Rich] sync content on enter failed:', e);
       richLastError.value = String((e as any)?.message ?? e ?? '');
+      recordRichStartupEvent('switchRich:setContent:error', { message: richLastError.value.slice(0, 240) });
       if (!richAutoFallbackOnce.value) {
         richAutoFallbackOnce.value = true;
         richFallbackBannerVisible.value = true;
         richFallbackBannerReason.value = 'fail';
+        recordRichStartupEvent('fallback:source', { reason: 'setContent-error' });
         showToast('Rich 编辑器启动失败，已自动切换到 Source 模式。');
         switchMode('source');
       }
@@ -857,19 +931,39 @@ function switchMode(mode: EditorMode) {
     richStartupWatchdogFired.value = false;
     richStartupAttemptId += 1;
     const attempt = richStartupAttemptId;
+    richStartupWatchdogDeferredAttemptId = 0;
     if (richStartupWatchdog) clearTimeout(richStartupWatchdog);
-    richStartupWatchdog = setTimeout(() => {
-      if (attempt !== richStartupAttemptId) return;
-      if (currentMode.value !== 'rich') return;
-      if (richReadySuccess.value === true) return;
-      if (richAutoFallbackOnce.value) return;
-      richStartupWatchdogFired.value = true;
-      richAutoFallbackOnce.value = true;
-      richFallbackBannerVisible.value = true;
-      richFallbackBannerReason.value = 'timeout';
-      showToast('Rich 编辑器启动超时，已自动切换到 Source 模式。');
-      switchMode('source');
-    }, 2500);
+    const armWatchdog = (delayMs: number) => {
+      recordRichStartupEvent('watchdog:armed', { attemptId: attempt, timeoutMs: delayMs });
+      richStartupWatchdog = setTimeout(() => {
+        if (attempt !== richStartupAttemptId) return;
+        if (currentMode.value !== 'rich') return;
+        if (richReadySuccess.value === true) return;
+        if (richAutoFallbackOnce.value) return;
+        if (hasRichEditableDom() && richStartupWatchdogDeferredAttemptId !== attempt) {
+          richStartupWatchdogDeferredAttemptId = attempt;
+          recordRichStartupEvent('watchdog:defer', {
+            attemptId: attempt,
+            reason: 'editable-dom-present',
+            delayMs: RICH_STARTUP_WATCHDOG_DEFER_MS,
+          });
+          armWatchdog(RICH_STARTUP_WATCHDOG_DEFER_MS);
+          return;
+        }
+        richStartupWatchdogFired.value = true;
+        richAutoFallbackOnce.value = true;
+        richFallbackBannerVisible.value = true;
+        richFallbackBannerReason.value = 'timeout';
+        recordRichStartupEvent('watchdog:fired', {
+          attemptId: attempt,
+          editableExists: hasRichEditableDom(),
+        });
+        recordRichStartupEvent('fallback:source', { reason: 'timeout' });
+        showToast('Rich 编辑器启动超时，已自动切换到 Source 模式。');
+        switchMode('source');
+      }, delayMs);
+    };
+    armWatchdog(RICH_STARTUP_WATCHDOG_MS);
     return;
   }
 
@@ -878,6 +972,17 @@ function switchMode(mode: EditorMode) {
   if (mode === editor.mode.value && currentMode.value === mode) return;
   // 切模式会重建 EditorView；必须取消 find 的延迟任务，避免扫描旧 view/doc
   cancelPendingFindRecompute();
+
+  if (currentMode.value === 'rich') {
+    const latestRichContent = milkdownRef.value?.getContent?.();
+    if (typeof latestRichContent === 'string' && latestRichContent !== content.value) {
+      content.value = latestRichContent;
+      sendMessage({
+        type: 'CONTENT_CHANGE',
+        payload: { content: latestRichContent },
+      });
+    }
+  }
 
   // 保存当前滚动位置
   const scroller = document.querySelector('.cm-scroller') as HTMLElement;
@@ -909,6 +1014,10 @@ function switchMode(mode: EditorMode) {
 function retryRichFromFallback(): void {
   // 允许再次尝试；但降级 toast 仍会通过 richAutoFallbackOnce 防止刷屏
   richRetryCount.value += 1;
+  recordRichStartupEvent('retry:rich', { retryCount: richRetryCount.value });
+  clearRichStartupWatchdog('retry:cleanup', { retryCount: richRetryCount.value });
+  richReadySuccess.value = null;
+  richStartupWatchdogFired.value = false;
   richAutoFallbackOnce.value = false;
   richFallbackBannerVisible.value = false;
   richFallbackBannerReason.value = null;
@@ -918,6 +1027,8 @@ function retryRichFromFallback(): void {
 function reloadWebview(): void {
   // 幂等：多次点击等价于 reload；失败时不影响当前编辑（只 toast）
   webviewReloadCount.value += 1;
+  recordRichStartupEvent('reload:webview', { webviewReloadCount: webviewReloadCount.value });
+  clearRichStartupWatchdog('reload:cleanup', { webviewReloadCount: webviewReloadCount.value });
   try {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     (globalThis as any)?.location?.reload?.();
@@ -937,13 +1048,20 @@ function handleChange(newContent: string) {
 
 // 保存文件时处理
 function saveWithTocUpdate() {
-  let updatedContent = editor.getContent();
+  let updatedContent =
+    currentMode.value === 'rich'
+      ? String(milkdownRef.value?.getContent?.() || content.value || '')
+      : editor.getContent();
 
   // 检查并更新 TOC
   if (hasToc(updatedContent)) {
     updatedContent = updateTocInContent(updatedContent);
     // 同步回编辑器
-    if (updatedContent !== editor.getContent()) {
+    if (currentMode.value === 'rich') {
+      milkdownRef.value?.setContent?.(updatedContent);
+      editor.setContent(updatedContent);
+      content.value = updatedContent;
+    } else if (updatedContent !== editor.getContent()) {
       editor.setContent(updatedContent);
       content.value = updatedContent;
     }
@@ -1482,6 +1600,7 @@ function buildDiagnosticsPayload() {
           richRetryCount: richRetryCount.value,
           webviewReloadCount: webviewReloadCount.value,
           richLastError: richLastError.value,
+          richStartupEvents: richStartupEvents.slice(-20),
         },
         doc: {
           chars: charCount.value,
@@ -1739,6 +1858,7 @@ function checkInitStatus() {
 
 // Lifecycle
 onMounted(() => {
+  recordRichStartupEvent('app:mounted');
   // restore persisted zoom (per webview)
   try {
     const st = getState();

@@ -67,5 +67,122 @@ describe('Rich watchdog fallback', () => {
 
     vi.useRealTimers();
   });
+
+  it('does not fall back for empty or small documents once rich reports ready', async () => {
+    stubMatchMedia();
+    vi.useFakeTimers();
+
+    try {
+      for (const content of ['', '# Title', '# Small\n\nhello']) {
+        const ToolbarStub = {
+          name: 'Toolbar',
+          template: '<div class="toolbar-stub"></div>',
+          props: { mode: { type: String, required: false } },
+        };
+        const w = mount(App as any, {
+          global: {
+            stubs: {
+              Toolbar: ToolbarStub,
+              OutlinePanel: true,
+              FindReplacePanel: true,
+              ImagePreview: true,
+              MilkdownEditor: true,
+            },
+          },
+        });
+
+        // @ts-expect-error setup refs are proxied on vm
+        w.vm.editorReady = true;
+        // @ts-expect-error setup refs are proxied on vm
+        w.vm.currentMode = 'source';
+        // @ts-expect-error setup refs are proxied on vm
+        w.vm.content = content;
+        // @ts-expect-error setup refs are proxied on vm
+        w.vm.milkdownRef = { setContent: () => {} };
+        await w.vm.$nextTick();
+
+        // @ts-expect-error setup function
+        w.vm.switchMode('rich');
+        // @ts-expect-error setup function
+        w.vm.onRichReady(true);
+        vi.advanceTimersByTime(5000);
+        await w.vm.$nextTick();
+
+        // @ts-expect-error setup refs are proxied on vm
+        expect(w.vm.currentMode).toBe('rich');
+        expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(false);
+        w.unmount();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defers fallback once when rich editable DOM exists before ready', async () => {
+    stubMatchMedia();
+    vi.useFakeTimers();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let w: ReturnType<typeof mount> | null = null;
+
+    try {
+      const ToolbarStub = {
+        name: 'Toolbar',
+        template: '<div class="toolbar-stub"></div>',
+        props: { mode: { type: String, required: false } },
+      };
+      const MilkdownEditorStub = {
+        name: 'MilkdownEditor',
+        template: '<div class="milkdown-editor"><div class="ProseMirror" contenteditable="true"></div></div>',
+      };
+      w = mount(App as any, {
+        attachTo: host,
+        global: {
+          stubs: {
+            Toolbar: ToolbarStub,
+            OutlinePanel: true,
+            FindReplacePanel: true,
+            ImagePreview: true,
+            MilkdownEditor: MilkdownEditorStub,
+          },
+        },
+      });
+
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.editorReady = true;
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.currentMode = 'source';
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.milkdownRef = { setContent: () => {} };
+      await w.vm.$nextTick();
+
+      // @ts-expect-error setup function
+      w.vm.switchMode('rich');
+      await w.vm.$nextTick();
+
+      vi.advanceTimersByTime(2600);
+      await w.vm.$nextTick();
+
+      // 第一次 watchdog 看到 ProseMirror 已出现，只延迟，不立即降级
+      // @ts-expect-error setup refs are proxied on vm
+      expect(w.vm.currentMode).toBe('rich');
+      expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(false);
+
+      const deferredPkg = (w.vm as any).buildDiagnosticsPayload();
+      expect(String(deferredPkg.text)).toContain('"watchdog:defer"');
+
+      vi.advanceTimersByTime(1600);
+      await w.vm.$nextTick();
+
+      // 延迟后仍未 ready，才降级 Source
+      // @ts-expect-error setup refs are proxied on vm
+      expect(w.vm.currentMode).toBe('source');
+      expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(true);
+    } finally {
+      w?.unmount();
+      host.remove();
+      vi.useRealTimers();
+    }
+  });
 });
 

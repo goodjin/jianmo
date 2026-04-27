@@ -62,6 +62,13 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('```json');
     expect(arg).toContain('"mode"');
     expect(arg).toContain('"source"');
+    expect(arg).toContain('"host"');
+    expect(arg).toContain('"richStartupAttemptId"');
+    expect(arg).toContain('"richStartupWatchdogFired"');
+    expect(arg).toContain('"richStartupEvents"');
+    expect(arg).toContain('"richRetryCount"');
+    expect(arg).toContain('"webviewReloadCount"');
+    expect(arg).toContain('"richLastError"');
   });
 
   it('has reload webview self-heal action', async () => {

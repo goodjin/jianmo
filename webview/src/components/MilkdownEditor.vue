@@ -81,9 +81,18 @@ const emit = defineEmits<{
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
   (e: 'ready', success: boolean): void;
+  (e: 'startup-event', payload: { stage: string; detail?: Record<string, unknown> }): void;
   (e: 'table-context', payload: { inTable: boolean }): void;
   (e: 'table-context-menu', payload: { x: number; y: number }): void;
 }>();
+
+function emitStartupEvent(stage: string, detail?: Record<string, unknown>): void {
+  try {
+    emit('startup-event', { stage, detail });
+  } catch {
+    // Startup diagnostics are best effort.
+  }
+}
 
 /** 随选区变化上报是否在表格内，供工具栏启用「表格结构」按钮 */
 const tableContextMilkdownPlugin = $prose(() => {
@@ -301,8 +310,10 @@ function updateTocInContent(markdown: string): string {
 }
 
 onMounted(() => {
+  emitStartupEvent('milkdown:mounted', { hasEditorRef: !!editorRef.value });
   if (!editorRef.value) {
     console.error('[MilkdownEditor] editorRef is null, cannot initialize');
+    emitStartupEvent('milkdown:init:error', { reason: 'editorRef-null' });
     emit('ready', false);
     return;
   }
@@ -313,9 +324,14 @@ onMounted(() => {
 
 async function initEditor(): Promise<void> {
   try {
+    emitStartupEvent('milkdown:init:start', {
+      chars: props.content?.length ?? 0,
+      tier: props.richPerfEffectiveTier ?? 0,
+    });
     // 检查必要的依赖是否加载
     if (!Editor || !commonmark || !gfm) {
       console.error('[MilkdownEditor] Required Milkdown modules not loaded');
+      emitStartupEvent('milkdown:init:error', { reason: 'modules-missing' });
       emit('ready', false);
       return;
     }
@@ -325,6 +341,7 @@ async function initEditor(): Promise<void> {
     // M6-2 / M8-3：档 0 才加载 Shiki 插件；档 ≥1 不加载，减少首包与主线程压力。
     const shikiEnabled = (safeConfig.value as any)?.editor?.enableShiki === true && (props.richPerfEffectiveTier ?? 0) === 0;
     const buildEditor = async (withShiki: boolean): Promise<Editor> => {
+      emitStartupEvent('milkdown:create:start', { withShiki });
       let b = Editor.make().config((ctx) => {
         ctx.set(rootCtx, editorRef.value);
         ctx.set(defaultValueCtx, props.content || '');
@@ -374,7 +391,9 @@ async function initEditor(): Promise<void> {
       b = b.use(footnote);
       b = b.use(listener);
       b = b.use(history);
-      return await b.create();
+      const created = await b.create();
+      emitStartupEvent('milkdown:create:end', { withShiki });
+      return created;
     };
 
     try {
@@ -396,8 +415,10 @@ async function initEditor(): Promise<void> {
           emit('change', markdown);
         }
       });
+      emitStartupEvent('milkdown:listener:ready');
     } catch (e) {
       console.warn('[MilkdownEditor] listenerCtx not ready, skip markdownUpdated registration:', e);
+      emitStartupEvent('milkdown:listener:skip', { message: String((e as any)?.message ?? e ?? '').slice(0, 240) });
     }
 
     console.log('[MilkdownEditor] Editor created successfully');
@@ -409,6 +430,7 @@ async function initEditor(): Promise<void> {
 
     // M8-1：先让 Rich 可交互，再排队初始化 Mermaid/视口渲染
     console.log('[MilkdownEditor] Emitting ready event');
+    emitStartupEvent('milkdown:ready:emit');
     emit('ready', true);
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(
@@ -423,6 +445,9 @@ async function initEditor(): Promise<void> {
   } catch (error) {
     console.error('[MilkdownEditor] Failed to create editor:', error);
     console.error('[MilkdownEditor] Error stack:', (error as Error).stack);
+    emitStartupEvent('milkdown:init:error', {
+      message: String((error as any)?.message ?? error ?? '').slice(0, 240),
+    });
     // 通知父组件编辑器初始化失败
     emit('ready', false);
   }
@@ -779,7 +804,15 @@ function applyFormat(format: string): void {
       command = toggleMark(marks.strikethrough!);
       break;
     case 'code':
-      command = toggleMark(marks.code_inline!);
+      {
+        const codeMark =
+          marks.code_inline ??
+          marks.inline_code ??
+          marks.inlineCode ??
+          marks.code ??
+          Object.values(marks).find((m: any) => String(m?.name ?? '').toLowerCase().includes('code'));
+        if (codeMark) command = toggleMark(codeMark);
+      }
       break;
     case 'highlight':
       if (marks.highlight) {
@@ -1055,7 +1088,7 @@ function selectPlainTextOccurrence(needle: string, occurrence: number): boolean 
       if (node.isText && node.text) {
         const t = node.text;
         for (let i = 0; i < t.length; i++) {
-          units.push({ c: t[i]!, from: pos + 1 + i });
+          units.push({ c: t[i]!, from: pos + i });
         }
       }
     });
@@ -1090,7 +1123,7 @@ function clearFormat(): void {
 
     // 移除所有行内格式标记
     let tr = state.tr;
-    const markTypes = ['strong', 'em', 'strikethrough', 'code_inline', 'highlight', 'subscript', 'superscript'];
+    const markTypes = ['strong', 'em', 'strikethrough', 'code_inline', 'code', 'highlight', 'subscript', 'superscript'];
 
     markTypes.forEach(markName => {
       const markType = marks[markName];

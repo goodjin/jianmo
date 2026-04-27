@@ -27,6 +27,7 @@ export const MARKLY_E2E_BRIDGE_KEYS = [
   'e2eSetCellSelectionInFirstTable',
 
   // Rich 列表/Tab：在 E2E 下 DOM 键盘事件易 flaky
+  'e2eSelectPlainTextOccurrence',
   'e2eSelectListItemText',
   'e2ePressTab',
   'e2eIndentListItem',

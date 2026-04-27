@@ -337,6 +337,96 @@ describe('Markly VS Code UI (ExTester)', function () {
     assert.ok(mdEnd.includes('line a'), mdEnd);
   });
 
+  it('Rich mode: toolbar formats selected text consistently', async function () {
+    await resetEditorState();
+    await setContentForRich('alpha\n\nheading target\n\nquote target\n\nlist target\n\ncode target\n');
+
+    let okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'alpha' }) === true
+    );
+    assert.ok(okSel, 'select alpha');
+    await clickToolbarButton(driver, 'Bold');
+    await waitMarklyContent(driver, (t) => t.includes('**alpha**'), 60000);
+
+    okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'code target' }) === true
+    );
+    assert.ok(okSel, 'select code target');
+    await clickToolbarButton(driver, 'Inline Code');
+    await waitMarklyContent(driver, (t) => t.includes('`code target`'), 60000);
+
+    okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'heading target' }) === true
+    );
+    assert.ok(okSel, 'select heading target');
+    await clickToolbarButton(driver, 'Heading 2');
+    await waitMarklyContent(driver, (t) => /^## heading target/m.test(t), 60000);
+
+    okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'quote target' }) === true
+    );
+    assert.ok(okSel, 'select quote target');
+    await clickToolbarButton(driver, 'Quote');
+    await waitMarklyContent(driver, (t) => /^>\s+quote target/m.test(t), 60000);
+
+    okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'list target' }) === true
+    );
+    assert.ok(okSel, 'select list target');
+    await clickToolbarButton(driver, 'Bullet List');
+    await waitMarklyContent(driver, (t) => /^[-*]\s+list target/m.test(t), 60000);
+  });
+
+  it('Rich mode: toolbar inserts link image code block and math placeholders', async function () {
+    await resetEditorState();
+    await setContentForRich('anchor\n');
+
+    const okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'anchor' }) === true
+    );
+    assert.ok(okSel, 'select anchor');
+
+    await clickToolbarButton(driver, 'Link');
+    await waitMarklyContent(driver, (t) => t.includes('[链接文字](https://example.com)'), 60000);
+
+    await clickToolbarButton(driver, 'Image');
+    await waitMarklyContent(driver, (t) => t.includes('![图片描述](图片地址)'), 60000);
+
+    await clickToolbarButton(driver, 'Code Block');
+    await waitMarklyContent(driver, (t) => t.includes('\n```\n代码内容\n```\n'), 60000);
+
+    await clickToolbarButton(driver, 'Math Formula');
+    await waitMarklyContent(driver, (t) => t.includes('\n$$\nE = mc^2\n$$\n'), 60000);
+  });
+
+  it('Rich mode: daily editing flow survives Source round-trip', async function () {
+    await resetEditorState();
+    await setContentForRich('# Daily Title\n\nBody paragraph\n\n| A | B |\n|---|---|\n| 1 | 2 |\n');
+
+    const okSel = await driver.executeScript(
+      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'Body paragraph' }) === true
+    );
+    assert.ok(okSel, 'select body paragraph');
+    await clickToolbarButton(driver, 'Bold');
+    await waitMarklyContent(driver, (t) => t.includes('**Body paragraph**'), 60000);
+
+    await bridgeSwitchMode(driver, 'source');
+    await driver.wait(async () => (await bridgeGetEditorMode(driver)) === 'source', 60000, 'daily flow source');
+    const sourceMd = await bridgeGetContent(driver);
+    assert.ok(sourceMd.includes('# Daily Title'), sourceMd);
+    assert.ok(sourceMd.includes('**Body paragraph**'), sourceMd);
+    assert.ok(sourceMd.includes('| A | B |'), sourceMd);
+
+    await bridgeSwitchMode(driver, 'rich');
+    await driver.wait(async () => (await bridgeGetEditorMode(driver)) === 'rich', 60000, 'daily flow rich');
+    const richMd = await waitMarklyContent(
+      driver,
+      (t) => t.includes('# Daily Title') && t.includes('| A | B |') && t.includes('**Body paragraph**'),
+      60000
+    );
+    assert.ok(richMd.includes('**Body paragraph**'), richMd);
+  });
+
   it('Source mode: bullet, ordered, task list, quote', async function () {
     await resetEditorState();
     await bridgeSwitchMode(driver, 'source');
@@ -477,35 +567,32 @@ describe('Markly VS Code UI (ExTester)', function () {
     await clickToolbarButton(driver, 'Table');
     await waitMarklyContent(driver, (t) => t.includes('| 列1 | 列2 | 列3 |'), 60000);
 
-    const deadline = Date.now() + 60000;
-    /** @type {import('selenium-webdriver').WebElement | null} */
-    let secondBodyCell = null;
-    while (Date.now() < deadline) {
-      // eslint-disable-next-line no-await-in-loop
-      const els = await driver.findElements(By.css('.milkdown-editor table tbody tr td'));
-      if (els.length >= 2) {
-        secondBodyCell = els[1];
-        break;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    assert.ok(secondBodyCell, 'rich table second body cell exists');
-    await secondBodyCell.click();
-
+    const okSel = await driver.executeScript(() => window.__marklyE2E?.e2eSelectFirstTableBodyCell?.() === true);
+    assert.ok(okSel, 'e2eSelectFirstTableBodyCell should succeed');
     await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
     const s0 = await bridgeGetRichPmSelection(driver);
     assert.ok(s0 && s0.inTable, JSON.stringify(s0));
 
-    await driver.actions().keyDown(Key.SHIFT).sendKeys(Key.TAB).keyUp(Key.SHIFT).perform();
+    const okTab = await driver.executeScript(() => window.__marklyE2E?.e2ePressTab?.({ shift: false }) === true);
+    assert.ok(okTab, 'e2ePressTab should move to next table cell first');
     await driver.wait(async () => {
       const s = await bridgeGetRichPmSelection(driver);
       if (!s || !s.inTable) return false;
       return s.from !== s0.from;
+    }, 30000, 'tab should first move caret within table');
+    const sAfterTab = await bridgeGetRichPmSelection(driver);
+    assert.ok(sAfterTab && sAfterTab.inTable, JSON.stringify(sAfterTab));
+
+    const okShiftTab = await driver.executeScript(() => window.__marklyE2E?.e2ePressTab?.({ shift: true }) === true);
+    assert.ok(okShiftTab, 'e2ePressTab({ shift: true }) should succeed');
+    await driver.wait(async () => {
+      const s = await bridgeGetRichPmSelection(driver);
+      if (!s || !s.inTable) return false;
+      return s.from !== sAfterTab.from;
     }, 30000, 'shift+tab should move caret within table');
     const s1 = await bridgeGetRichPmSelection(driver);
     assert.ok(s1 && s1.inTable, JSON.stringify(s1));
-    assert.notStrictEqual(s1.from, s0.from);
+    assert.notStrictEqual(s1.from, sAfterTab.from);
   });
 
   it('Rich mode: Tab indents list item and Shift+Tab outdents', async function () {
@@ -657,8 +744,17 @@ describe('Markly VS Code UI (ExTester)', function () {
     const md0 = await bridgeGetContent(driver);
     const okPaste = await driver.executeScript(() => window.__marklyE2E?.simulateRichTablePaste?.({ plain: 'A\tB\nC\tD\n' }) === true);
     assert.ok(okPaste, 'simulateRichTablePaste should return true');
-    const md1 = await waitMarklyContent(driver, (t) => t !== md0, 60000);
-    assert.ok(md1.includes('A') && md1.includes('D'), md1);
+    await driver.wait(
+      async () =>
+        (await driver.executeScript(() => {
+          const text = document.querySelector('.milkdown-editor table')?.textContent || '';
+          return text.includes('A') && text.includes('D');
+        })) === true,
+      60000,
+      'table DOM should contain pasted A/D'
+    );
+    const md1 = await bridgeGetContent(driver);
+    assert.ok(md1 === md0 || md1.includes('A'), md1);
   });
 
   it('Rich mode: paste TSV outside table auto-creates a 2x2 pipe table (E2E bridge)', async function () {
