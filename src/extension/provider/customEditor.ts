@@ -183,22 +183,32 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
 
       case 'SAVE_IMAGE': {
-        const rel = await this.saveImage(uri, message.payload.data, message.payload.filename);
-        if (rel) {
+        const result = await this.saveImage(uri, message.payload.data, message.payload.filename);
+        if (result.ok) {
           this.postMessage(uri, {
             type: 'IMAGE_SAVED',
-            payload: { path: rel, filename: message.payload.filename },
+            payload: { path: result.path, filename: message.payload.filename },
+          });
+        } else {
+          this.postMessage(uri, {
+            type: 'IMAGE_SAVE_FAILED',
+            payload: { filename: message.payload.filename, error: result.error },
           });
         }
         break;
       }
 
       case 'UPLOAD_IMAGE': {
-        const rel = await this.saveImage(uri, message.payload.base64, message.payload.filename);
-        if (rel) {
+        const result = await this.saveImage(uri, message.payload.base64, message.payload.filename);
+        if (result.ok) {
           this.postMessage(uri, {
             type: 'IMAGE_SAVED',
-            payload: { path: rel, filename: message.payload.filename },
+            payload: { path: result.path, filename: message.payload.filename },
+          });
+        } else {
+          this.postMessage(uri, {
+            type: 'IMAGE_SAVE_FAILED',
+            payload: { filename: message.payload.filename, error: result.error },
           });
         }
         break;
@@ -281,7 +291,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     documentUri: string,
     data: string,
     filename: string
-  ): Promise<string | undefined> {
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
     try {
       const docUri = vscode.Uri.parse(documentUri);
       const docDir = vscode.Uri.joinPath(docUri, '..');
@@ -303,10 +313,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       await vscode.workspace.fs.writeFile(imagePath, buffer);
 
       // 返回相对路径
-      return `${this.config.image.saveDirectory}/${filename}`;
+      return { ok: true, path: `${this.config.image.saveDirectory}/${filename}` };
     } catch (error) {
       console.error('Failed to save image:', error);
-      return undefined;
+      return { ok: false, error: String((error as any)?.message ?? error ?? 'Unknown image save error') };
     }
   }
 

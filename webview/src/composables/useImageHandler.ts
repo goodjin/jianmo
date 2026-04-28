@@ -23,10 +23,14 @@ export interface CompressOptions {
  * useImageHandler 选项
  */
 export interface UseImageHandlerOptions {
-  editorView: Ref<EditorView | null>;
+  editorView?: Ref<EditorView | null>;
+  insertMarkdown?: (markdown: string) => void;
+  onSaved?: (payload: { path: string; filename: string }) => void;
+  onError?: (error: Error) => void;
   maxWidth?: number;
   maxHeight?: number;
   quality?: number;
+  compressThreshold?: number;
   maxFileSize?: number;
 }
 
@@ -36,6 +40,7 @@ export interface UseImageHandlerOptions {
 export interface UseImageHandlerReturn {
   isProcessing: Ref<boolean>;
   progress: Ref<number>;
+  lastError: Ref<string>;
   handlePaste: (event: ClipboardEvent) => Promise<void>;
   handleDrop: (event: DragEvent) => Promise<void>;
   compressImage: (dataUrl: string, opts?: CompressOptions) => Promise<string>;
@@ -52,12 +57,17 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     maxWidth = 1200,
     maxHeight = 1200,
     quality = 0.8,
+    compressThreshold = 1024 * 1024,
     maxFileSize = 5,
+    insertMarkdown,
+    onSaved,
+    onError,
   } = options;
 
   const { postMessage, onMessage } = useVSCode();
   const isProcessing = ref(false);
   const progress = ref(0);
+  const lastError = ref('');
 
   /**
    * 从剪贴板提取图片文件
@@ -124,7 +134,7 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
    * 处理图片文件（压缩 + 保存 + 插入 Markdown）
    */
   const processImage = async (file: File): Promise<void> => {
-    if (!editorView.value) return;
+    if (!editorView?.value && !insertMarkdown) return;
 
     const fileSizeMB = file.size / (1024 * 1024);
     if (fileSizeMB > maxFileSize) {
@@ -133,12 +143,13 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
 
     isProcessing.value = true;
     progress.value = 10;
+    lastError.value = '';
 
     try {
       let dataUrl = await readFileAsDataURL(file);
       progress.value = 30;
 
-      if (fileSizeMB > 1) {
+      if (file.size > compressThreshold) {
         dataUrl = await compressImage(dataUrl);
       }
       progress.value = 60;
@@ -152,7 +163,13 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
           if (message.type === 'IMAGE_SAVED' && message.payload.filename === filename) {
             clearTimeout(timeout);
             unsubscribe();
+            onSaved?.(message.payload);
             resolve(message.payload.path);
+          }
+          if (message.type === 'IMAGE_SAVE_FAILED' && message.payload.filename === filename) {
+            clearTimeout(timeout);
+            unsubscribe();
+            reject(new Error(message.payload.error || '图片保存失败'));
           }
         });
         postMessage({ type: 'UPLOAD_IMAGE', payload: { base64: dataUrl, filename } });
@@ -162,13 +179,22 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
 
       const altText = filename.replace(/\.[^/.]+$/, '');
       const markdown = `![${altText}](${imagePath})`;
-      const pos = editorView.value.state.selection.main.head;
-      editorView.value.dispatch({
-        changes: { from: pos, to: pos, insert: markdown },
-        selection: { anchor: pos + markdown.length },
-      });
+      if (insertMarkdown) {
+        insertMarkdown(markdown);
+      } else if (editorView?.value) {
+        const pos = editorView.value.state.selection.main.head;
+        editorView.value.dispatch({
+          changes: { from: pos, to: pos, insert: markdown },
+          selection: { anchor: pos + markdown.length },
+        });
+      }
 
       progress.value = 100;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      lastError.value = error.message;
+      onError?.(error);
+      throw error;
     } finally {
       isProcessing.value = false;
       setTimeout(() => {
@@ -184,7 +210,11 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     const file = await extractImageFromClipboard(event);
     if (file) {
       event.preventDefault();
-      await processImage(file);
+      try {
+        await processImage(file);
+      } catch {
+        // onError/lastError already captured the failure.
+      }
     }
   };
 
@@ -198,13 +228,18 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     const file = files[0];
     if (file.type.startsWith('image/')) {
       event.preventDefault();
-      await processImage(file);
+      try {
+        await processImage(file);
+      } catch {
+        // onError/lastError already captured the failure.
+      }
     }
   };
 
   return {
     isProcessing,
     progress,
+    lastError,
     handlePaste,
     handleDrop,
     compressImage,

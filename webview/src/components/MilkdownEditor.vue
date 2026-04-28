@@ -890,60 +890,68 @@ function applyFormat(format: string): void {
 function insertNode(type: string): void {
   if (!editor) return;
 
-  const ctx = editor.ctx;
-  let view;
-  try {
-    view = ctx.get(editorViewCtx);
-  } catch (e) {
-    console.warn('[MilkdownEditor] insertNode skipped (editorViewCtx not ready):', e);
-    return;
-  }
-  const { state, dispatch } = view;
-  const parser = ctx.get(parserCtx);
-
-  let insertMarkdown = '';
+  let markdown = '';
 
   switch (type) {
     case 'link':
-      insertMarkdown = '[链接文字](https://example.com)';
+      markdown = '[链接文字](https://example.com)';
       break;
     case 'image':
-      insertMarkdown = '![图片描述](图片地址)';
+      markdown = '![图片描述](图片地址)';
       break;
     case 'codeBlock':
-      insertMarkdown = '\n```\n代码内容\n```\n';
+      markdown = '\n```\n代码内容\n```\n';
       break;
     case 'table':
-      insertMarkdown = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
+      markdown = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
       break;
     case 'hr':
-      insertMarkdown = '\n---\n';
+      markdown = '\n---\n';
       break;
     case 'taskList':
-      insertMarkdown = '- [ ] 任务项\n';
+      markdown = '- [ ] 任务项\n';
       break;
     case 'math':
-      insertMarkdown = '\n$$\nE = mc^2\n$$\n';
+      markdown = '\n$$\nE = mc^2\n$$\n';
       break;
     case 'footnote':
-      insertMarkdown = '[^1]\n\n[^1]: 脚注内容\n';
+      markdown = '[^1]\n\n[^1]: 脚注内容\n';
       break;
     case 'toc':
       // 插入 TOC 标记
-      insertMarkdown = `\n${TOC_PLACEHOLDER}\n`;
+      markdown = `\n${TOC_PLACEHOLDER}\n`;
       break;
     default:
       console.log('Unknown insert type:', type);
       return;
   }
 
+  insertMarkdown(markdown);
+}
+
+function insertMarkdown(markdown: string): boolean {
+  if (!editor || !markdown) return false;
+
+  const ctx = editor.ctx;
+  let view;
+  try {
+    view = ctx.get(editorViewCtx);
+  } catch (e) {
+    console.warn('[MilkdownEditor] insertMarkdown skipped (editorViewCtx not ready):', e);
+    return false;
+  }
+  const { state, dispatch } = view;
+  const parser = ctx.get(parserCtx);
+
   // 使用 parser 将 markdown 转换为 ProseMirror 节点
-  const doc = parser(insertMarkdown);
+  const doc = parser(markdown);
   if (doc) {
     const { from, to } = state.selection;
     const tr = state.tr.replaceWith(from, to, doc.content);
     dispatch(tr);
+    return true;
   }
+  return false;
 }
 
 // 解析图片 URL（处理相对路径）
@@ -1008,9 +1016,8 @@ function bindImageEvents(): void {
     if (target.tagName === 'IMG') {
       e.preventDefault();
       const src = target.getAttribute('src') || '';
-      // 解析相对路径为完整 URL
-      const resolvedSrc = resolveImageUrl(src);
-      emit('image-context-menu', resolvedSrc, e.clientX, e.clientY);
+      // 打开编辑器应保留 Markdown 中的原始相对路径，避免宿主侧无法解析 webview URL。
+      emit('image-context-menu', src, e.clientX, e.clientY);
     }
   };
 
@@ -1492,6 +1499,7 @@ function getPmSelectionDiagnostics():
 defineExpose({
   applyFormat,
   insertNode,
+  insertMarkdown,
   getContent,
   setContent,
   selectPlainTextOccurrence,

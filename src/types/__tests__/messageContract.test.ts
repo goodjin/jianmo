@@ -55,6 +55,7 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'SAVE' },
     { type: 'SAVE_SUCCESS', payload: { version: 9 } },
     { type: 'IMAGE_SAVED', payload: { path: 'assets/a.png', filename: 'a.png' } },
+    { type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png', error: 'disk full' } },
     { type: 'THEME_CHANGE', payload: { theme: 'Default Dark Modern' } },
     { type: 'getScrollPosition', requestId: 'rid-1' },
     { type: 'setScrollPosition', scrollTop: 10, scrollLeft: 2 },
@@ -73,6 +74,7 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'INIT', payload: { content: 1, config: minimalConfig } })).toBe(false);
     expect(isExtensionMessage({ type: 'UNKNOWN' })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png' } })).toBe(false);
   });
 
   it('isExtensionConfig matches minimalConfig', () => {

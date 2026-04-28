@@ -69,6 +69,8 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('"richRetryCount"');
     expect(arg).toContain('"webviewReloadCount"');
     expect(arg).toContain('"richLastError"');
+    expect(arg).toContain('"images"');
+    expect(arg).toContain('"totalRefs"');
   });
 
   it('has reload webview self-heal action', async () => {

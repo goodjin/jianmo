@@ -92,7 +92,7 @@ export interface HostDiagnostics {
 // 消息类型（Extension ⇄ Webview 自定义编辑器协议）
 //
 // Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
-//   IMAGE_SAVED / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
+//   IMAGE_SAVED / IMAGE_SAVE_FAILED / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
 // Webview → Extension：READY / CONTENT_CHANGE / SAVE / SAVE_IMAGE / OPEN_* / EXPORT /
 //   UPLOAD_IMAGE / scrollPositionResponse
 //
@@ -106,6 +106,7 @@ export type ExtensionMessage =
   | { type: 'SAVE' }
   | { type: 'SAVE_SUCCESS'; payload: { version: number } }
   | { type: 'IMAGE_SAVED'; payload: { path: string; filename: string } }
+  | { type: 'IMAGE_SAVE_FAILED'; payload: { filename: string; error: string } }
   /** 旧 Text Editor 路径曾下发；预览模式可不使用 */
   | { type: 'THEME_CHANGE'; payload: { theme: string } }
   | { type: 'getScrollPosition'; requestId: string }

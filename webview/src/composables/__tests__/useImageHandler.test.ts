@@ -7,15 +7,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
 import { useImageHandler } from '../useImageHandler';
 
+const vscodeMock = vi.hoisted(() => ({
+  postMessage: vi.fn(),
+  listeners: [] as Array<(message: any) => void>,
+}));
+
 // Mock useVSCode
 vi.mock('../useVSCode', () => ({
   useVSCode: () => ({
-    postMessage: vi.fn(),
-    onMessage: vi.fn(() => vi.fn()),
+    postMessage: vscodeMock.postMessage,
+    onMessage: vi.fn((handler: (message: any) => void) => {
+      vscodeMock.listeners.push(handler);
+      return () => {
+        const idx = vscodeMock.listeners.indexOf(handler);
+        if (idx >= 0) vscodeMock.listeners.splice(idx, 1);
+      };
+    }),
   }),
 }));
 
 describe('useImageHandler', () => {
+  beforeEach(() => {
+    vscodeMock.postMessage.mockReset();
+    vscodeMock.listeners.length = 0;
+  });
+
   describe('初始化', () => {
     it('应该有正确的初始状态', () => {
       const { isProcessing, progress } = useImageHandler({
@@ -49,6 +65,92 @@ describe('useImageHandler', () => {
       } as unknown as ClipboardEvent;
 
       await expect(handlePaste(event)).resolves.toBeUndefined();
+    });
+
+    it('图片粘贴成功后会上传并插入返回的 Markdown 路径', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(123);
+      vi.stubGlobal(
+        'FileReader',
+        class {
+          result = 'data:image/png;base64,abc';
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            this.onload?.();
+          }
+        }
+      );
+
+      const insertMarkdown = vi.fn();
+      const { handlePaste } = useImageHandler({
+        editorView: ref(null),
+        insertMarkdown,
+      });
+      const file = new File([new Uint8Array([1])], 'clip.png', { type: 'image/png' });
+      const event = {
+        clipboardData: {
+          items: [{ type: 'image/png', getAsFile: () => file }],
+        },
+        preventDefault: vi.fn(),
+      } as unknown as ClipboardEvent;
+
+      const pending = handlePaste(event);
+      await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+      expect(event.preventDefault).toHaveBeenCalled();
+      expect(vscodeMock.postMessage).toHaveBeenCalledWith({
+        type: 'UPLOAD_IMAGE',
+        payload: { base64: 'data:image/png;base64,abc', filename: 'image-123.png' },
+      });
+
+      vscodeMock.listeners[0]?.({
+        type: 'IMAGE_SAVED',
+        payload: { filename: 'image-123.png', path: 'assets/image-123.png' },
+      });
+      await pending;
+
+      expect(insertMarkdown).toHaveBeenCalledWith('![image-123](assets/image-123.png)');
+    });
+
+    it('图片保存失败时记录错误且不会插入 Markdown', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(456);
+      vi.stubGlobal(
+        'FileReader',
+        class {
+          result = 'data:image/png;base64,abc';
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            this.onload?.();
+          }
+        }
+      );
+
+      const insertMarkdown = vi.fn();
+      const onError = vi.fn();
+      const { handlePaste, lastError } = useImageHandler({
+        editorView: ref(null),
+        insertMarkdown,
+        onError,
+      });
+      const file = new File([new Uint8Array([1])], 'clip.png', { type: 'image/png' });
+      const event = {
+        clipboardData: {
+          items: [{ type: 'image/png', getAsFile: () => file }],
+        },
+        preventDefault: vi.fn(),
+      } as unknown as ClipboardEvent;
+
+      const pending = handlePaste(event);
+      await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+      vscodeMock.listeners[0]?.({
+        type: 'IMAGE_SAVE_FAILED',
+        payload: { filename: 'image-456.png', error: 'disk full' },
+      });
+      await pending;
+
+      expect(lastError.value).toBe('disk full');
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'disk full' }));
+      expect(insertMarkdown).not.toHaveBeenCalled();
     });
   });
 
@@ -119,8 +221,10 @@ describe('useImageHandler', () => {
       expect(mockCanvas.toDataURL).toHaveBeenCalled();
     });
 
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 });

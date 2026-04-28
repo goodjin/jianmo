@@ -105,6 +105,10 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       return isRecord(p) && isString(p.path) && isString(p.filename);
     }
+    case 'IMAGE_SAVE_FAILED': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.filename) && isString(p.error);
+    }
     case 'THEME_CHANGE': {
       const p = msg.payload;
       return isRecord(p) && isString(p.theme);

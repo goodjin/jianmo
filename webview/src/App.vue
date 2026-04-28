@@ -158,7 +158,13 @@
     />
 
     <div class="editor-main">
-      <div class="editor-container" :style="editorContainerStyle">
+      <div
+        class="editor-container"
+        :style="editorContainerStyle"
+        @paste.capture="handleImagePaste"
+        @drop.capture="handleImageDrop"
+        @dragover.prevent
+      >
         <!-- 编辑器容器 (IR/source 由 CM6；rich 由 Milkdown/PM) -->
         <div
           ref="editorContainerRef"
@@ -175,6 +181,8 @@
           @change="onRichContentChange"
           @ready="onRichReady"
           @startup-event="onRichStartupEvent"
+          @image-click="onRichImageClick"
+          @image-context-menu="onRichImageContextMenu"
           @table-context="onRichTableContext"
           @table-context-menu="onRichTableContextMenu"
           ref="milkdownRef"
@@ -199,6 +207,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import { useEditor } from './composables/useEditor';
+import { useImageHandler } from './composables/useImageHandler';
 import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
@@ -455,6 +464,46 @@ const editor = useEditor({
     }
   }
 });
+
+function insertUploadedImageMarkdown(markdown: string): void {
+  if (!markdown) return;
+
+  if (currentMode.value === 'rich') {
+    const ok = Boolean(milkdownRef.value?.insertMarkdown?.(markdown));
+    if (!ok) throw new Error('Rich 编辑器暂时无法插入图片');
+    setTimeout(() => {
+      const latest = milkdownRef.value?.getContent?.();
+      if (typeof latest === 'string' && latest !== content.value) {
+        content.value = latest;
+        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+      }
+    }, 0);
+    return;
+  }
+
+  const view = editor.view.value;
+  if (!view) throw new Error('编辑器尚未准备好');
+  const pos = view.state.selection.main.head;
+  view.dispatch({
+    changes: { from: pos, to: pos, insert: markdown },
+    selection: { anchor: pos + markdown.length },
+  });
+}
+
+const imageHandler = useImageHandler({
+  editorView: editor.view,
+  insertMarkdown: insertUploadedImageMarkdown,
+  onSaved: () => showToast('图片已保存并插入。'),
+  onError: (err) => showToast(`图片保存失败：${err.message}。请重新粘贴或拖入图片重试。`, 4200),
+});
+
+function handleImagePaste(event: ClipboardEvent): void {
+  void imageHandler.handlePaste(event);
+}
+
+function handleImageDrop(event: DragEvent): void {
+  void imageHandler.handleDrop(event);
+}
 
 function onRichContentChange(newContent: string): void {
   // MilkdownEditor 常驻后（v-show 隐藏），其 markdownUpdated 仍会触发；
@@ -1566,6 +1615,20 @@ function handleGlobalClick(e: MouseEvent) {
   }
 }
 
+function onRichImageClick(src: string, images: string[], index: number): void {
+  currentImageSrc.value = src;
+  currentImages.value = images;
+  currentImageIndex.value = Math.max(0, index);
+  imagePreviewVisible.value = true;
+}
+
+function onRichImageContextMenu(src: string): void {
+  sendMessage({
+    type: 'OPEN_IMAGE_EDITOR',
+    payload: { src },
+  });
+}
+
 function handleWindowPointerDownCapture(e: PointerEvent) {
   if (!richTableMenuOpen.value) return;
   const t = e.target as HTMLElement | null;
@@ -1581,6 +1644,29 @@ function showToast(msg: string, durationMs = 2400) {
     toastOpen.value = false;
     toastTimer = null;
   }, durationMs);
+}
+
+function collectImageDiagnostics() {
+  const refs = Array.from(content.value.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)).map((m) => ({
+    alt: m[1] ?? '',
+    src: m[2] ?? '',
+  }));
+  const localRefs = refs.filter((ref) => {
+    const src = ref.src.trim();
+    return src && !/^(https?:|data:|file:)/i.test(src);
+  });
+  const renderedImages = Array.from(document.querySelectorAll('.editor-container img')).map((img) =>
+    (img as HTMLImageElement).getAttribute('src') || ''
+  );
+
+  return {
+    totalRefs: refs.length,
+    localRefs: localRefs.length,
+    remoteRefs: refs.length - localRefs.length,
+    saveDirectory: config.value?.image?.saveDirectory ?? null,
+    renderedImages: renderedImages.length,
+    sampleRefs: refs.slice(0, 10),
+  };
 }
 
 function buildDiagnosticsPayload() {
@@ -1614,6 +1700,7 @@ function buildDiagnosticsPayload() {
           enableMermaid: config.value?.editor?.enableMermaid ?? null,
           enableShiki: config.value?.editor?.enableShiki ?? null,
         },
+        images: collectImageDiagnostics(),
       },
     });
     return pkg;
@@ -1706,10 +1793,9 @@ function handleGlobalContextMenu(e: MouseEvent) {
   if (target && target.tagName === 'IMG') {
     e.preventDefault();
     const src = target.getAttribute('src') || '';
-    const resolvedSrc = resolveImageUrl(src);
     sendMessage({
       type: 'OPEN_IMAGE_EDITOR',
-      payload: { src: resolvedSrc },
+      payload: { src },
     });
   }
 }
