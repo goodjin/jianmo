@@ -37,6 +37,46 @@
         "command": "markly.export.image",
         "title": "Export as Image",
         "icon": "$(file-media)"
+      },
+      {
+        "command": "markly.toggleOutline",
+        "title": "Toggle Outline",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "markly.insert.table",
+        "title": "Insert Table",
+        "icon": "$(table)"
+      },
+      {
+        "command": "markly.insert.codeBlock",
+        "title": "Insert Code Block",
+        "icon": "$(code)"
+      },
+      {
+        "command": "markly.table.addRowAfter",
+        "title": "Table: Add Row Below",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "markly.assist.summarize",
+        "title": "Writing: Insert Local Summary",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "markly.assist.suggestTitle",
+        "title": "Writing: Suggest Title",
+        "icon": "$(symbol-string)"
+      },
+      {
+        "command": "markly.assist.fixMarkdown",
+        "title": "Writing: Fix Markdown Spacing",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "markly.assist.tidyTables",
+        "title": "Writing: Tidy Markdown Tables",
+        "icon": "$(table)"
       }
     ],
     "keybindings": [

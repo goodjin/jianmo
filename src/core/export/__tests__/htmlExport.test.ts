@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { escapeHtml, generateToc, buildHtmlDocument, type HtmlExportOptions } from '../htmlExport';
+import { escapeHtml, generateToc, buildHtmlDocument, markdownToHtml, type HtmlExportOptions } from '../htmlExport';
 
 describe('escapeHtml', () => {
   it('escapes & < > " \'', () => {
@@ -118,5 +118,30 @@ describe('buildHtmlDocument', () => {
   it('defaults title to 导出文档 when title is undefined', () => {
     const html = buildHtmlDocument('', '', { ...defaultOpts, title: undefined });
     expect(html).toContain('<title>导出文档</title>');
+  });
+});
+
+describe('markdownToHtml export rendering', () => {
+  it('renders GFM table, fenced code, task list and relative image', async () => {
+    const markdown = [
+      '| A | B |',
+      '|---|---|',
+      '| 1 | 2 |',
+      '',
+      '```ts',
+      'const x = 1;',
+      '```',
+      '',
+      '- [x] done',
+      '',
+      '![Alt](assets/a.png)',
+    ].join('\n');
+
+    const html = await markdownToHtml(markdown);
+
+    expect(html).toContain('<table>');
+    expect(html).toContain('<code class="language-ts">');
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('<img src="assets/a.png" alt="Alt">');
   });
 });

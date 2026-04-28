@@ -109,6 +109,31 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       return isRecord(p) && isString(p.filename) && isString(p.error);
     }
+    case 'EDITOR_COMMAND': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.command)) return false;
+      if (p.command === 'toggleOutline') return true;
+      if (p.command === 'insert') {
+        return (
+          p.value === 'table' ||
+          p.value === 'codeBlock' ||
+          p.value === 'image' ||
+          p.value === 'link' ||
+          p.value === 'math' ||
+          p.value === 'hr'
+        );
+      }
+      if (p.command === 'richTable') return isString(p.value);
+      if (p.command === 'writingAssist') {
+        return (
+          p.value === 'summarize' ||
+          p.value === 'suggestTitle' ||
+          p.value === 'fixMarkdown' ||
+          p.value === 'tidyTables'
+        );
+      }
+      return false;
+    }
     case 'THEME_CHANGE': {
       const p = msg.payload;
       return isRecord(p) && isString(p.theme);

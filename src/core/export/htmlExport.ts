@@ -77,7 +77,7 @@ export function generateToc(markdown: string): string {
   return tocHtml;
 }
 
-async function markdownToHtml(markdown: string): Promise<string> {
+export async function markdownToHtml(markdown: string): Promise<string> {
   // 使用 marked 转换 Markdown，支持 GFM
   const html = await marked.parse(markdown, {
     gfm: true,

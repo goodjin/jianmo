@@ -6,6 +6,19 @@
 
 import type { HeadingNode } from '../types';
 
+export const cleanHeadingText = (text: string): string => {
+  return String(text ?? '').replace(/\s+\{#[^}]+\}\s*$/, '').trim();
+};
+
+export const generateHeadingId = (text: string): string => {
+  return cleanHeadingText(text)
+    .toLowerCase()
+    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+};
+
 /**
  * 解析 Markdown 内容中的标题
  * @param content - Markdown 内容
@@ -22,9 +35,10 @@ export const parseHeadings = (content: string): HeadingNode[] => {
     const atxMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (atxMatch) {
       const level = atxMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
+      const text = cleanHeadingText(atxMatch[2]);
       headings.push({
         level,
-        text: atxMatch[2].trim(),
+        text,
         from: charCount,
         to: charCount + line.length,
         line: i,

@@ -25,6 +25,21 @@ export function unregisterWebview(uri: string): void {
   webviews.delete(uri);
 }
 
+async function postEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_COMMAND' }>['payload']): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const activeUri = editor?.document.uri.toString();
+  const webview =
+    (activeUri ? webviews.get(activeUri) : undefined) ??
+    (webviews.size === 1 ? Array.from(webviews.values())[0] : undefined);
+
+  if (!webview) {
+    vscode.window.showInformationMessage('请先用 Markly 打开一个 Markdown 文件。');
+    return;
+  }
+
+  await webview.postMessage({ type: 'EDITOR_COMMAND', payload } as ExtensionMessage);
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   modeController: ModeController
@@ -204,10 +219,58 @@ export function registerCommands(
     }
   );
 
+  const toggleOutlineCmd = vscode.commands.registerCommand(
+    'markly.toggleOutline',
+    () => postEditorCommand({ command: 'toggleOutline' })
+  );
+
+  const insertTableCmd = vscode.commands.registerCommand(
+    'markly.insert.table',
+    () => postEditorCommand({ command: 'insert', value: 'table' })
+  );
+
+  const insertCodeBlockCmd = vscode.commands.registerCommand(
+    'markly.insert.codeBlock',
+    () => postEditorCommand({ command: 'insert', value: 'codeBlock' })
+  );
+
+  const richTableAddRowAfterCmd = vscode.commands.registerCommand(
+    'markly.table.addRowAfter',
+    () => postEditorCommand({ command: 'richTable', value: 'addRowAfter' })
+  );
+
+  const assistSummarizeCmd = vscode.commands.registerCommand(
+    'markly.assist.summarize',
+    () => postEditorCommand({ command: 'writingAssist', value: 'summarize' })
+  );
+
+  const assistSuggestTitleCmd = vscode.commands.registerCommand(
+    'markly.assist.suggestTitle',
+    () => postEditorCommand({ command: 'writingAssist', value: 'suggestTitle' })
+  );
+
+  const assistFixMarkdownCmd = vscode.commands.registerCommand(
+    'markly.assist.fixMarkdown',
+    () => postEditorCommand({ command: 'writingAssist', value: 'fixMarkdown' })
+  );
+
+  const assistTidyTablesCmd = vscode.commands.registerCommand(
+    'markly.assist.tidyTables',
+    () => postEditorCommand({ command: 'writingAssist', value: 'tidyTables' })
+  );
+
   context.subscriptions.push(
     toggleModeCmd,
     exportPdfCmd,
     exportHtmlCmd,
-    exportImageCmd
+    exportImageCmd,
+    toggleOutlineCmd,
+    insertTableCmd,
+    insertCodeBlockCmd,
+    richTableAddRowAfterCmd,
+    assistSummarizeCmd,
+    assistSuggestTitleCmd,
+    assistFixMarkdownCmd,
+    assistTidyTablesCmd
   );
 }

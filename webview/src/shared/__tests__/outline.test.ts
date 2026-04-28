@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseHeadings, buildTree } from '../outline';
+import { cleanHeadingText, generateHeadingId, parseHeadings, buildTree } from '../outline';
 
 describe('parseHeadings', () => {
   it('应该解析 ATX 标题', () => {
@@ -47,6 +47,14 @@ describe('parseHeadings', () => {
   it('空内容应该返回空数组', () => {
     expect(parseHeadings('')).toEqual([]);
     expect(parseHeadings('no headings here')).toEqual([]);
+  });
+
+  it('应该清理显式 heading anchor 并生成稳定 id', () => {
+    const headings = parseHeadings('# 长标题 Example {#custom-id}\n## Child');
+
+    expect(headings[0]).toMatchObject({ text: '长标题 Example', from: 0 });
+    expect(cleanHeadingText('Title {#id}')).toBe('Title');
+    expect(generateHeadingId(headings[0].text)).toBe('长标题-example');
   });
 });
 

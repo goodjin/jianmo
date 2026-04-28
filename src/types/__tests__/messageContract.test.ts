@@ -56,6 +56,10 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'SAVE_SUCCESS', payload: { version: 9 } },
     { type: 'IMAGE_SAVED', payload: { path: 'assets/a.png', filename: 'a.png' } },
     { type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png', error: 'disk full' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'table' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'addRowAfter' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'writingAssist', value: 'summarize' } },
     { type: 'THEME_CHANGE', payload: { theme: 'Default Dark Modern' } },
     { type: 'getScrollPosition', requestId: 'rid-1' },
     { type: 'setScrollPosition', scrollTop: 10, scrollLeft: 2 },
@@ -75,6 +79,7 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'UNKNOWN' })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
     expect(isExtensionMessage({ type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'unknown' } })).toBe(false);
   });
 
   it('isExtensionConfig matches minimalConfig', () => {

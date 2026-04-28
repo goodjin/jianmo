@@ -219,6 +219,13 @@ import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
+import {
+  buildLocalSummary,
+  fixMarkdownWhitespace,
+  suggestMarkdownTitle,
+  tidyMarkdownTables,
+  type WritingAssistAction,
+} from './utils/writingAssistant';
 import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
 import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown } from './utils/diagnosticsPackage';
 import {
@@ -925,6 +932,10 @@ function handleMessage(event: MessageEvent) {
       switchMode(m === 'preview' ? 'rich' : m);
       break;
     }
+
+    case 'EDITOR_COMMAND':
+      handleEditorCommand(message.payload);
+      break;
       
     case 'SAVE':
       // VS Code 触发的保存，也需要更新 TOC
@@ -939,6 +950,24 @@ function handleMessage(event: MessageEvent) {
 
 function sendMessage(message: any) {
   postMessage(message);
+}
+
+function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_COMMAND' }>['payload']): void {
+  if (payload.command === 'toggleOutline') {
+    showOutline.value = !showOutline.value;
+    return;
+  }
+  if (payload.command === 'insert') {
+    handleInsert(payload.value);
+    return;
+  }
+  if (payload.command === 'richTable') {
+    handleRichTableOp(payload.value);
+    return;
+  }
+  if (payload.command === 'writingAssist') {
+    handleWritingAssist(payload.value);
+  }
 }
 
 // 编辑器准备好后的回调
@@ -1158,6 +1187,60 @@ function handleInsert(type: string) {
   } catch (err) {
     console.warn('[Editor] insertNode failed:', err);
   }
+}
+
+function replaceDocumentContent(nextContent: string): void {
+  content.value = nextContent;
+  if (currentMode.value === 'rich') {
+    milkdownRef.value?.setContent?.(nextContent);
+  } else {
+    editor.setContent(nextContent);
+    focusEditor();
+  }
+  sendMessage({
+    type: 'CONTENT_CHANGE',
+    payload: { content: nextContent },
+  });
+}
+
+function handleWritingAssist(action: WritingAssistAction): void {
+  const current = currentMode.value === 'rich'
+    ? String(milkdownRef.value?.getContent?.() || content.value || '')
+    : editor.getContent();
+
+  if (action === 'summarize') {
+    const summary = buildLocalSummary(current);
+    if (currentMode.value === 'rich') {
+      milkdownRef.value?.insertMarkdown?.(summary);
+      setTimeout(() => {
+        const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+        if (latest && latest !== content.value) {
+          content.value = latest;
+          sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+        }
+      }, 0);
+    } else {
+      const view = editor.view.value;
+      if (view) {
+        const pos = view.state.selection.main.head;
+        view.dispatch({
+          changes: { from: pos, to: pos, insert: summary },
+          selection: { anchor: pos + summary.length },
+        });
+      }
+    }
+    showToast('已插入本地摘要。');
+    return;
+  }
+
+  const next =
+    action === 'suggestTitle'
+      ? suggestMarkdownTitle(current)
+      : action === 'fixMarkdown'
+        ? fixMarkdownWhitespace(current)
+        : tidyMarkdownTables(current);
+  replaceDocumentContent(next);
+  showToast('已应用本地写作辅助。');
 }
 
 function onRichTableContext(payload: { inTable: boolean }) {

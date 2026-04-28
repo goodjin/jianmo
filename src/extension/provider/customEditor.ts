@@ -4,6 +4,7 @@ import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
+import { exportToHtml } from '@core/export/htmlExport';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -342,23 +343,31 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       return;
     }
 
-    // 转换内容到目标格式
-    let content = doc.content;
-    if (payload.format === 'html') {
-      content = this.markdownToHtml(doc.content);
-    } else if (payload.format === 'pdf') {
-      // PDF 导出使用项目自己的 exportToPdf 函数
-      await exportToPdf(doc.content, saveUri.fsPath, {
-        includeToc: true,
-        displayHeaderFooter: true,
-      });
-      vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
-      return;
-    }
+    try {
+      if (payload.format === 'html') {
+        await exportToHtml(doc.content, saveUri.fsPath, {
+          includeToc: true,
+          title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
+        });
+        vscode.window.showInformationMessage(`HTML 已导出: ${saveUri.fsPath}`);
+        return;
+      }
 
-    // 写入文件
-    const buffer = Buffer.from(content, 'utf-8');
-    await vscode.workspace.fs.writeFile(saveUri, buffer);
+      if (payload.format === 'pdf') {
+        await exportToPdf(doc.content, saveUri.fsPath, {
+          includeToc: true,
+          displayHeaderFooter: true,
+        });
+        vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
+        return;
+      }
+
+      vscode.window.showWarningMessage(`暂不支持导出 ${payload.format}`);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `导出 ${String(payload.format).toUpperCase()} 失败: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   private getExportFilters(format: string): { [key: string]: string[] } {
@@ -369,39 +378,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       json: ['json'],
     };
     return { [format.toUpperCase()]: filters[format] || ['*'] };
-  }
-
-  private markdownToHtml(markdown: string): string {
-    // 简单的 Markdown 到 HTML 转换
-    // 实际项目中可以使用 marked 或其他库
-    let html = markdown
-      // 标题
-      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-      // 粗体
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      // 斜体
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      // 代码
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // 链接
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
-      // 图片
-      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
-      // 换行
-      .replace(/\n/g, '<br>');
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Exported</title>
-</head>
-<body>
-${html}
-</body>
-</html>`;
   }
 
   postMessage(uri: string, message: ExtensionMessage): void {

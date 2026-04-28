@@ -4,18 +4,34 @@
       <span class="outline-title">大纲</span>
     </div>
     <div class="outline-list">
-      <button
-        v-for="item in outline"
-        :key="item.id"
+      <div
+        v-for="item in visibleOutline"
+        :key="`${item.id}:${item.pos}`"
+        class="outline-row"
+        :style="{ paddingLeft: (item.level - 1) * 12 + 4 + 'px' }"
+      >
+        <button
+          v-if="item.hasChildren"
+          class="outline-collapse"
+          type="button"
+          :title="item.collapsed ? '展开小节' : '折叠小节'"
+          :aria-label="item.collapsed ? `展开 ${item.text}` : `折叠 ${item.text}`"
+          @click.stop="toggleCollapse(item)"
+        >
+          {{ item.collapsed ? '▸' : '▾' }}
+        </button>
+        <span v-else class="outline-collapse-placeholder" aria-hidden="true"></span>
+        <button
         class="outline-item"
         :class="{ active: item.id === activeHeadingId }"
-        :style="{ paddingLeft: (item.level - 1) * 12 + 8 + 'px' }"
         type="button"
+        :title="item.text"
         :aria-current="item.id === activeHeadingId ? 'true' : undefined"
         @click="handleClick(item)"
       >
         {{ item.text }}
       </button>
+      </div>
     </div>
   </div>
 </template>
@@ -23,12 +39,15 @@
 <script setup lang="ts">
 import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import type { EditorMode } from '../../src/types';
+import { generateHeadingId, parseHeadings } from '../shared/outline';
 
 interface OutlineItem {
   id: string;
   level: number;
   text: string;
   pos: number;
+  collapsed: boolean;
+  hasChildren: boolean;
 }
 
 const props = defineProps<{
@@ -42,46 +61,31 @@ const emit = defineEmits<{
 
 const outline = ref<OutlineItem[]>([]);
 const activeHeadingId = ref<string>('');
+const collapsedIds = ref<Set<string>>(new Set());
 const OUTLINE_PARSE_DEBOUNCE_MS = 250;
 let parseTimer: ReturnType<typeof setTimeout> | null = null;
 let hasParsedOnce = false;
 
-// 生成标题 ID（与 MilkdownEditor 保持一致）
-function generateHeadingId(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '') // 移除特殊字符，保留中文
-    .replace(/\s+/g, '-') // 空格替换为连字符
-    .replace(/-+/g, '-') // 多个连字符合并
-    .replace(/^-|-$/g, ''); // 移除首尾连字符
-}
-
 // 解析内容生成大纲
 function parseOutline(content: string): OutlineItem[] {
-  const items: OutlineItem[] = [];
-  const lines = content.split('\n');
-  let pos = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // 匹配 ATX 标题: # ## ### #### ##### ######
-    const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      const level = match[1].length;
-      const text = match[2].trim();
-      // 移除已有的 ID 锚点
-      const cleanText = text.replace(/\{#[^}]+\}$/, '').trim();
-      items.push({
-        id: generateHeadingId(cleanText),
-        level,
-        text: cleanText,
-        pos,
-      });
+  const headings = parseHeadings(content);
+  return headings.map((heading, index) => {
+    let hasChildren = false;
+    for (const next of headings.slice(index + 1)) {
+      if (next.level <= heading.level) break;
+      hasChildren = true;
+      break;
     }
-    pos += line.length + 1; // +1 for newline
-  }
-
-  return items;
+    const id = generateHeadingId(heading.text);
+    return {
+      id,
+      level: heading.level,
+      text: heading.text,
+      pos: heading.from,
+      collapsed: collapsedIds.value.has(id),
+      hasChildren,
+    };
+  });
 }
 
 // 监听内容变化，更新大纲
@@ -119,6 +123,32 @@ function handleClick(item: OutlineItem) {
   emit('jump', item.pos, item.id);
 }
 
+function toggleCollapse(item: OutlineItem) {
+  const next = new Set(collapsedIds.value);
+  if (next.has(item.id)) next.delete(item.id);
+  else next.add(item.id);
+  collapsedIds.value = next;
+  outline.value = parseOutline(props.content);
+}
+
+const visibleOutline = computed(() => {
+  const result: OutlineItem[] = [];
+  const hiddenLevels: number[] = [];
+
+  for (const item of outline.value) {
+    while (hiddenLevels.length && item.level <= hiddenLevels[hiddenLevels.length - 1]!) {
+      hiddenLevels.pop();
+    }
+    if (hiddenLevels.length) continue;
+    result.push(item);
+    if (item.collapsed && item.hasChildren) {
+      hiddenLevels.push(item.level);
+    }
+  }
+
+  return result;
+});
+
 const currentMode = computed(() => props.currentMode);
 </script>
 
@@ -151,9 +181,33 @@ const currentMode = computed(() => props.currentMode);
   padding: 8px 0;
 }
 
+.outline-row {
+  display: flex;
+  align-items: center;
+  margin: 2px 8px;
+}
+
+.outline-collapse,
+.outline-collapse-placeholder {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 24px;
+}
+
+.outline-collapse {
+  border: 0;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 0;
+}
+
+.outline-collapse:hover {
+  color: var(--vscode-foreground);
+}
+
 .outline-item {
   padding: 6px 8px;
-  margin: 2px 8px;
   font-size: 13px;
   color: var(--vscode-foreground);
   cursor: pointer;
@@ -161,7 +215,8 @@ const currentMode = computed(() => props.currentMode);
   border: 1px solid transparent;
   background: transparent;
   text-align: left;
-  width: calc(100% - 16px);
+  min-width: 0;
+  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
