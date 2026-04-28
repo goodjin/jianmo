@@ -947,11 +947,42 @@ function insertMarkdown(markdown: string): boolean {
   const doc = parser(markdown);
   if (doc) {
     const { from, to } = state.selection;
-    const tr = state.tr.replaceWith(from, to, doc.content);
-    dispatch(tr);
-    return true;
+    try {
+      const tr = state.tr.replaceWith(from, to, doc.content);
+      dispatch(tr);
+      return true;
+    } catch (err) {
+      if (insertAfterCurrentTable(view, doc.content)) {
+        return true;
+      }
+      console.warn('[MilkdownEditor] insertMarkdown failed:', err);
+    }
   }
   return false;
+}
+
+function findEnclosingTableDepth($pos: any): number | null {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const node = $pos.node(depth);
+    if (node?.type?.spec?.tableRole === 'table') return depth;
+  }
+  return null;
+}
+
+function insertAfterCurrentTable(view: any, content: Fragment): boolean {
+  try {
+    const { state, dispatch } = view;
+    if (!isInTable(state)) return false;
+    const tableDepth = findEnclosingTableDepth(state.selection.$from);
+    if (tableDepth == null) return false;
+    const insertPos = state.selection.$from.after(tableDepth);
+    const tr = state.tr.insert(insertPos, content).scrollIntoView();
+    dispatch(tr);
+    return true;
+  } catch (err) {
+    console.warn('[MilkdownEditor] insertAfterCurrentTable failed:', err);
+    return false;
+  }
 }
 
 // 解析图片 URL（处理相对路径）
