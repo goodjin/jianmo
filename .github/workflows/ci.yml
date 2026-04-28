@@ -39,3 +39,9 @@ jobs:
 
       - name: Build (extension + webview)
         run: npm run build
+
+      - name: Bundle size guard
+        run: npm run check:bundle
+
+      - name: Release metadata guard
+        run: npm run check:release

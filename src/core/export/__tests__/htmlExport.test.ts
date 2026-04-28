@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { escapeHtml, generateToc, buildHtmlDocument, markdownToHtml, type HtmlExportOptions } from '../htmlExport';
+import {
+  escapeHtml,
+  generateToc,
+  buildHtmlDocument,
+  markdownToHtml,
+  renderMarkdownMath,
+  type HtmlExportOptions,
+} from '../htmlExport';
 
 describe('escapeHtml', () => {
   it('escapes & < > " \'', () => {
@@ -143,5 +150,28 @@ describe('markdownToHtml export rendering', () => {
     expect(html).toContain('<code class="language-ts">');
     expect(html).toContain('type="checkbox"');
     expect(html).toContain('<img src="assets/a.png" alt="Alt">');
+  });
+
+  it('renders inline and block math with KaTeX output', async () => {
+    const html = await markdownToHtml('Inline $E=mc^2$\n\n$$\\frac{a}{b}$$');
+
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('E=mc');
+    expect(html).toContain('mfrac');
+    expect(html).not.toContain('$E=mc^2$');
+  });
+
+  it('keeps invalid math readable instead of throwing', () => {
+    const markdown = renderMarkdownMath('$\\badcommand{x}$');
+
+    expect(markdown).toContain('class="katex"');
+    expect(markdown).toContain('\\badcommand');
+  });
+
+  it('does not render dollar syntax inside fenced code blocks', async () => {
+    const html = await markdownToHtml('```txt\n$E=mc^2$\n```\n\nOutside $x+1$');
+
+    expect(html).toContain('<code class="language-txt">$E=mc^2$');
+    expect(html).toContain('class="katex"');
   });
 });

@@ -62,6 +62,7 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('```json');
     expect(arg).toContain('"mode"');
     expect(arg).toContain('"source"');
+    expect(arg).toContain('"richFocused"');
     expect(arg).toContain('"host"');
     expect(arg).toContain('"richStartupAttemptId"');
     expect(arg).toContain('"richStartupWatchdogFired"');

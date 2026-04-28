@@ -217,6 +217,7 @@ import type { RichTableOp } from './core/richTableCommands';
 import { hasToc, updateTocInContent } from './utils/toc';
 import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
+import { buildImageDiagnostics } from './utils/imageDiagnostics';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import {
@@ -1167,6 +1168,7 @@ function handleFormat(format: string) {
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.applyFormat?.(format);
+      queueRichFocus();
       return;
     }
     editor.applyFormat(format);
@@ -1180,6 +1182,7 @@ function handleInsert(type: string) {
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.insertNode?.(type);
+      queueRichFocus();
       return;
     }
     editor.insertNode(type);
@@ -1187,6 +1190,16 @@ function handleInsert(type: string) {
   } catch (err) {
     console.warn('[Editor] insertNode failed:', err);
   }
+}
+
+function queueRichFocus(): void {
+  queueMicrotask(() => {
+    try {
+      milkdownRef.value?.focus?.();
+    } catch {
+      // Focus restoration must not break editing commands.
+    }
+  });
 }
 
 function replaceDocumentContent(nextContent: string): void {
@@ -1251,6 +1264,7 @@ function handleRichTableOp(op: string) {
   if (currentMode.value !== 'rich') return;
   if (!RICH_TABLE_OPS.has(op)) return;
   milkdownRef.value?.runRichTableOp?.(op as RichTableOp);
+  queueRichFocus();
 }
 
 function onRichTableContextMenu(payload: { x: number; y: number }) {
@@ -1730,26 +1744,17 @@ function showToast(msg: string, durationMs = 2400) {
 }
 
 function collectImageDiagnostics() {
-  const refs = Array.from(content.value.matchAll(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)).map((m) => ({
-    alt: m[1] ?? '',
-    src: m[2] ?? '',
-  }));
-  const localRefs = refs.filter((ref) => {
-    const src = ref.src.trim();
-    return src && !/^(https?:|data:|file:)/i.test(src);
-  });
   const renderedImages = Array.from(document.querySelectorAll('.editor-container img')).map((img) =>
     (img as HTMLImageElement).getAttribute('src') || ''
   );
 
-  return {
-    totalRefs: refs.length,
-    localRefs: localRefs.length,
-    remoteRefs: refs.length - localRefs.length,
+  return buildImageDiagnostics({
+    markdown: content.value,
+    renderedImages,
     saveDirectory: config.value?.image?.saveDirectory ?? null,
-    renderedImages: renderedImages.length,
-    sampleRefs: refs.slice(0, 10),
-  };
+    compressThreshold: config.value?.image?.compressThreshold ?? null,
+    compressQuality: config.value?.image?.compressQuality ?? null,
+  });
 }
 
 function buildDiagnosticsPayload() {
@@ -1761,6 +1766,7 @@ function buildDiagnosticsPayload() {
         host: hostDiagnostics.value,
         app: {
           mode: currentMode.value,
+          richFocused: isMilkdownProseMirrorFocused(),
           richReadySuccess: richReadySuccess.value,
           richFallbackBannerVisible: richFallbackBannerVisible.value,
           richFallbackBannerReason: richFallbackBannerReason.value,

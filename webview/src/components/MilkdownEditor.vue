@@ -947,6 +947,9 @@ function insertMarkdown(markdown: string): boolean {
   const doc = parser(markdown);
   if (doc) {
     const { from, to } = state.selection;
+    if (isInTable(state) && shouldInsertFragmentOutsideTable(doc.content)) {
+      return insertAfterCurrentTable(view, doc.content);
+    }
     try {
       const tr = state.tr.replaceWith(from, to, doc.content);
       dispatch(tr);
@@ -955,10 +958,30 @@ function insertMarkdown(markdown: string): boolean {
       if (insertAfterCurrentTable(view, doc.content)) {
         return true;
       }
+      emitInsertFailureToast();
       console.warn('[MilkdownEditor] insertMarkdown failed:', err);
     }
   }
   return false;
+}
+
+function shouldInsertFragmentOutsideTable(content: Fragment): boolean {
+  let shouldFallback = false;
+  content.forEach((node) => {
+    if (node.type?.spec?.tableRole === 'table') shouldFallback = true;
+    if (node.isBlock && node.type.name !== 'paragraph') shouldFallback = true;
+  });
+  return shouldFallback;
+}
+
+function emitInsertFailureToast(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('markly:toast', {
+      detail: { message: '当前位置不能插入该块内容，请移动光标后重试。' },
+    }));
+  } catch {
+    // ignore
+  }
 }
 
 function findEnclosingTableDepth($pos: any): number | null {
@@ -978,9 +1001,31 @@ function insertAfterCurrentTable(view: any, content: Fragment): boolean {
     const insertPos = state.selection.$from.after(tableDepth);
     const tr = state.tr.insert(insertPos, content).scrollIntoView();
     dispatch(tr);
+    emitTableInsertMovedToast();
     return true;
   } catch (err) {
     console.warn('[MilkdownEditor] insertAfterCurrentTable failed:', err);
+    return false;
+  }
+}
+
+function emitTableInsertMovedToast(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('markly:toast', {
+      detail: { message: '已将块内容插入到当前表格之后，避免破坏表格结构。' },
+    }));
+  } catch {
+    // ignore
+  }
+}
+
+function focus(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    view.focus();
+    return true;
+  } catch {
     return false;
   }
 }
@@ -1238,7 +1283,12 @@ function simulateRichTablePaste(payload: { plain?: string; html?: string }): boo
           const cellOffset = map.map[row * map.width + col];
           if (cellOffset == null) continue;
           const cellPos = rect.tableStart + cellOffset;
-          const cellNode = tr.doc.nodeAt(cellPos);
+          let cellNode: any = null;
+          try {
+            cellNode = tr.doc.nodeAt(cellPos);
+          } catch {
+            continue;
+          }
           if (!cellNode) continue;
 
           const pick = () => {
@@ -1531,6 +1581,7 @@ defineExpose({
   applyFormat,
   insertNode,
   insertMarkdown,
+  focus,
   getContent,
   setContent,
   selectPlainTextOccurrence,

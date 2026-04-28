@@ -4,6 +4,20 @@
 // - rich: 真富文本（ProseMirror/Milkdown 节点模型），保存时序列化为 markdown
 export type EditorMode = 'ir' | 'source' | 'rich';
 
+export type RichTableCommandValue =
+  | 'addRowBefore'
+  | 'addRowAfter'
+  | 'addColBefore'
+  | 'addColAfter'
+  | 'toggleHeaderRow'
+  | 'alignLeft'
+  | 'alignCenter'
+  | 'alignRight'
+  | 'mergeCells'
+  | 'splitCell'
+  | 'deleteRow'
+  | 'deleteCol';
+
 // 光标位置
 export interface SourceCursorPosition {
   lineNumber: number;
@@ -112,7 +126,7 @@ export type ExtensionMessage =
       payload:
         | { command: 'insert'; value: 'table' | 'codeBlock' | 'image' | 'link' | 'math' | 'hr' }
         | { command: 'toggleOutline' }
-        | { command: 'richTable'; value: string }
+        | { command: 'richTable'; value: RichTableCommandValue }
         | { command: 'writingAssist'; value: 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables' };
     }
   /** 旧 Text Editor 路径曾下发；预览模式可不使用 */

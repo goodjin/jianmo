@@ -1,4 +1,6 @@
 import * as fs from 'fs';
+import * as path from 'path';
+import * as katex from 'katex';
 import { marked } from 'marked';
 
 export interface HtmlExportOptions {
@@ -78,8 +80,9 @@ export function generateToc(markdown: string): string {
 }
 
 export async function markdownToHtml(markdown: string): Promise<string> {
+  const markdownWithMath = renderMarkdownMath(markdown);
   // 使用 marked 转换 Markdown，支持 GFM
-  const html = await marked.parse(markdown, {
+  const html = await marked.parse(markdownWithMath, {
     gfm: true,
     breaks: true,
   });
@@ -94,6 +97,47 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     // 使用 escapeHtml 防止 XSS
     return `<h${level} id="${anchor}"${attrs}>${escapeHtml(text)}</h${level}>`;
   });
+}
+
+export function renderMarkdownMath(markdown: string): string {
+  const codeBlocks: string[] = [];
+  const protectedMarkdown = String(markdown ?? '').replace(/```[\s\S]*?```/g, (block) => {
+    const token = `@@MARKLY_CODE_BLOCK_${codeBlocks.length}@@`;
+    codeBlocks.push(block);
+    return token;
+  });
+
+  const rendered = protectedMarkdown
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_match, expr) => renderMath(String(expr).trim(), true))
+    .replace(/(^|[^$])\$([^\n$]+)\$(?!\$)/g, (_match, prefix, expr) => `${prefix}${renderMath(String(expr).trim(), false)}`);
+
+  return rendered.replace(/@@MARKLY_CODE_BLOCK_(\d+)@@/g, (_match, index) => codeBlocks[Number(index)] ?? '');
+}
+
+function renderMath(expr: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(expr, {
+      displayMode,
+      throwOnError: false,
+      strict: false,
+      output: 'htmlAndMathml',
+    });
+  } catch {
+    return `<code>${escapeHtml(displayMode ? `$$${expr}$$` : `$${expr}$`)}</code>`;
+  }
+}
+
+function readKatexCss(): string {
+  try {
+    const cssPath = require.resolve('katex/dist/katex.min.css');
+    return fs.readFileSync(cssPath, 'utf-8');
+  } catch {
+    try {
+      return fs.readFileSync(path.join(process.cwd(), 'node_modules/katex/dist/katex.min.css'), 'utf-8');
+    } catch {
+      return '';
+    }
+  }
 }
 
 export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOptions): string {
@@ -145,6 +189,7 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(opts.title || '导出文档')}</title>
   <style>
+    ${readKatexCss()}
     :root {
       --bg-color: ${bgColor};
       --text-color: ${textColor};

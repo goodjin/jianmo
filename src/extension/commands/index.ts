@@ -2,12 +2,27 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
-import type { ExtensionMessage } from '@types';
+import type { ExtensionMessage, RichTableCommandValue } from '@types';
 import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
+
+const richTableCommands: Array<{ id: string; op: RichTableCommandValue }> = [
+  { id: 'markly.table.addRowBefore', op: 'addRowBefore' },
+  { id: 'markly.table.addRowAfter', op: 'addRowAfter' },
+  { id: 'markly.table.addColBefore', op: 'addColBefore' },
+  { id: 'markly.table.addColAfter', op: 'addColAfter' },
+  { id: 'markly.table.toggleHeaderRow', op: 'toggleHeaderRow' },
+  { id: 'markly.table.alignLeft', op: 'alignLeft' },
+  { id: 'markly.table.alignCenter', op: 'alignCenter' },
+  { id: 'markly.table.alignRight', op: 'alignRight' },
+  { id: 'markly.table.mergeCells', op: 'mergeCells' },
+  { id: 'markly.table.splitCell', op: 'splitCell' },
+  { id: 'markly.table.deleteRow', op: 'deleteRow' },
+  { id: 'markly.table.deleteCol', op: 'deleteCol' },
+];
 
 export function registerWebview(uri: string, webview: vscode.Webview): void {
   webviews.set(uri, webview);
@@ -234,9 +249,23 @@ export function registerCommands(
     () => postEditorCommand({ command: 'insert', value: 'codeBlock' })
   );
 
-  const richTableAddRowAfterCmd = vscode.commands.registerCommand(
-    'markly.table.addRowAfter',
-    () => postEditorCommand({ command: 'richTable', value: 'addRowAfter' })
+  const richTableCmds = richTableCommands.map(({ id, op }) =>
+    vscode.commands.registerCommand(id, () => postEditorCommand({ command: 'richTable', value: op }))
+  );
+
+  const insertImageCmd = vscode.commands.registerCommand(
+    'markly.insert.image',
+    () => postEditorCommand({ command: 'insert', value: 'image' })
+  );
+
+  const insertLinkCmd = vscode.commands.registerCommand(
+    'markly.insert.link',
+    () => postEditorCommand({ command: 'insert', value: 'link' })
+  );
+
+  const insertHrCmd = vscode.commands.registerCommand(
+    'markly.insert.hr',
+    () => postEditorCommand({ command: 'insert', value: 'hr' })
   );
 
   const assistSummarizeCmd = vscode.commands.registerCommand(
@@ -267,7 +296,10 @@ export function registerCommands(
     toggleOutlineCmd,
     insertTableCmd,
     insertCodeBlockCmd,
-    richTableAddRowAfterCmd,
+    insertImageCmd,
+    insertLinkCmd,
+    insertHrCmd,
+    ...richTableCmds,
     assistSummarizeCmd,
     assistSuggestTitleCmd,
     assistFixMarkdownCmd,

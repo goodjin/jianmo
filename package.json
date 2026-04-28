@@ -54,9 +54,79 @@
         "icon": "$(code)"
       },
       {
+        "command": "markly.insert.image",
+        "title": "Insert Image",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "markly.insert.link",
+        "title": "Insert Link",
+        "icon": "$(link)"
+      },
+      {
+        "command": "markly.insert.hr",
+        "title": "Insert Horizontal Rule",
+        "icon": "$(horizontal-rule)"
+      },
+      {
+        "command": "markly.table.addRowBefore",
+        "title": "Table: Add Row Above",
+        "icon": "$(insert)"
+      },
+      {
         "command": "markly.table.addRowAfter",
         "title": "Table: Add Row Below",
         "icon": "$(insert)"
+      },
+      {
+        "command": "markly.table.addColBefore",
+        "title": "Table: Add Column Left",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "markly.table.addColAfter",
+        "title": "Table: Add Column Right",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "markly.table.toggleHeaderRow",
+        "title": "Table: Toggle Header Row",
+        "icon": "$(table)"
+      },
+      {
+        "command": "markly.table.alignLeft",
+        "title": "Table: Align Left",
+        "icon": "$(align-left)"
+      },
+      {
+        "command": "markly.table.alignCenter",
+        "title": "Table: Align Center",
+        "icon": "$(align-center)"
+      },
+      {
+        "command": "markly.table.alignRight",
+        "title": "Table: Align Right",
+        "icon": "$(align-right)"
+      },
+      {
+        "command": "markly.table.mergeCells",
+        "title": "Table: Merge Cells",
+        "icon": "$(combine)"
+      },
+      {
+        "command": "markly.table.splitCell",
+        "title": "Table: Split Cell",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "markly.table.deleteRow",
+        "title": "Table: Delete Row",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "markly.table.deleteCol",
+        "title": "Table: Delete Column",
+        "icon": "$(trash)"
       },
       {
         "command": "markly.assist.summarize",
@@ -214,6 +284,8 @@
     "build:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --external:puppeteer --format=cjs --platform=node --minify --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "build:webview": "cd webview && npm run build",
     "check:bundle": "node ./scripts/check_webview_bundle.mjs",
+    "check:release": "node ./scripts/check-release.mjs",
+    "preflight": "npm run lint && npm test && npm run build && npm run check:bundle && npm run check:release",
     "m8:baseline": "node ./scripts/m8-baseline.mjs",
     "dev:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --format=cjs --platform=node --watch --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "dev:webview": "cd webview && npm run dev",

@@ -2,7 +2,14 @@
  * Extension ⇄ Webview 消息运行时校验（契约测试与防守式解析用）
  * @module types/messageGuards
  */
-import type { EditorMode, ExtensionConfig, ExtensionMessage, HostDiagnostics, WebViewMessage } from './index';
+import type {
+  EditorMode,
+  ExtensionConfig,
+  ExtensionMessage,
+  HostDiagnostics,
+  RichTableCommandValue,
+  WebViewMessage,
+} from './index';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
@@ -15,6 +22,21 @@ function isString(x: unknown): x is string {
 function isNumber(x: unknown): x is number {
   return typeof x === 'number' && !Number.isNaN(x);
 }
+
+const richTableCommandValues: ReadonlySet<RichTableCommandValue> = new Set([
+  'addRowBefore',
+  'addRowAfter',
+  'addColBefore',
+  'addColAfter',
+  'toggleHeaderRow',
+  'alignLeft',
+  'alignCenter',
+  'alignRight',
+  'mergeCells',
+  'splitCell',
+  'deleteRow',
+  'deleteCol',
+]);
 
 export function isEditorMode(x: unknown): x is EditorMode {
   return x === 'ir' || x === 'source' || x === 'rich';
@@ -123,7 +145,9 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
           p.value === 'hr'
         );
       }
-      if (p.command === 'richTable') return isString(p.value);
+      if (p.command === 'richTable') {
+        return isString(p.value) && richTableCommandValues.has(p.value as RichTableCommandValue);
+      }
       if (p.command === 'writingAssist') {
         return (
           p.value === 'summarize' ||
