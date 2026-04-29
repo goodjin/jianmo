@@ -217,7 +217,7 @@ import type { RichTableOp } from './core/richTableCommands';
 import { hasToc, updateTocInContent } from './utils/toc';
 import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
-import { buildImageDiagnostics } from './utils/imageDiagnostics';
+import { buildImageDiagnostics, parseMarkdownImageRefs } from './utils/imageDiagnostics';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import {
@@ -237,7 +237,7 @@ import {
   matchOrdinalInText,
   type FindPatternMode,
 } from './utils/findPattern';
-import type { ExtensionConfig, ExtensionMessage, EditorMode } from '../../src/types';
+import type { ExtensionConfig, ExtensionMessage, EditorMode, LocalImageRefCheckResult } from '../../src/types';
 import { undoDepth, redoDepth } from '@codemirror/commands';
 
 import { useVSCode } from './composables/useVSCode';
@@ -284,6 +284,9 @@ declare global {
 const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const hostDiagnostics = ref<any>(null);
+const localImageRefCheckResults = ref<LocalImageRefCheckResult[]>([]);
+const localImageRefLastCheckedAt = ref<string | null>(null);
+const pendingLocalImageChecks = new Map<string, (results: LocalImageRefCheckResult[]) => void>();
 const editorReady = ref(false);
 const currentMode = ref<EditorMode>('rich');
 const editorContainerStyle = computed(() => ({
@@ -937,6 +940,17 @@ function handleMessage(event: MessageEvent) {
     case 'EDITOR_COMMAND':
       handleEditorCommand(message.payload);
       break;
+
+    case 'LOCAL_IMAGE_REFS_RESULT': {
+      localImageRefCheckResults.value = message.payload.results;
+      localImageRefLastCheckedAt.value = new Date().toISOString();
+      const resolve = pendingLocalImageChecks.get(message.payload.requestId);
+      if (resolve) {
+        pendingLocalImageChecks.delete(message.payload.requestId);
+        resolve(message.payload.results);
+      }
+      break;
+    }
       
     case 'SAVE':
       // VS Code 触发的保存，也需要更新 TOC
@@ -1754,6 +1768,37 @@ function collectImageDiagnostics() {
     saveDirectory: config.value?.image?.saveDirectory ?? null,
     compressThreshold: config.value?.image?.compressThreshold ?? null,
     compressQuality: config.value?.image?.compressQuality ?? null,
+    localCheckResults: localImageRefCheckResults.value,
+    lastCheckedAt: localImageRefLastCheckedAt.value,
+  });
+}
+
+function refreshLocalImageRefChecks(timeoutMs = 1200): Promise<LocalImageRefCheckResult[]> {
+  const refs = Array.from(new Set(
+    parseMarkdownImageRefs(content.value)
+      .filter((ref) => ref.isLocal)
+      .map((ref) => ref.src)
+  ));
+  if (!refs.length) {
+    localImageRefCheckResults.value = [];
+    localImageRefLastCheckedAt.value = new Date().toISOString();
+    return Promise.resolve([]);
+  }
+
+  const requestId = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      pendingLocalImageChecks.delete(requestId);
+      resolve(localImageRefCheckResults.value);
+    }, timeoutMs);
+    pendingLocalImageChecks.set(requestId, (results) => {
+      window.clearTimeout(timer);
+      resolve(results);
+    });
+    sendMessage({
+      type: 'CHECK_LOCAL_IMAGE_REFS',
+      payload: { requestId, refs },
+    });
   });
 }
 
@@ -1802,6 +1847,7 @@ function buildDiagnosticsPayload() {
 }
 
 async function copyDiagnosticsToClipboard() {
+  await refreshLocalImageRefChecks();
   const pkg = buildDiagnosticsPayload() as any;
   const payloadText = String(pkg?.text ?? JSON.stringify(pkg ?? {}, null, 2));
   const text = buildIssueTemplateMarkdown({

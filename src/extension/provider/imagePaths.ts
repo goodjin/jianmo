@@ -18,3 +18,30 @@ export function resolveMarkdownImageUri(documentUri: vscode.Uri, src: string): v
   return vscode.Uri.joinPath(docDir, ...parts);
 }
 
+export async function checkLocalMarkdownImageRefs(
+  documentUri: vscode.Uri,
+  refs: string[],
+  stat: (uri: vscode.Uri) => Promise<unknown> = (uri) => vscode.workspace.fs.stat(uri)
+) {
+  const uniqueRefs = Array.from(new Set(refs));
+  const results = [];
+
+  for (const ref of uniqueRefs) {
+    const imageUri = resolveMarkdownImageUri(documentUri, ref);
+    if (!imageUri) continue;
+    try {
+      await stat(imageUri);
+      results.push({ ref, exists: true, resolvedPath: imageUri.fsPath });
+    } catch (err) {
+      results.push({
+        ref,
+        exists: false,
+        resolvedPath: imageUri.fsPath,
+        error: String((err as Error)?.message ?? err ?? 'Image not found'),
+      });
+    }
+  }
+
+  return results;
+}
+

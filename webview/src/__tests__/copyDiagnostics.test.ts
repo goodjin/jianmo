@@ -27,6 +27,27 @@ describe('copy diagnostics button', () => {
     // minimal clipboard stub
     (globalThis as any).navigator = (globalThis as any).navigator ?? {};
     (globalThis as any).navigator.clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (globalThis as any).window.vscode = {
+      postMessage: vi.fn((message: any) => {
+        if (message?.type !== 'CHECK_LOCAL_IMAGE_REFS') return;
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: {
+              type: 'LOCAL_IMAGE_REFS_RESULT',
+              payload: {
+                requestId: message.payload.requestId,
+                results: [
+                  { ref: './assets/exists.png', exists: true, resolvedPath: '/repo/assets/exists.png' },
+                  { ref: './assets/missing.png', exists: false, resolvedPath: '/repo/assets/missing.png', error: 'not found' },
+                ],
+              },
+            },
+          })
+        );
+      }),
+      getState: vi.fn(),
+      setState: vi.fn(),
+    };
     (globalThis as any).window.__marklyE2E = {
       getDiagnostics: () => ({ mode: 'source', richReadySuccess: false }),
     };
@@ -49,6 +70,7 @@ describe('copy diagnostics button', () => {
     await wrapper.setData?.({});
     (wrapper.vm as any).editorReady = true;
     (wrapper.vm as any).currentMode = 'source';
+    (wrapper.vm as any).content = '![ok](./assets/exists.png)\n![missing](./assets/missing.png)\n![remote](https://example.com/a.png)';
     (wrapper.vm as any).richFallbackBannerVisible = true;
     (wrapper.vm as any).richFallbackBannerReason = 'failed';
     await wrapper.vm.$nextTick();
@@ -72,6 +94,9 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('"richLastError"');
     expect(arg).toContain('"images"');
     expect(arg).toContain('"totalRefs"');
+    expect(arg).toContain('"missingRefs"');
+    expect(arg).toContain('./assets/missing.png');
+    expect(arg).toContain('/repo/assets/missing.png');
   });
 
   it('has reload webview self-heal action', async () => {

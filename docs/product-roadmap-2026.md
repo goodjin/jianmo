@@ -290,6 +290,19 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 - M30 性能和包体治理：新增 extension bundle 门禁，并入 `check:bundle`
 - M31 发布和反馈闭环：补 repository/bugs 元数据，增强 `check-release` 发版校验
 
+## M32：图片缺失检测与定位闭环
+
+目标：让图片资产从“路径可解析”升级到“缺失可发现、可定位”。
+
+完成项：
+
+- M32-0 计划：新增 `docs/m32-image-missing-repair-plan.md`
+- M32-1 协议：新增 `CHECK_LOCAL_IMAGE_REFS` / `LOCAL_IMAGE_REFS_RESULT`
+- M32-2 诊断：复制诊断前刷新本地图片 `stat` 结果，补 `missingRefs` / `existingRefs`
+- M32-3 定位：缺失引用返回 `resolvedPath`，方便用户定位路径问题
+- M32-4 测试：覆盖路径边界、协议 guard 和诊断合并字段
+- M32-5 验证：纳入 lint/test/build/bundle/release 门禁
+
 ---
 
 ## 判断标准
@@ -316,4 +329,5 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 - Rich 表格、启动可靠性、诊断、自救、日常编辑同步已经完成多轮收口
 - M20-M25 已继续补齐结构安全、焦点、图片诊断、命令体系、公式导出和发布门禁
 - M26-M31 已继续覆盖真实复杂文档、Rich 命令行为、图片路径定位、PDF 数学导出、extension 包体门禁和发布反馈元信息
+- M32 已补齐本地图片缺失检测协议、诊断字段和路径定位信息
 

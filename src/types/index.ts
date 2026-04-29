@@ -103,12 +103,19 @@ export interface HostDiagnostics {
   >;
 }
 
+export interface LocalImageRefCheckResult {
+  ref: string;
+  exists: boolean;
+  resolvedPath?: string;
+  error?: string;
+}
+
 // 消息类型（Extension ⇄ Webview 自定义编辑器协议）
 //
 // Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
-//   IMAGE_SAVED / IMAGE_SAVE_FAILED / EDITOR_COMMAND / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
+//   IMAGE_SAVED / IMAGE_SAVE_FAILED / LOCAL_IMAGE_REFS_RESULT / EDITOR_COMMAND / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
 // Webview → Extension：READY / CONTENT_CHANGE / SAVE / SAVE_IMAGE / OPEN_* / EXPORT /
-//   UPLOAD_IMAGE / scrollPositionResponse
+//   UPLOAD_IMAGE / CHECK_LOCAL_IMAGE_REFS / scrollPositionResponse
 //
 // 注：`markly.toggleMode` 仍可能下发 `preview`（历史命名），Webview 侧与 `ir` 同义入口。
 export type ExtensionMessage =
@@ -121,6 +128,10 @@ export type ExtensionMessage =
   | { type: 'SAVE_SUCCESS'; payload: { version: number } }
   | { type: 'IMAGE_SAVED'; payload: { path: string; filename: string } }
   | { type: 'IMAGE_SAVE_FAILED'; payload: { filename: string; error: string } }
+  | {
+      type: 'LOCAL_IMAGE_REFS_RESULT';
+      payload: { requestId: string; results: LocalImageRefCheckResult[] };
+    }
   | {
       type: 'EDITOR_COMMAND';
       payload:
@@ -143,6 +154,7 @@ export type WebViewMessage =
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' } }
   | { type: 'READY'; payload?: undefined }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string } }
+  | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
   | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
 
 // 导出结果 - 使用联合类型区分成功/失败

@@ -56,6 +56,16 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'SAVE_SUCCESS', payload: { version: 9 } },
     { type: 'IMAGE_SAVED', payload: { path: 'assets/a.png', filename: 'a.png' } },
     { type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png', error: 'disk full' } },
+    {
+      type: 'LOCAL_IMAGE_REFS_RESULT',
+      payload: {
+        requestId: 'img-1',
+        results: [
+          { ref: './assets/a.png', exists: true, resolvedPath: '/repo/assets/a.png' },
+          { ref: './assets/missing.png', exists: false, resolvedPath: '/repo/assets/missing.png', error: 'FileNotFound' },
+        ],
+      },
+    },
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'table' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'hr' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
@@ -81,6 +91,7 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'UNKNOWN' })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
     expect(isExtensionMessage({ type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'LOCAL_IMAGE_REFS_RESULT', payload: { requestId: 'x', results: [{ ref: 'a.png' }] } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'unknown' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'unknown' } })).toBe(false);
   });
@@ -102,6 +113,7 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'SAVE', payload: { content: 'save-me' } },
     { type: 'SAVE_IMAGE', payload: { data: 'base64', filename: 'a.png' } },
     { type: 'UPLOAD_IMAGE', payload: { base64: 'base64', filename: 'b.png' } },
+    { type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'img-1', refs: ['./a.png', '../b.png'] } },
     {
       type: 'OPEN_IMAGE_PREVIEW',
       payload: { src: 's.png', images: ['s.png'], index: 0 },
@@ -125,6 +137,7 @@ describe('messageGuards — Webview → Extension', () => {
   it('rejects wrong shapes', () => {
     expect(isWebViewMessage({ type: 'CONTENT_CHANGE', payload: { content: 1 } })).toBe(false);
     expect(isWebViewMessage({ type: 'EXPORT', payload: { format: 'doc' } })).toBe(false);
+    expect(isWebViewMessage({ type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'x', refs: [1] } })).toBe(false);
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
   });
 });

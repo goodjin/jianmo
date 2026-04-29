@@ -131,6 +131,16 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       return isRecord(p) && isString(p.filename) && isString(p.error);
     }
+    case 'LOCAL_IMAGE_REFS_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || !Array.isArray(p.results)) return false;
+      return p.results.every((x: unknown) => {
+        if (!isRecord(x) || !isString(x.ref) || typeof x.exists !== 'boolean') return false;
+        if (x.resolvedPath !== undefined && !isString(x.resolvedPath)) return false;
+        if (x.error !== undefined && !isString(x.error)) return false;
+        return true;
+      });
+    }
     case 'EDITOR_COMMAND': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.command)) return false;
@@ -196,6 +206,10 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
     case 'UPLOAD_IMAGE': {
       const p = msg.payload;
       return isRecord(p) && isString(p.base64) && isString(p.filename);
+    }
+    case 'CHECK_LOCAL_IMAGE_REFS': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.requestId) && Array.isArray(p.refs) && p.refs.every((x) => isString(x));
     }
     case 'OPEN_IMAGE_PREVIEW': {
       const p = msg.payload;

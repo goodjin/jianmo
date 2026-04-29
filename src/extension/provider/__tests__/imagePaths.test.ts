@@ -33,7 +33,12 @@ vi.mock('vscode', () => {
   return { Uri };
 });
 
-import { isLocalMarkdownImageRef, normalizeMarkdownImagePath, resolveMarkdownImageUri } from '../imagePaths';
+import {
+  checkLocalMarkdownImageRefs,
+  isLocalMarkdownImageRef,
+  normalizeMarkdownImagePath,
+  resolveMarkdownImageUri,
+} from '../imagePaths';
 import * as vscode from 'vscode';
 
 describe('image path resolution', () => {
@@ -62,6 +67,30 @@ describe('image path resolution', () => {
 
     expect(resolveMarkdownImageUri(docUri, '')).toBeNull();
     expect(resolveMarkdownImageUri(docUri, 'https://example.com/a.png')).toBeNull();
+  });
+
+  it('checks local refs with stat, skips remote refs and de-duplicates inputs', async () => {
+    const docUri = vscode.Uri.file('/repo/docs/guide/intro.md');
+    const seen: string[] = [];
+    const results = await checkLocalMarkdownImageRefs(
+      docUri,
+      ['./assets/a.png', './assets/a.png', './assets/missing.png?raw=1', 'https://example.com/r.png', 'data:image/png;base64,aaa'],
+      async (uri) => {
+        seen.push(uri.fsPath);
+        if (uri.fsPath.endsWith('/missing.png')) throw new Error('not found');
+      }
+    );
+
+    expect(seen).toEqual(['/repo/docs/guide/assets/a.png', '/repo/docs/guide/assets/missing.png']);
+    expect(results).toEqual([
+      { ref: './assets/a.png', exists: true, resolvedPath: '/repo/docs/guide/assets/a.png' },
+      {
+        ref: './assets/missing.png?raw=1',
+        exists: false,
+        resolvedPath: '/repo/docs/guide/assets/missing.png',
+        error: 'not found',
+      },
+    ]);
   });
 });
 

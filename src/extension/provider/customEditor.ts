@@ -5,7 +5,7 @@ import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
-import { resolveMarkdownImageUri } from './imagePaths';
+import { checkLocalMarkdownImageRefs, resolveMarkdownImageUri } from './imagePaths';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -213,6 +213,15 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
             payload: { filename: message.payload.filename, error: result.error },
           });
         }
+        break;
+      }
+
+      case 'CHECK_LOCAL_IMAGE_REFS': {
+        const results = await checkLocalMarkdownImageRefs(vscode.Uri.parse(uri), message.payload.refs);
+        this.postMessage(uri, {
+          type: 'LOCAL_IMAGE_REFS_RESULT',
+          payload: { requestId: message.payload.requestId, results },
+        });
         break;
       }
 
