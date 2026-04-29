@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtmlPdf, generateAnchor, generateTocPdf } from '../pdfExport';
+import { escapeHtmlPdf, generateAnchor, generateTocPdf, markdownToPdfHtml } from '../pdfExport';
 
 describe('escapeHtmlPdf', () => {
   it('escapes & < > " \'', () => {
@@ -82,5 +82,23 @@ describe('generateTocPdf', () => {
   it('includes page break after TOC', () => {
     const toc = generateTocPdf('# Heading');
     expect(toc).toContain('class="page-break"');
+  });
+});
+
+describe('markdownToPdfHtml', () => {
+  it('renders inline and block math with KaTeX output', async () => {
+    const html = await markdownToPdfHtml('Inline $E=mc^2$\n\n$$\\frac{a}{b}$$');
+
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('E=mc');
+    expect(html).toContain('mfrac');
+    expect(html).not.toContain('$E=mc^2$');
+  });
+
+  it('does not render dollar syntax inside fenced code blocks', async () => {
+    const html = await markdownToPdfHtml('```txt\n$E=mc^2$\n```\n\nOutside $x+1$');
+
+    expect(html).toContain('<code class="language-txt">$E=mc^2$');
+    expect(html).toContain('class="katex"');
   });
 });

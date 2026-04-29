@@ -127,7 +127,7 @@ function renderMath(expr: string, displayMode: boolean): string {
   }
 }
 
-function readKatexCss(): string {
+export function readKatexCss(): string {
   try {
     const cssPath = require.resolve('katex/dist/katex.min.css');
     return fs.readFileSync(cssPath, 'utf-8');

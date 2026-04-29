@@ -4,6 +4,13 @@
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
   "version": "1.5.8",
   "publisher": "jianmo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/goodjin/jianmo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/goodjin/jianmo/issues"
+  },
   "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.80.0"
@@ -283,7 +290,9 @@
     "build": "npm run build:extension && npm run build:webview",
     "build:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --external:puppeteer --format=cjs --platform=node --minify --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "build:webview": "cd webview && npm run build",
-    "check:bundle": "node ./scripts/check_webview_bundle.mjs",
+    "check:bundle": "node ./scripts/check_webview_bundle.mjs && node ./scripts/check_extension_bundle.mjs",
+    "check:bundle:webview": "node ./scripts/check_webview_bundle.mjs",
+    "check:bundle:extension": "node ./scripts/check_extension_bundle.mjs",
     "check:release": "node ./scripts/check-release.mjs",
     "preflight": "npm run lint && npm test && npm run build && npm run check:bundle && npm run check:release",
     "m8:baseline": "node ./scripts/m8-baseline.mjs",

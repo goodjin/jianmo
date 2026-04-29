@@ -22,6 +22,18 @@ if (!/^\d+\.\d+\.\d+$/.test(rootPkg.version)) {
   errors.push(`package version must be SemVer MAJOR.MINOR.PATCH, got ${rootPkg.version}`);
 }
 
+if (!rootPkg.repository || typeof rootPkg.repository.url !== 'string' || !rootPkg.repository.url.trim()) {
+  errors.push('package.json repository.url is required for release metadata');
+}
+
+if (!rootPkg.bugs || typeof rootPkg.bugs.url !== 'string' || !rootPkg.bugs.url.trim()) {
+  errors.push('package.json bugs.url is required for feedback routing');
+}
+
+if (!rootPkg.engines || typeof rootPkg.engines.vscode !== 'string' || !rootPkg.engines.vscode.trim()) {
+  errors.push('package.json engines.vscode is required');
+}
+
 const expectedVsix = `${rootPkg.name}-${rootPkg.version}.vsix`;
 const vsixFiles = fs.readdirSync(root).filter((name) => name.endsWith('.vsix'));
 if (vsixFiles.length > 0 && !vsixFiles.includes(expectedVsix)) {

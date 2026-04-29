@@ -16,13 +16,13 @@ function getRepoRootFromWebviewCwd(): string {
   return path.resolve(process.cwd(), '..');
 }
 
-function loadM9Fixtures(): Array<{ name: string; content: string }> {
-  const dir = path.join(getRepoRootFromWebviewCwd(), 'docs', 'fixtures', 'm9');
+function loadFixtures(folder: string): Array<{ name: string; content: string }> {
+  const dir = path.join(getRepoRootFromWebviewCwd(), 'docs', 'fixtures', folder);
   const names = readdirSync(dir)
     .filter((n) => /^\d{2}-.+\.md$/.test(n))
     .sort((a, b) => a.localeCompare(b));
   return names.map((name) => ({
-    name,
+    name: `${folder}/${name}`,
     content: readFileSync(path.join(dir, name), 'utf8'),
   }));
 }
@@ -32,16 +32,17 @@ function normalizeEol(s: string): string {
 }
 
 const MUST_CONTAIN: Record<string, string[]> = {
-  '01-basic.md': ['# 标题 1', '## 标题 2', '**加粗**', '*斜体*', '~~删除线~~', '`inline code`', 'https://example.com/path?q=1#hash'],
-  '02-lists-and-tasks.md': ['[ ] 任务 1', '[x] 任务 2', '有序 1', '混合缩进子项'],
-  '03-blockquote-and-code.md': ['> 一级引用', '```ts', 'export function add', '一行很长'],
-  '04-tables-gfm.md': ['| 名称 |', '左对齐', '右对齐'],
-  '05-footnotes.md': ['[^1]:', '脚注内容'],
-  '06-math.md': ['$$', 'int'],
-  '07-mermaid.md': ['```mermaid', 'sequenceDiagram', 'flowchart TD'],
-  '08-images-and-links.md': ['![logo](./assets/logo.png)', 'file.zip?from=markly'],
-  '09-html-compat.md': ['<span data-x="1">hello</span>', '<details>', '<summary>展开</summary>'],
-  '10-super-long-line.md': ['wrap/scroll'],
+  'm9/01-basic.md': ['# 标题 1', '## 标题 2', '**加粗**', '*斜体*', '~~删除线~~', '`inline code`', 'https://example.com/path?q=1#hash'],
+  'm9/02-lists-and-tasks.md': ['[ ] 任务 1', '[x] 任务 2', '有序 1', '混合缩进子项'],
+  'm9/03-blockquote-and-code.md': ['> 一级引用', '```ts', 'export function add', '一行很长'],
+  'm9/04-tables-gfm.md': ['| 名称 |', '左对齐', '右对齐'],
+  'm9/05-footnotes.md': ['[^1]:', '脚注内容'],
+  'm9/06-math.md': ['$$', 'int'],
+  'm9/07-mermaid.md': ['```mermaid', 'sequenceDiagram', 'flowchart TD'],
+  'm9/08-images-and-links.md': ['![logo](./assets/logo.png)', 'file.zip?from=markly'],
+  'm9/09-html-compat.md': ['<span data-x="1">hello</span>', '<details>', '<summary>展开</summary>'],
+  'm9/10-super-long-line.md': ['wrap/scroll'],
+  'm26/01-real-world-mixed.md': ['# M26 真实文档兼容性样例', '$not_math_inside_code', '![diagram](./assets/diagram.png)', '<details>'],
 };
 
 let lastEditor: Editor | null = null;
@@ -84,10 +85,10 @@ afterEach(async () => {
 });
 
 describe('M9 fixtures round-trip (parse→serialize)', () => {
-  const fixtures = loadM9Fixtures();
+  const fixtures = [...loadFixtures('m9'), ...loadFixtures('m26')];
 
   it('fixtures should exist', () => {
-    expect(fixtures.length).toBeGreaterThanOrEqual(10);
+    expect(fixtures.length).toBeGreaterThanOrEqual(11);
   });
 
   for (const fx of fixtures) {

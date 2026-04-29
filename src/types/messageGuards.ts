@@ -77,15 +77,15 @@ function isHostDiagnostics(x: unknown): x is HostDiagnostics {
   if (!isString(x.arch)) return false;
   const snap = x.configSnapshot;
   if (!isRecord(snap)) return false;
-  const wrap = (snap as any).wrapPolicy;
-  const cellWrap = (snap as any).tableCellWrap;
-  const theme = (snap as any).theme;
+  const wrap = snap.wrapPolicy;
+  const cellWrap = snap.tableCellWrap;
+  const theme = snap.theme;
   if (wrap !== 'autoWrap' && wrap !== 'preferScroll') return false;
   if (cellWrap !== 'wrap' && cellWrap !== 'nowrap') return false;
   if (theme !== 'auto' && theme !== 'light' && theme !== 'dark') return false;
-  if (!isNumber((snap as any).fontSize)) return false;
-  if (typeof (snap as any).enableMermaid !== 'boolean') return false;
-  if (typeof (snap as any).enableShiki !== 'boolean') return false;
+  if (!isNumber(snap.fontSize)) return false;
+  if (typeof snap.enableMermaid !== 'boolean') return false;
+  if (typeof snap.enableShiki !== 'boolean') return false;
   return true;
 }
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { marked } from 'marked';
+import { readKatexCss, renderMarkdownMath } from './htmlExport';
 
 export interface PdfExportOptions {
   format?: 'A4' | 'A3' | 'Letter' | 'Legal';
@@ -70,7 +71,7 @@ export async function exportToPdf(
     }
 
     // 转换 Markdown 为 HTML
-    const htmlContent = await markdownToHtml(markdownContent);
+    const htmlContent = await markdownToPdfHtml(markdownContent);
 
     // 构建完整 HTML
     const fullHtml = buildHtmlDocument(htmlContent, tocHtml);
@@ -119,7 +120,7 @@ export function generateTocPdf(markdown: string): string {
   return tocHtml;
 }
 
-async function markdownToHtml(markdown: string): Promise<string> {
+export async function markdownToPdfHtml(markdown: string): Promise<string> {
   // 使用 marked.use() 配置选项（已废弃 gfm/breaks 参数）
   marked.use({
     gfm: true,
@@ -127,7 +128,7 @@ async function markdownToHtml(markdown: string): Promise<string> {
   });
 
   // 使用 marked 转换 Markdown
-  const html = await marked.parse(markdown);
+  const html = await marked.parse(renderMarkdownMath(markdown));
 
   // 添加锚点到标题（使用统一函数生成锚点）
   return html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
@@ -148,6 +149,7 @@ function buildHtmlDocument(content: string, tocHtml: string): string {
   <meta charset="UTF-8">
   <title>导出文档</title>
   <style>
+    ${readKatexCss()}
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       font-size: 14px;

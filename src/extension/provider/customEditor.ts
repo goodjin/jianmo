@@ -5,6 +5,7 @@ import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
+import { resolveMarkdownImageUri } from './imagePaths';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -218,21 +219,20 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       case 'OPEN_IMAGE_PREVIEW':
         // 处理图片预览 - 使用 VSCode 内置图片预览
         if (message.payload?.src) {
-          const imageUri = vscode.Uri.parse(uri).with({
-            path: vscode.Uri.parse(uri).path.replace(/[^/]+$/, message.payload.src),
-          });
-          await vscode.commands.executeCommand('vscode.openWith', imageUri, 'imagePreview.default');
+          const imageUri = resolveMarkdownImageUri(vscode.Uri.parse(uri), message.payload.src);
+          if (imageUri) {
+            await vscode.commands.executeCommand('vscode.openWith', imageUri, 'imagePreview.default');
+          }
         }
         break;
 
       case 'OPEN_IMAGE_EDITOR':
         // 处理图片编辑 - 打开系统默认图片编辑器
         if (message.payload?.src) {
-          const docUri = vscode.Uri.parse(uri);
-          const imageUri = docUri.with({
-            path: docUri.path.replace(/[^/]+$/, message.payload.src),
-          });
-          await vscode.commands.executeCommand('editor.action.openImageEditor', imageUri);
+          const imageUri = resolveMarkdownImageUri(vscode.Uri.parse(uri), message.payload.src);
+          if (imageUri) {
+            await vscode.commands.executeCommand('editor.action.openImageEditor', imageUri);
+          }
         }
         break;
 
