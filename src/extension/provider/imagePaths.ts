@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 export function isLocalMarkdownImageRef(src: string): boolean {
   const value = String(src ?? '').trim();
@@ -16,6 +17,11 @@ export function resolveMarkdownImageUri(documentUri: vscode.Uri, src: string): v
   const docDir = vscode.Uri.joinPath(documentUri, '..');
   const parts = clean.split('/').filter((part) => part && part !== '.');
   return vscode.Uri.joinPath(docDir, ...parts);
+}
+
+export function toMarkdownImageRelativePath(documentUri: vscode.Uri, imageUri: vscode.Uri): string {
+  const rel = path.relative(path.dirname(documentUri.fsPath), imageUri.fsPath).replace(/\\/g, '/');
+  return rel || path.basename(imageUri.fsPath);
 }
 
 export async function checkLocalMarkdownImageRefs(

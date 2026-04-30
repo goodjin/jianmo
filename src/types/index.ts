@@ -18,6 +18,12 @@ export type RichTableCommandValue =
   | 'deleteRow'
   | 'deleteCol';
 
+export type ImageAssetCommandValue =
+  | 'copyMissingRefs'
+  | 'openAssetsDirectory'
+  | 'repairFirstMissingRef'
+  | 'normalizeImageRefs';
+
 // 光标位置
 export interface SourceCursorPosition {
   lineNumber: number;
@@ -133,11 +139,16 @@ export type ExtensionMessage =
       payload: { requestId: string; results: LocalImageRefCheckResult[] };
     }
   | {
+      type: 'IMAGE_REF_REPLACEMENT';
+      payload: { fromRef: string; toRef: string };
+    }
+  | {
       type: 'EDITOR_COMMAND';
       payload:
         | { command: 'insert'; value: 'table' | 'codeBlock' | 'image' | 'link' | 'math' | 'hr' }
         | { command: 'toggleOutline' }
         | { command: 'richTable'; value: RichTableCommandValue }
+        | { command: 'imageAsset'; value: ImageAssetCommandValue }
         | { command: 'writingAssist'; value: 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables' };
     }
   /** 旧 Text Editor 路径曾下发；预览模式可不使用 */
@@ -155,6 +166,8 @@ export type WebViewMessage =
   | { type: 'READY'; payload?: undefined }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string } }
   | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
+  | { type: 'OPEN_IMAGE_DIRECTORY'; payload: { kind: 'document' | 'assets' | 'resolved'; resolvedPath?: string } }
+  | { type: 'REPAIR_IMAGE_REF'; payload: { ref: string } }
   | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
 
 // 导出结果 - 使用联合类型区分成功/失败

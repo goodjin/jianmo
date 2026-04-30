@@ -24,6 +24,13 @@ const richTableCommands: Array<{ id: string; op: RichTableCommandValue }> = [
   { id: 'markly.table.deleteCol', op: 'deleteCol' },
 ];
 
+const imageAssetCommands = [
+  { id: 'markly.image.copyMissingRefs', value: 'copyMissingRefs' },
+  { id: 'markly.image.openAssetsDirectory', value: 'openAssetsDirectory' },
+  { id: 'markly.image.repairFirstMissingRef', value: 'repairFirstMissingRef' },
+  { id: 'markly.image.normalizeRefs', value: 'normalizeImageRefs' },
+] as const;
+
 export function registerWebview(uri: string, webview: vscode.Webview): void {
   webviews.set(uri, webview);
 }
@@ -253,6 +260,10 @@ export function registerCommands(
     vscode.commands.registerCommand(id, () => postEditorCommand({ command: 'richTable', value: op }))
   );
 
+  const imageAssetCmds = imageAssetCommands.map(({ id, value }) =>
+    vscode.commands.registerCommand(id, () => postEditorCommand({ command: 'imageAsset', value }))
+  );
+
   const insertImageCmd = vscode.commands.registerCommand(
     'markly.insert.image',
     () => postEditorCommand({ command: 'insert', value: 'image' })
@@ -299,6 +310,7 @@ export function registerCommands(
     insertImageCmd,
     insertLinkCmd,
     insertHrCmd,
+    ...imageAssetCmds,
     ...richTableCmds,
     assistSummarizeCmd,
     assistSuggestTitleCmd,

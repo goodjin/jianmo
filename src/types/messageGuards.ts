@@ -9,6 +9,7 @@ import type {
   HostDiagnostics,
   RichTableCommandValue,
   WebViewMessage,
+  ImageAssetCommandValue,
 } from './index';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -36,6 +37,13 @@ const richTableCommandValues: ReadonlySet<RichTableCommandValue> = new Set([
   'splitCell',
   'deleteRow',
   'deleteCol',
+]);
+
+const imageAssetCommandValues: ReadonlySet<ImageAssetCommandValue> = new Set([
+  'copyMissingRefs',
+  'openAssetsDirectory',
+  'repairFirstMissingRef',
+  'normalizeImageRefs',
 ]);
 
 export function isEditorMode(x: unknown): x is EditorMode {
@@ -141,6 +149,10 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
         return true;
       });
     }
+    case 'IMAGE_REF_REPLACEMENT': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.fromRef) && isString(p.toRef);
+    }
     case 'EDITOR_COMMAND': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.command)) return false;
@@ -157,6 +169,9 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       }
       if (p.command === 'richTable') {
         return isString(p.value) && richTableCommandValues.has(p.value as RichTableCommandValue);
+      }
+      if (p.command === 'imageAsset') {
+        return isString(p.value) && imageAssetCommandValues.has(p.value as ImageAssetCommandValue);
       }
       if (p.command === 'writingAssist') {
         return (
@@ -210,6 +225,16 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
     case 'CHECK_LOCAL_IMAGE_REFS': {
       const p = msg.payload;
       return isRecord(p) && isString(p.requestId) && Array.isArray(p.refs) && p.refs.every((x) => isString(x));
+    }
+    case 'OPEN_IMAGE_DIRECTORY': {
+      const p = msg.payload;
+      if (!isRecord(p)) return false;
+      if (p.kind !== 'document' && p.kind !== 'assets' && p.kind !== 'resolved') return false;
+      return p.resolvedPath === undefined || isString(p.resolvedPath);
+    }
+    case 'REPAIR_IMAGE_REF': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.ref);
     }
     case 'OPEN_IMAGE_PREVIEW': {
       const p = msg.payload;

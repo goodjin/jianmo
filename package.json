@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.9",
+  "version": "1.5.10",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -74,6 +74,26 @@
         "command": "markly.insert.hr",
         "title": "Insert Horizontal Rule",
         "icon": "$(horizontal-rule)"
+      },
+      {
+        "command": "markly.image.copyMissingRefs",
+        "title": "Images: Copy Missing Image List",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "markly.image.openAssetsDirectory",
+        "title": "Images: Open Assets Directory",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "markly.image.repairFirstMissingRef",
+        "title": "Images: Repair First Missing Image",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "markly.image.normalizeRefs",
+        "title": "Images: Normalize Local Image Paths",
+        "icon": "$(symbol-file)"
       },
       {
         "command": "markly.table.addRowBefore",

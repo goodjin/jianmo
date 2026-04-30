@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildImageDiagnostics,
+  formatMissingImageRefsList,
   isLocalImageRef,
+  normalizeLocalImageRefsToDirectory,
   parseMarkdownImageRefs,
+  replaceMarkdownImageRef,
 } from '../imageDiagnostics';
 
 describe('imageDiagnostics', () => {
@@ -48,6 +51,36 @@ describe('imageDiagnostics', () => {
     expect(diagnostics.missingRefs).toEqual([{ ref: 'assets/c.png', resolvedPath: '/repo/assets/c.png', error: 'not found' }]);
     expect(diagnostics.lastCheckedAt).toBe('2026-04-29T00:00:00.000Z');
     expect(diagnostics.compression).toEqual({ threshold: 1024, quality: 0.82 });
+  });
+
+  it('formats missing image refs as a copyable markdown table', () => {
+    const text = formatMissingImageRefsList([
+      { ref: './a|b.png', resolvedPath: '/repo/a|b.png', error: 'not found' },
+    ]);
+
+    expect(text).toContain('缺失图片引用清单');
+    expect(text).toContain('./a\\|b.png');
+    expect(text).toContain('/repo/a\\|b.png');
+    expect(text).toContain('not found');
+  });
+
+  it('replaces only matching markdown image refs and preserves titles', () => {
+    const next = replaceMarkdownImageRef(
+      '![a](old.png "title") ![b](other.png) [old.png](old.png)',
+      'old.png',
+      './assets/new.png'
+    );
+
+    expect(next).toBe('![a](./assets/new.png "title") ![b](other.png) [old.png](old.png)');
+  });
+
+  it('normalizes local image refs to the configured save directory', () => {
+    const next = normalizeLocalImageRefsToDirectory(
+      '![a](../img/a.png) ![b](https://e.test/b.png) ![c](/abs/c.png) ![d](old/d.png "t")',
+      './assets'
+    );
+
+    expect(next).toBe('![a](./assets/a.png) ![b](https://e.test/b.png) ![c](/abs/c.png) ![d](./assets/d.png "t")');
   });
 });
 

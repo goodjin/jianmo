@@ -217,7 +217,13 @@ import type { RichTableOp } from './core/richTableCommands';
 import { hasToc, updateTocInContent } from './utils/toc';
 import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
-import { buildImageDiagnostics, parseMarkdownImageRefs } from './utils/imageDiagnostics';
+import {
+  buildImageDiagnostics,
+  formatMissingImageRefsList,
+  normalizeLocalImageRefsToDirectory,
+  parseMarkdownImageRefs,
+  replaceMarkdownImageRef,
+} from './utils/imageDiagnostics';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
 import {
@@ -951,6 +957,17 @@ function handleMessage(event: MessageEvent) {
       }
       break;
     }
+
+    case 'IMAGE_REF_REPLACEMENT': {
+      const next = replaceMarkdownImageRef(content.value, message.payload.fromRef, message.payload.toRef);
+      if (next !== content.value) {
+        replaceDocumentContent(next);
+        showToast(`已将图片引用更新为 ${message.payload.toRef}`);
+      } else {
+        showToast('未找到要替换的图片引用。');
+      }
+      break;
+    }
       
     case 'SAVE':
       // VS Code 触发的保存，也需要更新 TOC
@@ -982,6 +999,51 @@ function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_
   }
   if (payload.command === 'writingAssist') {
     handleWritingAssist(payload.value);
+    return;
+  }
+  if (payload.command === 'imageAsset') {
+    void handleImageAssetCommand(payload.value);
+  }
+}
+
+async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage, { type: 'EDITOR_COMMAND' }>['payload'], { command: 'imageAsset' }>['value']): Promise<void> {
+  if (action === 'copyMissingRefs') {
+    await refreshLocalImageRefChecks();
+    const text = formatMissingImageRefsList(collectImageDiagnostics().missingRefs);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('缺失图片清单已复制。');
+    } catch {
+      showToast('复制失败：浏览器不支持剪贴板写入。');
+    }
+    return;
+  }
+
+  if (action === 'openAssetsDirectory') {
+    sendMessage({ type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } });
+    return;
+  }
+
+  if (action === 'repairFirstMissingRef') {
+    await refreshLocalImageRefChecks();
+    const missing = collectImageDiagnostics().missingRefs[0];
+    if (!missing) {
+      showToast('未发现缺失的本地图片。');
+      return;
+    }
+    sendMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: missing.ref } });
+    return;
+  }
+
+  if (action === 'normalizeImageRefs') {
+    const saveDirectory = config.value?.image?.saveDirectory ?? './assets';
+    const next = normalizeLocalImageRefsToDirectory(content.value, saveDirectory);
+    if (next === content.value) {
+      showToast('没有需要规范化的本地图片路径。');
+      return;
+    }
+    replaceDocumentContent(next);
+    showToast('已规范化本地图片路径。');
   }
 }
 

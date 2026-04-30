@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { exportToPdf } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
-import { checkLocalMarkdownImageRefs, resolveMarkdownImageUri } from './imagePaths';
+import { checkLocalMarkdownImageRefs, resolveMarkdownImageUri, toMarkdownImageRelativePath } from './imagePaths';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -225,6 +226,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
       }
 
+      case 'OPEN_IMAGE_DIRECTORY': {
+        await this.openImageDirectory(uri, message.payload);
+        break;
+      }
+
+      case 'REPAIR_IMAGE_REF': {
+        await this.repairImageRef(uri, message.payload.ref);
+        break;
+      }
+
       case 'OPEN_IMAGE_PREVIEW':
         // 处理图片预览 - 使用 VSCode 内置图片预览
         if (message.payload?.src) {
@@ -328,6 +339,40 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       console.error('Failed to save image:', error);
       return { ok: false, error: String((error as any)?.message ?? error ?? 'Unknown image save error') };
     }
+  }
+
+  private async openImageDirectory(
+    documentUri: string,
+    payload: { kind: 'document' | 'assets' | 'resolved'; resolvedPath?: string }
+  ): Promise<void> {
+    const docUri = vscode.Uri.parse(documentUri);
+    const docDir = vscode.Uri.joinPath(docUri, '..');
+    const target =
+      payload.kind === 'assets'
+        ? vscode.Uri.joinPath(docDir, this.config.image.saveDirectory)
+        : payload.kind === 'resolved' && payload.resolvedPath
+          ? vscode.Uri.file(path.dirname(payload.resolvedPath))
+          : docDir;
+    await vscode.commands.executeCommand('revealFileInOS', target);
+  }
+
+  private async repairImageRef(documentUri: string, fromRef: string): Promise<void> {
+    const docUri = vscode.Uri.parse(documentUri);
+    const selected = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: {
+        Images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'],
+      },
+    });
+    const imageUri = selected?.[0];
+    if (!imageUri) return;
+    const toRef = toMarkdownImageRelativePath(docUri, imageUri);
+    this.postMessage(documentUri, {
+      type: 'IMAGE_REF_REPLACEMENT',
+      payload: { fromRef, toRef },
+    });
   }
 
   private async exportDocument(uri: string, payload: any): Promise<void> {

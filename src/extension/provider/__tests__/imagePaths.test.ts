@@ -38,6 +38,7 @@ import {
   isLocalMarkdownImageRef,
   normalizeMarkdownImagePath,
   resolveMarkdownImageUri,
+  toMarkdownImageRelativePath,
 } from '../imagePaths';
 import * as vscode from 'vscode';
 
@@ -91,6 +92,13 @@ describe('image path resolution', () => {
         error: 'not found',
       },
     ]);
+  });
+
+  it('computes markdown relative paths from the document directory', () => {
+    const docUri = vscode.Uri.file('/repo/docs/guide/intro.md');
+    const imageUri = vscode.Uri.file('/repo/docs/assets/fixed image.png');
+
+    expect(toMarkdownImageRelativePath(docUri, imageUri)).toBe('../assets/fixed image.png');
   });
 });
 

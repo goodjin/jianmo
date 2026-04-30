@@ -66,11 +66,13 @@ describe('messageGuards — Extension → Webview', () => {
         ],
       },
     },
+    { type: 'IMAGE_REF_REPLACEMENT', payload: { fromRef: './missing.png', toRef: './assets/fixed.png' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'table' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'hr' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'addRowAfter' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteCol' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'imageAsset', value: 'repairFirstMissingRef' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'writingAssist', value: 'summarize' } },
     { type: 'THEME_CHANGE', payload: { theme: 'Default Dark Modern' } },
     { type: 'getScrollPosition', requestId: 'rid-1' },
@@ -92,8 +94,10 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
     expect(isExtensionMessage({ type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png' } })).toBe(false);
     expect(isExtensionMessage({ type: 'LOCAL_IMAGE_REFS_RESULT', payload: { requestId: 'x', results: [{ ref: 'a.png' }] } })).toBe(false);
+    expect(isExtensionMessage({ type: 'IMAGE_REF_REPLACEMENT', payload: { fromRef: './a.png' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'unknown' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'unknown' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'imageAsset', value: 'unknown' } })).toBe(false);
   });
 
   it('isExtensionConfig matches minimalConfig', () => {
@@ -114,6 +118,9 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'SAVE_IMAGE', payload: { data: 'base64', filename: 'a.png' } },
     { type: 'UPLOAD_IMAGE', payload: { base64: 'base64', filename: 'b.png' } },
     { type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'img-1', refs: ['./a.png', '../b.png'] } },
+    { type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } },
+    { type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'resolved', resolvedPath: '/repo/assets/missing.png' } },
+    { type: 'REPAIR_IMAGE_REF', payload: { ref: './assets/missing.png' } },
     {
       type: 'OPEN_IMAGE_PREVIEW',
       payload: { src: 's.png', images: ['s.png'], index: 0 },
@@ -138,6 +145,8 @@ describe('messageGuards — Webview → Extension', () => {
     expect(isWebViewMessage({ type: 'CONTENT_CHANGE', payload: { content: 1 } })).toBe(false);
     expect(isWebViewMessage({ type: 'EXPORT', payload: { format: 'doc' } })).toBe(false);
     expect(isWebViewMessage({ type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'x', refs: [1] } })).toBe(false);
+    expect(isWebViewMessage({ type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'unknown' } })).toBe(false);
+    expect(isWebViewMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: 1 } })).toBe(false);
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
   });
 });
