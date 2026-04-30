@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.10",
+  "version": "1.5.11",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -144,6 +144,11 @@
         "command": "markly.table.splitCell",
         "title": "Table: Split Cell",
         "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "markly.table.deleteTable",
+        "title": "Table: Delete Table",
+        "icon": "$(trash)"
       },
       {
         "command": "markly.table.deleteRow",

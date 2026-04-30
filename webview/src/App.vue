@@ -119,6 +119,29 @@
       </button>
     </div>
 
+    <!-- 图片资产提示条：检测到缺失本地图片后显示 -->
+    <div
+      v-if="editorReady && imageMissingCount > 0"
+      class="rich-fallback-banner"
+      role="status"
+      aria-live="polite"
+      data-testid="image-missing-banner"
+    >
+      <span class="msg">检测到 {{ imageMissingCount }} 个缺失的本地图片引用。</span>
+      <button type="button" class="retry-btn" data-testid="copy-missing-images-btn" @click="copyMissingImageRefs">
+        复制清单
+      </button>
+      <button type="button" class="retry-btn" data-testid="open-assets-dir-btn" @click="openAssetsDirectory">
+        打开 assets
+      </button>
+      <button type="button" class="retry-btn" data-testid="repair-first-missing-image-btn" @click="repairFirstMissingImageRef">
+        修复第一项
+      </button>
+      <button type="button" class="retry-btn" data-testid="open-image-assets-panel-btn" @click="imageAssetsPanelOpen = true">
+        查看列表
+      </button>
+    </div>
+
     <!-- Toast -->
     <div v-if="toastOpen" class="markly-toast" role="status" aria-live="polite">
       {{ toastMessage }}
@@ -146,6 +169,35 @@
       >
         {{ item.label }}
       </button>
+    </div>
+
+    <!-- 图片资产列表面板 -->
+    <div
+      v-if="imageAssetsPanelOpen"
+      class="markly-table-help-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="markly-image-assets-title"
+      data-testid="image-assets-panel"
+      @click.self="imageAssetsPanelOpen = false"
+    >
+      <div class="markly-table-help-panel">
+        <h3 id="markly-image-assets-title">图片资产</h3>
+        <p class="markly-table-help-hint">
+          缺失 {{ imageMissingCount }} 个，已检测 {{ localImageRefCheckResults.length }} 个本地引用。
+        </p>
+        <ul class="markly-table-help-list">
+          <li v-if="imageMissingRefs.length === 0">暂无缺失图片。</li>
+          <li v-for="item in imageMissingRefs" :key="item.ref">
+            <strong>{{ item.ref }}</strong>
+            <br />
+            <small>{{ item.resolvedPath || '未解析路径' }}</small>
+          </li>
+        </ul>
+        <button type="button" class="markly-table-help-close" @click="copyMissingImageRefs">复制缺失清单</button>
+        <button type="button" class="markly-table-help-close" @click="repairFirstMissingImageRef">修复第一项</button>
+        <button type="button" class="markly-table-help-close" @click="imageAssetsPanelOpen = false">关闭</button>
+      </div>
     </div>
 
     <!-- 图片预览弹窗 -->
@@ -293,6 +345,9 @@ const hostDiagnostics = ref<any>(null);
 const localImageRefCheckResults = ref<LocalImageRefCheckResult[]>([]);
 const localImageRefLastCheckedAt = ref<string | null>(null);
 const pendingLocalImageChecks = new Map<string, (results: LocalImageRefCheckResult[]) => void>();
+const imageAssetsPanelOpen = ref(false);
+const imageMissingRefs = computed(() => localImageRefCheckResults.value.filter((result) => !result.exists));
+const imageMissingCount = computed(() => imageMissingRefs.value.length);
 const editorReady = ref(false);
 const currentMode = ref<EditorMode>('rich');
 const editorContainerStyle = computed(() => ({
@@ -349,6 +404,7 @@ const RICH_TABLE_OPS = new Set<string>([
   'toggleHeaderRow',
   'mergeCells',
   'splitCell',
+  'deleteTable',
   'alignLeft',
   'alignCenter',
   'alignRight',
@@ -367,6 +423,7 @@ const RICH_TABLE_MENU_ITEMS: Array<{ op: RichTableOp; label: string }> = [
   { op: 'alignRight', label: '当前列右对齐' },
   { op: 'mergeCells', label: '合并单元格' },
   { op: 'splitCell', label: '拆分单元格' },
+  { op: 'deleteTable', label: '删除当前表格' },
   { op: 'deleteRow', label: '删除当前行' },
   { op: 'deleteCol', label: '删除当前列' },
 ];
@@ -1008,30 +1065,17 @@ function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_
 
 async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage, { type: 'EDITOR_COMMAND' }>['payload'], { command: 'imageAsset' }>['value']): Promise<void> {
   if (action === 'copyMissingRefs') {
-    await refreshLocalImageRefChecks();
-    const text = formatMissingImageRefsList(collectImageDiagnostics().missingRefs);
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('缺失图片清单已复制。');
-    } catch {
-      showToast('复制失败：浏览器不支持剪贴板写入。');
-    }
+    await copyMissingImageRefs();
     return;
   }
 
   if (action === 'openAssetsDirectory') {
-    sendMessage({ type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } });
+    openAssetsDirectory();
     return;
   }
 
   if (action === 'repairFirstMissingRef') {
-    await refreshLocalImageRefChecks();
-    const missing = collectImageDiagnostics().missingRefs[0];
-    if (!missing) {
-      showToast('未发现缺失的本地图片。');
-      return;
-    }
-    sendMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: missing.ref } });
+    await repairFirstMissingImageRef();
     return;
   }
 
@@ -1047,6 +1091,31 @@ async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage,
   }
 }
 
+async function copyMissingImageRefs(): Promise<void> {
+  await refreshLocalImageRefChecks();
+  const text = formatMissingImageRefsList(collectImageDiagnostics().missingRefs);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('缺失图片清单已复制。');
+  } catch {
+    showToast('复制失败：浏览器不支持剪贴板写入。');
+  }
+}
+
+function openAssetsDirectory(): void {
+  sendMessage({ type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } });
+}
+
+async function repairFirstMissingImageRef(): Promise<void> {
+  await refreshLocalImageRefChecks();
+  const missing = collectImageDiagnostics().missingRefs[0];
+  if (!missing) {
+    showToast('未发现缺失的本地图片。');
+    return;
+  }
+  sendMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: missing.ref } });
+}
+
 // 编辑器准备好后的回调
 function handleEditorReady(success: boolean) {
   if (!success) {
@@ -1060,6 +1129,7 @@ function switchMode(mode: EditorMode) {
   if (mode === 'rich') {
     currentMode.value = 'rich';
     recordRichStartupEvent('switchRich:start', { retryCount: richRetryCount.value });
+    const hadReadyRichInstance = richReadySuccess.value === true;
     // 退出 CM6 视图焦点态，避免快捷键冲突；内容以 content 为准
     cancelPendingFindRecompute();
     findReplaceVisible.value = false;
@@ -1119,6 +1189,17 @@ function switchMode(mode: EditorMode) {
       }, delayMs);
     };
     armWatchdog(RICH_STARTUP_WATCHDOG_MS);
+    void nextTick(() => {
+      if (!hadReadyRichInstance) return;
+      if (attempt !== richStartupAttemptId) return;
+      if (currentMode.value !== 'rich') return;
+      if (richReadySuccess.value === true) return;
+      if (!hasRichEditableDom()) return;
+      richReadySuccess.value = true;
+      richStartupWatchdogFired.value = false;
+      recordRichStartupEvent('rich:ready:existing', { attemptId: attempt });
+      clearRichStartupWatchdog('watchdog:cleared', { reason: 'existing-rich-instance' });
+    });
     return;
   }
 

@@ -20,6 +20,7 @@ const richTableCommands: Array<{ id: string; op: RichTableCommandValue }> = [
   { id: 'markly.table.alignRight', op: 'alignRight' },
   { id: 'markly.table.mergeCells', op: 'mergeCells' },
   { id: 'markly.table.splitCell', op: 'splitCell' },
+  { id: 'markly.table.deleteTable', op: 'deleteTable' },
   { id: 'markly.table.deleteRow', op: 'deleteRow' },
   { id: 'markly.table.deleteCol', op: 'deleteCol' },
 ];

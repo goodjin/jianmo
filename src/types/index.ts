@@ -15,6 +15,7 @@ export type RichTableCommandValue =
   | 'alignRight'
   | 'mergeCells'
   | 'splitCell'
+  | 'deleteTable'
   | 'deleteRow'
   | 'deleteCol';
 

@@ -118,6 +118,65 @@ describe('Rich watchdog fallback', () => {
     }
   });
 
+  it('does not wait for a second ready event when returning to an already ready Rich instance', async () => {
+    stubMatchMedia();
+    vi.useFakeTimers();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let w: ReturnType<typeof mount> | null = null;
+
+    try {
+      const ToolbarStub = {
+        name: 'Toolbar',
+        template: '<div class="toolbar-stub"></div>',
+        props: { mode: { type: String, required: false } },
+      };
+      const MilkdownEditorStub = {
+        name: 'MilkdownEditor',
+        template: '<div class="milkdown-editor"><div class="ProseMirror" contenteditable="true"></div></div>',
+      };
+      w = mount(App as any, {
+        attachTo: host,
+        global: {
+          stubs: {
+            Toolbar: ToolbarStub,
+            OutlinePanel: true,
+            FindReplacePanel: true,
+            ImagePreview: true,
+            MilkdownEditor: MilkdownEditorStub,
+          },
+        },
+      });
+
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.editorReady = true;
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.currentMode = 'source';
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.richReadySuccess = true;
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.milkdownRef = { setContent: () => {} };
+      await w.vm.$nextTick();
+
+      // @ts-expect-error setup function
+      w.vm.switchMode('rich');
+      await w.vm.$nextTick();
+
+      vi.advanceTimersByTime(5000);
+      await w.vm.$nextTick();
+
+      // @ts-expect-error setup refs are proxied on vm
+      expect(w.vm.currentMode).toBe('rich');
+      expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(false);
+      const pkg = (w.vm as any).buildDiagnosticsPayload();
+      expect(String(pkg.text)).toContain('"rich:ready:existing"');
+    } finally {
+      w?.unmount();
+      host.remove();
+      vi.useRealTimers();
+    }
+  });
+
   it('defers fallback once when rich editable DOM exists before ready', async () => {
     stubMatchMedia();
     vi.useFakeTimers();

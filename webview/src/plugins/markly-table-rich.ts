@@ -316,6 +316,31 @@ export function parseTablePasteMatrix(html: string, plain: string): MarklyTableP
   };
 }
 
+export function htmlTablePasteHasNonTableContent(html: string): boolean {
+  const source = String(html ?? '');
+  if (!/<table[\s>]/i.test(source)) return false;
+  if (typeof DOMParser === 'undefined') return false;
+  try {
+    const doc = new DOMParser().parseFromString(source, 'text/html');
+    if (!doc.body) return false;
+    return Array.from(doc.body.childNodes).some(hasMeaningfulNodeOutsideTable);
+  } catch {
+    return false;
+  }
+}
+
+function hasMeaningfulNodeOutsideTable(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent?.trim());
+  if (node.nodeType !== Node.ELEMENT_NODE) return false;
+
+  const el = node as HTMLElement;
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'table') return false;
+  if (['style', 'script', 'meta', 'link', 'title'].includes(tag)) return false;
+  if (['img', 'video', 'audio', 'hr', 'svg', 'canvas'].includes(tag)) return true;
+  return Array.from(el.childNodes).some(hasMeaningfulNodeOutsideTable);
+}
+
 /** 极简 CSV：支持引号字段，逗号分隔 */
 export function parseCsvLine(line: string): string[] {
   const out: string[] = [];
@@ -587,6 +612,7 @@ export function createMarklyTableGridPastePlugin(): Plugin {
         // N2-2：Rich + selection 不在表格内，且能解析到矩阵 grid：自动建表并填充
         if (!isInTable(view.state)) {
           if (!(view.state.selection instanceof TextSelection)) return false;
+          if (htmlTablePasteHasNonTableContent(html)) return false;
           const parsed = parseTablePasteMatrix(html, plain);
           if (!parsed.grid && parsed.reason === 'over_limit') {
             emitTablePasteToast(

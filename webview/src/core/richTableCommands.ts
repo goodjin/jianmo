@@ -21,6 +21,7 @@ export type RichTableOp =
   | 'addRowBefore'
   | 'addColAfter'
   | 'addColBefore'
+  | 'deleteTable'
   | 'deleteRow'
   | 'deleteCol'
   | 'toggleHeaderRow'
@@ -162,6 +163,30 @@ function setColumnAlign(view: EditorView, align: 'left' | 'center' | 'right'): b
   }
 }
 
+function deleteCurrentTable(view: EditorView): boolean {
+  const { state } = view;
+  const paragraph = state.schema.nodes.paragraph;
+  if (!paragraph) return false;
+
+  let tableDepth: number | null = null;
+  for (let depth = state.selection.$from.depth; depth > 0; depth--) {
+    if (state.selection.$from.node(depth).type.name === 'table') {
+      tableDepth = depth;
+      break;
+    }
+  }
+  if (tableDepth == null) return false;
+
+  const tablePos = state.selection.$from.before(tableDepth);
+  const table = state.selection.$from.node(tableDepth);
+  const replacement = state.doc.childCount <= 1 ? Fragment.from(paragraph.create()) : Fragment.empty;
+  const tr = state.tr.replaceWith(tablePos, tablePos + table.nodeSize, replacement).scrollIntoView();
+  if (!tr.docChanged) return false;
+  view.dispatch(tr);
+  emitTableToast('已删除当前表格。');
+  return true;
+}
+
 export function runRichTableOp(view: EditorView, op: RichTableOp): boolean {
   if (!isInTable(view.state)) return false;
   switch (op) {
@@ -177,6 +202,8 @@ export function runRichTableOp(view: EditorView, op: RichTableOp): boolean {
       return deleteRow(view.state, view.dispatch);
     case 'deleteCol':
       return deleteColumn(view.state, view.dispatch);
+    case 'deleteTable':
+      return deleteCurrentTable(view);
     case 'toggleHeaderRow':
       return toggleHeaderRow(view.state, view.dispatch);
     case 'mergeCells': {

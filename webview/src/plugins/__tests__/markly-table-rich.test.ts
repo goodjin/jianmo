@@ -14,6 +14,7 @@ import {
   MARKLY_TABLE_PASTE_MAX_CELLS,
   createMarklyTableGridPastePlugin,
   decideTableGridSelectionFillMapping,
+  htmlTablePasteHasNonTableContent,
   parseHtmlTableToGrid,
   parseCsvLine,
   parseCsvLineStrict,
@@ -594,6 +595,57 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     const headerCell1 = headerRow.child(1);
     expect(headerCell0.textContent).toBe('H_HTML_1');
     expect(headerCell1.textContent).toBe('H_HTML_2');
+
+    view.destroy();
+    host.remove();
+  });
+
+  it('表格外粘贴混合 HTML 时不拦截，避免只保留 table 丢掉其它内容', () => {
+    const schema = createTestSchema();
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);
+    const p = doc.child(0);
+    const cursorPos = 1 + p.content.size;
+    const selection = TextSelection.create(doc, cursorPos);
+
+    const plugin = createMarklyTableGridPastePlugin();
+    const state = EditorState.create({ schema, doc, selection, plugins: [plugin] });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    const html = `<p>before</p><table><tr><td>A</td><td>B</td></tr></table><p>after</p>`;
+    const event = ({
+      clipboardData: {
+        getData: (type: string) => (type === 'text/html' ? html : type === 'text/plain' ? 'before\nA\tB\nafter' : ''),
+      },
+    } as unknown) as ClipboardEvent;
+
+    expect(htmlTablePasteHasNonTableContent(html)).toBe(true);
+    const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
+    expect(handled).toBe(false);
+    expect(docHasTable(schema, view.state.doc)).toBe(false);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it('deleteTable 删除唯一表格时保留一个空段落，避免文档删不动', () => {
+    const schema = createTestSchema();
+    const doc = create2x2TableDoc(schema);
+    const table = firstTableNode(doc);
+    expect(table).not.toBeNull();
+    const map = TableMap.get(table);
+    const topLeftCell = 1 + map.positionAt(0, 0, table);
+    const selection = TextSelection.create(doc, topLeftCell + 2);
+    const state = EditorState.create({ schema, doc, selection });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    expect(runRichTableOp(view, 'deleteTable')).toBe(true);
+    expect(docHasTable(schema, view.state.doc)).toBe(false);
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).type.name).toBe('paragraph');
 
     view.destroy();
     host.remove();

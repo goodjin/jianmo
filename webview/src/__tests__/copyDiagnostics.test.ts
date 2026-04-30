@@ -99,6 +99,48 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('/repo/assets/missing.png');
   });
 
+  it('shows image asset actions after missing local image checks', async () => {
+    const wrapper = mount(App as any, {
+      global: {
+        stubs: {
+          MilkdownEditor: true,
+          Toolbar: ToolbarStub,
+          ImagePreview: true,
+          FindReplacePanel: true,
+        },
+      },
+    });
+
+    (wrapper.vm as any).editorReady = true;
+    (wrapper.vm as any).currentMode = 'source';
+    (wrapper.vm as any).content = '![ok](./assets/exists.png)\n![missing](./assets/missing.png)';
+    (wrapper.vm as any).richFallbackBannerVisible = true;
+    (wrapper.vm as any).richFallbackBannerReason = 'failed';
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="copy-diagnostics-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const banner = wrapper.find('[data-testid="image-missing-banner"]');
+    expect(banner.exists()).toBe(true);
+    expect(banner.text()).toContain('1 个缺失');
+
+    await wrapper.find('[data-testid="open-assets-dir-btn"]').trigger('click');
+    expect((window.vscode.postMessage as any).mock.calls).toContainEqual([
+      { type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } },
+    ]);
+
+    await wrapper.find('[data-testid="repair-first-missing-image-btn"]').trigger('click');
+    expect((window.vscode.postMessage as any).mock.calls).toContainEqual([
+      { type: 'REPAIR_IMAGE_REF', payload: { ref: './assets/missing.png' } },
+    ]);
+
+    await wrapper.find('[data-testid="open-image-assets-panel-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="image-assets-panel"]').text()).toContain('./assets/missing.png');
+    expect(wrapper.find('[data-testid="image-assets-panel"]').text()).toContain('/repo/assets/missing.png');
+  });
+
   it('has reload webview self-heal action', async () => {
     const reloadSpy = vi.fn();
     const prevLoc = (globalThis as any).location;

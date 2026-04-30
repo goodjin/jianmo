@@ -35,6 +35,7 @@ const richTableCommandValues: ReadonlySet<RichTableCommandValue> = new Set([
   'alignRight',
   'mergeCells',
   'splitCell',
+  'deleteTable',
   'deleteRow',
   'deleteCol',
 ]);

@@ -71,6 +71,7 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'hr' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'addRowAfter' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteTable' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteCol' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'imageAsset', value: 'repairFirstMissingRef' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'writingAssist', value: 'summarize' } },
