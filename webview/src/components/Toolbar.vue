@@ -383,6 +383,11 @@ const tableStructureButtons = computed(() => {
       label: '表格：拆分单元格',
     },
     {
+      id: 'deleteTable',
+      icon: '⌧',
+      label: '表格：删除当前表格',
+    },
+    {
       id: 'deleteRow',
       icon: '\u2296',
       label: `表格：删除当前行（${m}+⌥+Backspace）`,

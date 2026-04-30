@@ -51,6 +51,7 @@
           <li><kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>→</kbd>：右侧插入列</li>
           <li><kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>Backspace</kbd>：删除当前行</li>
           <li><kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Backspace</kbd>：删除当前列</li>
+          <li>删除整张表：工具栏「表格：删除当前表格」按钮，或命令面板 “Table: Delete Table”</li>
           <li><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd>：在单元格间移动（由编辑器表格键位处理）</li>
         </ul>
         <button type="button" class="markly-table-help-close" @click="richTableHelpOpen = false">关闭</button>

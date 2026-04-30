@@ -29,6 +29,24 @@ describe('table edge regressions (M10-2)', () => {
   });
 });
 
+describe('htmlTablePasteHasNonTableContent (M35-1)', () => {
+  it('returns false for div-wrapped lone table', () => {
+    expect(htmlTablePasteHasNonTableContent('<div><table><tr><td>a</td></tr></table></div>')).toBe(false);
+  });
+
+  it('returns false for Start/End comment wrapped lone table', () => {
+    expect(
+      htmlTablePasteHasNonTableContent(
+        '<!--StartFragment--><table><tr><td>x</td></tr></table><!--EndFragment-->'
+      )
+    ).toBe(false);
+  });
+
+  it('returns true when a paragraph precedes a table', () => {
+    expect(htmlTablePasteHasNonTableContent('<p>intro</p><table><tr><td>x</td></tr></table>')).toBe(true);
+  });
+});
+
 describe('markly-table-rich decideTableGridSelectionFillMapping (N3-1)', () => {
   it('exact：grid 与选区尺寸完全一致', () => {
     expect(
@@ -624,6 +642,37 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
     expect(handled).toBe(false);
     expect(docHasTable(schema, view.state.doc)).toBe(false);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it('表格外粘贴：Fragment/div 包裹的单独 table 仍走矩阵建表', () => {
+    const schema = createTestSchema();
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);
+    const p = doc.child(0);
+    const cursorPos = 1 + p.content.size;
+    const selection = TextSelection.create(doc, cursorPos);
+
+    const plugin = createMarklyTableGridPastePlugin();
+    const state = EditorState.create({ schema, doc, selection, plugins: [plugin] });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    const html =
+      '<div><!--StartFragment--><table><tr><td>U1</td><td>U2</td></tr><tr><td>L1</td><td>L2</td></tr></table><!--EndFragment--></div>';
+    const plain = 'U1\tU2\nL1\tL2\n';
+    const event = ({
+      clipboardData: {
+        getData: (type: string) => (type === 'text/html' ? html : type === 'text/plain' ? plain : ''),
+      },
+    } as unknown) as ClipboardEvent;
+
+    expect(htmlTablePasteHasNonTableContent(html)).toBe(false);
+    const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
+    expect(handled).toBe(true);
+    expect(docHasTable(schema, view.state.doc)).toBe(true);
 
     view.destroy();
     host.remove();

@@ -21,7 +21,7 @@ import { $prose } from '@milkdown/utils';
 import { Plugin } from '@milkdown/prose/state';
 import { CellSelection, isInTable, TableMap, selectedRect } from 'prosemirror-tables';
 import { keymap } from 'prosemirror-keymap';
-import { Fragment, Slice } from '@milkdown/prose/model';
+import { Fragment, Slice, type Node as PMNode } from '@milkdown/prose/model';
 import { footnote } from '../plugins/footnote';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
@@ -37,6 +37,13 @@ import { decideTableGridSelectionFillMapping, parseTablePasteMatrix } from '../p
 // TOC 标记
 const TOC_PLACEHOLDER = '<!-- TOC -->';
 const TOC_REGEX = /<!--\s*TOC\s*-->/gi;
+
+/** 避免 pos 落在非文本容器（如 doc 边界、单元格之间）时触发 TextSelection 警告 */
+function textSelectionNear(doc: PMNode, pos: number): TextSelection {
+  const size = doc.content.size;
+  const p = Math.max(0, Math.min(pos, size));
+  return TextSelection.near(doc.resolve(p), 1);
+}
 
 const props = withDefaults(
   defineProps<{
@@ -759,7 +766,7 @@ function setContent(content: string): void {
     );
 
     // 设置新的光标位置
-    tr.setSelection(TextSelection.create(tr.doc, newCursorPos, newCursorPos));
+    tr.setSelection(textSelectionNear(tr.doc, newCursorPos));
 
     editorView.dispatch(tr);
 
@@ -1103,7 +1110,7 @@ function bindImageEvents(): void {
       const view = editor.ctx.get(editorViewCtx);
       const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
       if (hit?.pos != null) {
-        const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, hit.pos)).scrollIntoView();
+        const tr = view.state.tr.setSelection(textSelectionNear(view.state.doc, hit.pos)).scrollIntoView();
         view.dispatch(tr);
       }
       const inTable = isInTable(view.state);
@@ -1393,7 +1400,7 @@ function e2eSelectFirstTableBodyCell(): boolean {
     const col = 0;
     const cellOffset = map.positionAt(row, col, tableNode);
     const cellPos = tablePos + 1 + cellOffset;
-    const tr = state.tr.setSelection(TextSelection.create(state.doc, cellPos + 1)).scrollIntoView();
+    const tr = state.tr.setSelection(textSelectionNear(state.doc, cellPos + 1)).scrollIntoView();
     view.dispatch(tr);
     view.focus();
     return true;
@@ -1475,7 +1482,7 @@ function e2eSelectListItemText(payload: { index: number }): boolean {
       return true;
     });
     const target = textblockPos ?? foundPos + 2;
-    const tr = state.tr.setSelection(TextSelection.create(state.doc, target)).scrollIntoView();
+    const tr = state.tr.setSelection(textSelectionNear(state.doc, target)).scrollIntoView();
     view.dispatch(tr);
     view.focus();
     return true;
