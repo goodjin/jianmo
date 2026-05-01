@@ -22,6 +22,21 @@ export const MARKLY_TABLE_PASTE_MAX_ROWS = 80;
 export const MARKLY_TABLE_PASTE_MAX_COLS = 40;
 export const MARKLY_TABLE_PASTE_MAX_CELLS = 800;
 
+/**
+ * M37：解析表格前轻量清理剪贴板 HTML，去掉 script/style 等噪音，降低误匹配与冗余解析成本。
+ */
+export function sanitizeClipboardHtmlForTableParse(html: string): string {
+  const raw = (html ?? '').trim();
+  if (!raw) return raw;
+  try {
+    const doc = new DOMParser().parseFromString(raw, 'text/html');
+    doc.querySelectorAll('script,style,iframe,object,embed').forEach((el) => el.remove());
+    return doc.body?.innerHTML ?? raw;
+  } catch {
+    return raw;
+  }
+}
+
 function enforcePasteGridLimits(rows: string[][]): { grid: string[][] | null; reason: 'empty' | 'over_limit' | null } {
   if (rows.length === 0) return { grid: null, reason: 'empty' };
   const h = rows.length;
@@ -255,8 +270,9 @@ export function parseDelimitedGridForTablePaste(raw: string): string[][] | null 
 
 /** N2-1：表格外粘贴（Rich）统一矩阵解析入口：HTML table 优先，其次 plain TSV/CSV */
 export function parseTablePasteMatrix(html: string, plain: string): MarklyTablePasteMatrixParseResult {
-  const htmlRes = parseHtmlTableToGrid(html);
-  const htmlLooksLikeTable = /<table[\s>]/i.test(html ?? '');
+  const safeHtml = sanitizeClipboardHtmlForTableParse(html);
+  const htmlRes = parseHtmlTableToGrid(safeHtml);
+  const htmlLooksLikeTable = /<table[\s>]/i.test(safeHtml ?? '');
   const htmlCandidate = htmlLooksLikeTable || htmlRes.reason !== 'no_table';
   if (htmlRes.grid)
     return {
@@ -491,6 +507,31 @@ function gridToTableNode(schema: Schema, grid: string[][]): ProseNode | null {
   }
 }
 
+/** M37：Rich 内 Mod+Shift+V 纯文本粘贴（不走 Markdown 解析） */
+export const marklyPastePlainShortcutPlugin = $prose(() => {
+  const key = new PluginKey('markly-paste-plain-shortcut');
+  return new Plugin({
+    key,
+    props: {
+      handleKeyDown(view, event) {
+        const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform);
+        const mod = isMac ? event.metaKey : event.ctrlKey;
+        if (!mod || !event.shiftKey) return false;
+        if (event.key.toLowerCase() !== 'v') return false;
+        event.preventDefault();
+        const clip = typeof navigator !== 'undefined' ? navigator.clipboard : null;
+        if (!clip?.readText) return true;
+        void clip.readText().then((text) => {
+          const st = view.state;
+          const { from, to } = st.selection;
+          view.dispatch(st.tr.insertText(text ?? '', from, to).scrollIntoView());
+        });
+        return true;
+      },
+    },
+  });
+});
+
 /** Rich 表格结构编辑：在表格内 Mod+Alt+方向键增删行列（避免与 VS Code / 列表 Tab 冲突） */
 export const marklyTableStructureKeymapPlugin = $prose(() =>
   keymap({
@@ -608,6 +649,21 @@ export function createMarklyTableGridPastePlugin(): Plugin {
       handlePaste(view, event, _slice) {
         const html = event.clipboardData?.getData('text/html') ?? '';
         const plain = event.clipboardData?.getData('text/plain') ?? '';
+
+        try {
+          const $from = view.state.selection.$from;
+          for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === 'code_block') {
+              event.preventDefault();
+              const t = plain ?? '';
+              const { from, to } = view.state.selection;
+              view.dispatch(view.state.tr.insertText(t, from, to).scrollIntoView());
+              return true;
+            }
+          }
+        } catch {
+          // ignore
+        }
 
         // N2-2：Rich + selection 不在表格内，且能解析到矩阵 grid：自动建表并填充
         if (!isInTable(view.state)) {

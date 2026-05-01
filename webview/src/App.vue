@@ -1047,6 +1047,14 @@ function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_
     showOutline.value = !showOutline.value;
     return;
   }
+  if (payload.command === 'toggleFindReplace') {
+    findReplaceVisible.value = !findReplaceVisible.value;
+    return;
+  }
+  if (payload.command === 'pastePlain') {
+    void pastePlainAtSelection();
+    return;
+  }
   if (payload.command === 'insert') {
     handleInsert(payload.value);
     return;
@@ -1358,6 +1366,34 @@ function queueRichFocus(): void {
       // Focus restoration must not break editing commands.
     }
   });
+}
+
+async function pastePlainAtSelection(): Promise<void> {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    showToast('无法读取剪贴板（需权限或浏览器支持）。');
+    return;
+  }
+  try {
+    if (currentMode.value === 'rich') {
+      milkdownRef.value?.pastePlainAtSelection?.(text);
+      queueRichFocus();
+      return;
+    }
+    const v = editor.view.value;
+    if (!v) return;
+    const s = v.state.selection.main;
+    v.dispatch({
+      changes: { from: s.from, to: s.to, insert: text },
+      selection: { anchor: s.from + text.length },
+    });
+    focusEditor();
+  } catch (e) {
+    console.warn('[App] pastePlainAtSelection failed:', e);
+    showToast('纯文本粘贴失败。');
+  }
 }
 
 function replaceDocumentContent(nextContent: string): void {
@@ -1965,6 +2001,13 @@ function buildDiagnosticsPayload() {
           webviewReloadCount: webviewReloadCount.value,
           richLastError: richLastError.value,
           richStartupEvents: richStartupEvents.slice(-20),
+          richClipboard: {
+            modShiftVPlainPaste: true,
+            codeBlockPasteUsesPlainOnly: true,
+            tableHtmlSanitizeBeforeParse: true,
+            clipboardReadText:
+              typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function',
+          },
         },
         doc: {
           chars: charCount.value,
@@ -2149,7 +2192,6 @@ function handleKeyDown(e: KeyboardEvent) {
         handleFormat('italic');
         break;
       case 'k':
-        if (milkdownFocused) return;
         e.preventDefault();
         if (e.shiftKey) {
           handleInsert('codeBlock');

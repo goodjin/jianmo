@@ -70,6 +70,8 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'table' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'hr' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'toggleFindReplace' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'pastePlain' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'addRowAfter' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteTable' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteCol' } },
@@ -98,7 +100,7 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'IMAGE_REF_REPLACEMENT', payload: { fromRef: './a.png' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'unknown' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'unknown' } })).toBe(false);
-    expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'imageAsset', value: 'unknown' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'toggleFindReplace', value: 'x' } })).toBe(false);
   });
 
   it('isExtensionConfig matches minimalConfig', () => {

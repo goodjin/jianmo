@@ -247,6 +247,15 @@ export function registerCommands(
     () => postEditorCommand({ command: 'toggleOutline' })
   );
 
+  const toggleFindReplaceCmd = vscode.commands.registerCommand(
+    'markly.find.toggle',
+    () => postEditorCommand({ command: 'toggleFindReplace' })
+  );
+
+  const pastePlainCmd = vscode.commands.registerCommand('markly.edit.pastePlain', () =>
+    postEditorCommand({ command: 'pastePlain' })
+  );
+
   const insertTableCmd = vscode.commands.registerCommand(
     'markly.insert.table',
     () => postEditorCommand({ command: 'insert', value: 'table' })
@@ -306,6 +315,8 @@ export function registerCommands(
     exportHtmlCmd,
     exportImageCmd,
     toggleOutlineCmd,
+    toggleFindReplaceCmd,
+    pastePlainCmd,
     insertTableCmd,
     insertCodeBlockCmd,
     insertImageCmd,

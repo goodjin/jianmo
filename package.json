@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.13",
+  "version": "1.5.14",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -49,6 +49,16 @@
         "command": "markly.toggleOutline",
         "title": "Toggle Outline",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "markly.find.toggle",
+        "title": "Find: Toggle Find and Replace Panel",
+        "icon": "$(search)"
+      },
+      {
+        "command": "markly.edit.pastePlain",
+        "title": "Edit: Paste as Plain Text",
+        "icon": "$(clippy)"
       },
       {
         "command": "markly.insert.table",

@@ -14,7 +14,7 @@ import {
 } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { columnResizingPlugin, gfm } from '@milkdown/preset-gfm';
-import { marklyTableGridPastePlugin, marklyTableStructureKeymapPlugin } from '../plugins/markly-table-rich';
+import { marklyTableGridPastePlugin, marklyTableStructureKeymapPlugin, marklyPastePlainShortcutPlugin } from '../plugins/markly-table-rich';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
@@ -359,6 +359,7 @@ async function initEditor(): Promise<void> {
       // GFM preset 默认未启用列宽拖拽；补上后表格编辑体验更接近常见富文本编辑器
       b = b.use(columnResizingPlugin);
       b = b.use(marklyTableStructureKeymapPlugin);
+      b = b.use(marklyPastePlainShortcutPlugin);
       b = b.use(marklyTableGridPastePlugin);
       b = b.use(tableContextMilkdownPlugin);
       b = b.use(
@@ -897,12 +898,28 @@ function applyFormat(format: string): void {
 function insertNode(type: string): void {
   if (!editor) return;
 
+  if (type === 'link') {
+    let md = '[链接文字](https://example.com)';
+    try {
+      const view = editor.ctx.get(editorViewCtx);
+      const { from, to } = view.state.selection;
+      if (from < to) {
+        const raw = view.state.doc.textBetween(from, to, ' ', ' ').trim();
+        if (raw) {
+          const esc = raw.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+          md = `[${esc}](https://example.com)`;
+        }
+      }
+    } catch {
+      // fallback below
+    }
+    insertMarkdown(md);
+    return;
+  }
+
   let markdown = '';
 
   switch (type) {
-    case 'link':
-      markdown = '[链接文字](https://example.com)';
-      break;
     case 'image':
       markdown = '![图片描述](图片地址)';
       break;
@@ -1584,10 +1601,22 @@ function getPmSelectionDiagnostics():
   }
 }
 
+function pastePlainAtSelection(text: string): void {
+  if (!editor) return;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { from, to } = view.state.selection;
+    view.dispatch(view.state.tr.insertText(text ?? '', from, to).scrollIntoView());
+  } catch (e) {
+    console.warn('[MilkdownEditor] pastePlainAtSelection failed:', e);
+  }
+}
+
 defineExpose({
   applyFormat,
   insertNode,
   insertMarkdown,
+  pastePlainAtSelection,
   focus,
   getContent,
   setContent,

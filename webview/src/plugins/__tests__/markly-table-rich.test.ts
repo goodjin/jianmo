@@ -20,6 +20,7 @@ import {
   parseCsvLineStrict,
   parseDelimitedGridForTablePaste,
   parseTablePasteMatrix,
+  sanitizeClipboardHtmlForTableParse,
 } from '../markly-table-rich';
 
 describe('table edge regressions (M10-2)', () => {
@@ -44,6 +45,18 @@ describe('htmlTablePasteHasNonTableContent (M35-1)', () => {
 
   it('returns true when a paragraph precedes a table', () => {
     expect(htmlTablePasteHasNonTableContent('<p>intro</p><table><tr><td>x</td></tr></table>')).toBe(true);
+  });
+});
+
+describe('sanitizeClipboardHtmlForTableParse (M37)', () => {
+  it('strips script/style and leaves parseable table', () => {
+    const dirty =
+      '<html><body><script>alert(1)</script><style>.x{color:red}</style><table><tr><td>a</td><td>b</td></tr></table></body></html>';
+    const clean = sanitizeClipboardHtmlForTableParse(dirty);
+    expect(clean.includes('script')).toBe(false);
+    const r = parseTablePasteMatrix(dirty, '');
+    expect(r.grid).not.toBeNull();
+    expect(r.grid?.[0]).toEqual(['a', 'b']);
   });
 });
 

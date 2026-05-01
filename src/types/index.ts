@@ -148,6 +148,8 @@ export type ExtensionMessage =
       payload:
         | { command: 'insert'; value: 'table' | 'codeBlock' | 'image' | 'link' | 'math' | 'hr' }
         | { command: 'toggleOutline' }
+        | { command: 'toggleFindReplace' }
+        | { command: 'pastePlain' }
         | { command: 'richTable'; value: RichTableCommandValue }
         | { command: 'imageAsset'; value: ImageAssetCommandValue }
         | { command: 'writingAssist'; value: 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables' };

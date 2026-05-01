@@ -158,6 +158,12 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.command)) return false;
       if (p.command === 'toggleOutline') return true;
+      if (p.command === 'toggleFindReplace') {
+        return Object.keys(p).length === 1;
+      }
+      if (p.command === 'pastePlain') {
+        return Object.keys(p).length === 1;
+      }
       if (p.command === 'insert') {
         return (
           p.value === 'table' ||

@@ -346,6 +346,34 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 
 ---
 
+## M36：Rich 查找/替换与链接闭环
+
+目标：Rich 下查找可从命令面板切换；链接插入与 `Mod+K` 与选区行为一致。
+
+完成项：
+
+- M36-0 计划：新增 `docs/m36-rich-find-link-plan.md`
+- M36-1 快捷键：`Mod+K` / `Mod+Shift+K` 在 Rich 下统一走 `handleInsert`（链接/代码块）
+- M36-2 链接：`MilkdownEditor.insertNode('link')` 非空调区生成锚文本，默认 URL `https://example.com`
+- M36-3 查找：`EDITOR_COMMAND.toggleFindReplace`，webview 切换查找面板
+- M36-4 命令：`markly.find.toggle` 写入 contributes
+- M36-5 验证：`messageContract` 扩展、`isExtensionMessage` 对 `toggleFindReplace`/`pastePlain` 形状收紧
+
+## M37：Rich 剪贴板进阶
+
+目标：纯文本粘贴、代码块内仅 plain、表格 HTML 轻量清理、诊断可观测。
+
+完成项：
+
+- M37-0 计划：新增 `docs/m37-rich-clipboard-advanced-plan.md`
+- M37-1 纯文本：`marklyPastePlainShortcutPlugin`（`Mod+Shift+V`）与 `pastePlainAtSelection` + 扩展 `pastePlain` 命令
+- M37-2 代码块：表格粘贴插件内在 `code_block` 中仅插入 `text/plain`
+- M37-3 HTML：`sanitizeClipboardHtmlForTableParse` 接入 `parseTablePasteMatrix`
+- M37-4 诊断：`buildDiagnosticsPayload` 增加 `richClipboard` 快照
+- M37-5 验证：表格插件单测、路线图与版本 `1.5.14`、门禁与发版 PATCH
+
+---
+
 ## 判断标准
 
 后续任何新需求都按下面标准判断：
@@ -362,7 +390,7 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 
 ## 当前状态
 
-截至 `1.5.13` 之后的开发线：
+截至 `1.5.14` 之后的开发线：
 
 - Rich 已成为实际主编辑体验
 - Source 是可靠兜底
@@ -374,3 +402,5 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 - M33 已补齐图片缺失清单复制、assets 目录定位、单项引用修复和本地路径规范化
 - M34 已补齐缺失图片数量提示、可操作按钮和轻量图片资产面板
 - M35 已补齐表格剪贴板回归、删整表工具栏入口、表格选区落点稳定性
+- M36 已补齐查找面板命令桥与 Rich 链接选区插入、`Mod+K` 一致性
+- M37 已补齐 Rich 纯文本粘贴快捷键与命令、代码块内纯文本粘贴、表格 HTML 清理与剪贴板诊断字段
