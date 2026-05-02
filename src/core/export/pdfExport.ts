@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { marked } from 'marked';
+import type { PdfConfig } from '@types';
 import { readKatexCss, renderMarkdownMath } from './htmlExport';
 
 export interface PdfExportOptions {
@@ -16,19 +17,38 @@ export interface PdfExportOptions {
   footerTemplate?: string;
   displayHeaderFooter?: boolean;
   includeToc?: boolean;
+  /** 用于解析导出时的相对图片路径（通常传入 markdown 文件所在目录的 file:// URL）。 */
+  baseHref?: string;
 }
 
 const defaultOptions: PdfExportOptions = {
   format: 'A4',
   margin: {
-    top: '80px',
-    right: '40px',
-    bottom: '80px',
-    left: '40px',
+    top: '25mm',
+    right: '20mm',
+    bottom: '25mm',
+    left: '20mm',
   },
   displayHeaderFooter: true,
   includeToc: true,
 };
+
+/** 将工作区 `markly.export.pdf.*`（mm）转为 Puppeteer `page.pdf` 选项。 */
+export function pdfExportOptionsFromPdfConfig(pdf: PdfConfig, baseHref?: string): PdfExportOptions {
+  const m = pdf.margin;
+  return {
+    format: pdf.format,
+    margin: {
+      top: `${Number(m.top)}mm`,
+      right: `${Number(m.right)}mm`,
+      bottom: `${Number(m.bottom)}mm`,
+      left: `${Number(m.left)}mm`,
+    },
+    includeToc: pdf.includeToc,
+    displayHeaderFooter: pdf.displayHeaderFooter,
+    baseHref,
+  };
+}
 
 /** HTML 转义，防止 XSS */
 export function escapeHtmlPdf(text: string): string {
@@ -74,7 +94,7 @@ export async function exportToPdf(
     const htmlContent = await markdownToPdfHtml(markdownContent);
 
     // 构建完整 HTML
-    const fullHtml = buildHtmlDocument(htmlContent, tocHtml);
+  const fullHtml = buildPdfHtmlDocument(htmlContent, tocHtml, { baseHref: opts.baseHref });
 
     // 加载页面
     await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
@@ -142,12 +162,14 @@ export function generateAnchor(text: string): string {
   return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
 }
 
-function buildHtmlDocument(content: string, tocHtml: string): string {
+export function buildPdfHtmlDocument(content: string, tocHtml: string, opts?: { baseHref?: string }): string {
+  const baseTag = opts?.baseHref ? `<base href="${escapeHtmlPdf(String(opts.baseHref))}">` : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <title>导出文档</title>
+  ${baseTag}
   <style>
     ${readKatexCss()}
     body {
@@ -231,11 +253,37 @@ function buildHtmlDocument(content: string, tocHtml: string): string {
       overflow: auto;
       border-radius: 6px;
       margin-bottom: 16px;
+      /* 长代码块允许跨页，避免单页留白过大 */
+      page-break-inside: auto;
+      break-inside: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     pre code {
       background: transparent;
       padding: 0;
+    }
+
+    /* 表格：表头重复、行尽量不拆开 */
+    thead {
+      display: table-header-group;
+    }
+
+    tbody {
+      display: table-row-group;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* 块级数学尽量不跨页断开 */
+    .katex-display {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      overflow-x: auto;
     }
 
     blockquote {

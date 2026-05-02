@@ -374,6 +374,138 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 
 ---
 
+## M38：Rich 查找/替换深化
+
+目标：查找不仅在 Rich 里「能用」，还要在替换、跳变、边界情况下焦点与选区可预期。
+
+规划任务：
+
+- M38-0 计划：新增 `docs/m38-rich-find-replace-deep-plan.md`
+- M38-1 激活匹配：从面板「下一个/上一个」到 Rich 内高亮与滚动的稳定对齐（与 `content`/序列化节奏一致）
+- M38-2 替换语义：单次/全部替换后撤销栈、选区落点与 `CONTENT_CHANGE` 节流可复述
+- M38-3 模式边界：正则/通配在长文、非法模式、空匹配时的提示与不崩
+- M38-4 命令：`markly.find.next` / `markly.find.previous`（可选）走 `EDITOR_COMMAND` 或与现有面板事件统一
+- M38-5 验证：Webview 单测 + 路线图更新 + PATCH
+
+## M39：Rich 链接与锚点编辑
+
+目标：从「插入链接」升级到「改链接、跟 TOC/标题锚点少打架」。
+
+规划任务：
+
+- M39-0 计划：新增 `docs/m39-rich-link-anchor-plan.md`
+- M39-1 行内链接：选区/光标在已有链接上可编辑 URL（Source/IR + Rich）
+- M39-2 默认与安全：URL 规范化；外部链接仅 Ctrl/Cmd+Click 交给 VS Code 打开（仅 http/https）
+- M39-3 与目录：TOC 内单击仍跳转；正文锚点链接需 Ctrl/Cmd+Click，避免选择文本时误触导航
+- M39-4 自动链接：`https://` 裸链识别与一键包成 markdown 链接（可配置）
+- M39-5 验证：行为测试 + 路线图 + PATCH
+
+## M40：大纲与「当前章节」体验
+
+目标：长文读写时「我在哪一章」一眼可见，跳转少弹跳。
+
+规划任务：
+
+- M40-0 计划：新增 `docs/m40-outline-current-section-plan.md`
+- M40-1 跟踪：Rich 滚动与可见标题计算，outline 高亮当前节（scroll spy）
+- M40-2 UI：outline 折叠记忆（按文档或全局）、长标题截断与 tooltip 一致化
+- M40-3 跳转：重复点击同一标题、快切模式时的滚动取消/防抖
+- M40-4 Source：IR/Source 下按光标位置推导最近标题 slug，并同步到 outline 高亮
+- M40-5 验证：大纲组件改为受控（active/collapsed 由父组件管理并持久化），并补齐回归单测
+
+## M41：大文档性能与查找可预期性
+
+目标：万行级仍能编辑与查找，卡的点有提示而不是假死。
+
+规划任务：
+
+- M41-0 计划：新增 `docs/m41-large-doc-perf-plan.md`
+- M41-1 基线：文档体量分级与现有 M8 档位策略对齐，补「查找/替换」耗时上限
+- M41-2 查找：UI 匹配列表严格截断（默认 5000）+「仅统计数量」模式（时间预算，显示为 `N+`）
+- M41-3 Rich：大表格/大段代码块节点的降级渲染开关与文档说明
+- M41-4 诊断：`buildDiagnosticsPayload` 追加 perf 片段（档位、字符数、最近一次慢操作）
+- M41-5 验证： fixture 压测用例 + 路线图 + PATCH
+
+## M42：Rich 表格体验二期
+
+目标：在不做成 Excel 的前提下，把「表格周边」编辑做省心。
+
+规划任务：
+
+- M42-0 计划：新增 `docs/m42-rich-table-phase2-plan.md`
+- M42-1 边界：明确本期不额外扩展 Enter/Backspace 语义（避免做成 Excel），表格外插入/表格结构保护由现有插入/粘贴策略兜底
+- M42-2 结构：合并/拆分单元格与往返稳定性（已有能力），以单测门禁防回退
+- M42-3 样式：列宽拖拽由 GFM preset + `columnResizingPlugin` 提供，超出范围的导出一致性暂不承诺
+- M42-4 命令：不做行上移/列复制等重型命令（文档说明）
+- M42-5 验证：`markly-table-rich` 插件单测已覆盖合并/拆分等关键路径
+
+## M43：图片资产进阶
+
+目标：图片从「能插能修」到「搬文件也不慌」。
+
+规划任务：
+
+- M43-0 计划：新增 `docs/m43-image-asset-advanced-plan.md`
+- M43-1 重命名/移动：新增命令 `markly.image.replaceMovedImageRef`（选择旧/新图片文件，自动按当前文档路径计算相对引用并批量替换）
+- M43-2 粘贴策略：同名校验、覆盖/重命名选择与配置项
+- M43-3 压缩：大文件压缩阈值在 UI 或状态里可感知（读配置即可自解释）
+- M43-4 协议：如需要，扩展 `LOCAL_IMAGE_REFS` 或新消息承载「建议替换」列表
+- M43-5 验证：路径与安全单测 + 路线图 + MINOR 视协议兼容性
+
+## M44：导出（PDF/HTML）质量与模板
+
+目标：导出结果可交付，样式可重复。
+
+规划任务：
+
+- M44-0 计划：新增 `docs/m44-export-template-plan.md`
+- M44-1 HTML：内置 1–2 套可切换打印主题（ light / print-friendly ）
+- M44-2 PDF：页边距/分页与代码块、表格、数学公式的回归集扩大 ✅（`pdfExport` 打印 CSS + `pdfExportOptionsFromPdfConfig` + 单测）
+- M44-3 资源：本地图片与相对路径在导出目录下的解析与用户提示 ✅（`<base>` + 导出前缺失引用 `showWarningMessage`）
+- M44-4 配置：暴露 PDF 导出的 `includeToc` / `displayHeaderFooter` 与 HTML 主题等安全项 ✅
+- M44-5 验证：导出快照测试 + 路线图 + 版本 ✅（字符串断言扩展，`1.7.0`）
+
+## M45：命令面板、快捷键与冲突策略（成文）
+
+目标：高级用户不必翻源码也知道「谁能用、什么时候用」。
+
+规划任务：
+
+- M45-0 计划：新增 `docs/m45-commands-keybindings-policy.md`
+- M45-1 清单：全量 `markly.*` contributes 命令表 + 默认键位（若有）+ `when` 子句
+- M45-2 Rich vs Source：同一键在两种模式下的语义对照表
+- M45-3 与 VS Code：保留键冲突说明（如 `Ctrl+F` 以 webview 为准时的前提）
+- M45-4 实现缺口：对照清单补注册/补 `EDITOR_COMMAND`（只补缺，不大改）
+- M45-5 验证：贡献点 JSON 校验 + 路线图 + PATCH
+
+## M46：稳定门禁与 UI/E2E 扩展
+
+目标：把「手测清单」收敛成跑在 CI/本机的扩展 UI 测或稳定脚本。
+
+规划任务：
+
+- M46-0 计划：新增 `docs/m46-stable-gates-plan.md`
+- M46-1 选型：ExTester 场景扩展或 Playwright 附加套件（二选一为主）✅（维持 ExTester 为主路径）
+- M46-2 用例：Rich 启动、切换模式、保存、表格粘贴、图片缺失条 — 最小可重复集（手测清单见本文档 §最小可重复集）
+- M46-3 CI：文档化「仅标签/手动」触发的任务，避免无桌面环境硬失败 ✅（README + 本文档）
+- M46-4 诊断：失败时自动打包 webview 控制台摘要（若可行）⏸ 暂缓
+- M46-5 验证：提供不依赖 VSIX 清理的本机门禁脚本（`npm run gates:stable`）+ 路线图 + PATCH ✅
+
+## M47：AI 写作辅助（可选 provider，第一期）
+
+目标：在不强绑商业 API 的前提下，为「选区润色」留可插拔出口。
+
+规划任务：
+
+- M47-0 计划：新增 `docs/m47-ai-assist-phase1-plan.md`
+- M47-1 配置：设置项：provider / endpoint / API key（SecretStorage 或 env 说明）
+- M47-2 命令：`markly.assist.rewriteSelection` → webview 读取选区文本 → 回填（Rich/Source 双路径）
+- M47-3 安全：默认关闭、超时、不静默上传全文、日志脱敏
+- M47-4 降级：无 key 时文案与本地「摘要/修复」并存
+- M47-5 验证：mock provider 单测 + 路线图 + MINOR（新能力）
+
+---
+
 ## 判断标准
 
 后续任何新需求都按下面标准判断：
@@ -404,3 +536,4 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 - M35 已补齐表格剪贴板回归、删整表工具栏入口、表格选区落点稳定性
 - M36 已补齐查找面板命令桥与 Rich 链接选区插入、`Mod+K` 一致性
 - M37 已补齐 Rich 纯文本粘贴快捷键与命令、代码块内纯文本粘贴、表格 HTML 清理与剪贴板诊断字段
+- M38–M47：`1.7.0` 起——M44-2～M44-5（PDF 分页样式、导出前本地图提示、工作区 PDF 选项贯通、导出单测）、M46 门禁文档与 `gates:stable`、M47 选区润色（SecretStorage、`openai-compatible` fetch、超时、错误脱敏、单测）已收口；表格粘贴策略等见 M43 未闭合项

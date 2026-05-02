@@ -1,4 +1,9 @@
-export type WritingAssistAction = 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables';
+export type WritingAssistAction =
+  | 'summarize'
+  | 'suggestTitle'
+  | 'fixMarkdown'
+  | 'tidyTables'
+  | 'rewriteSelection';
 
 function stripMarkdownSyntax(markdown: string): string {
   return markdown

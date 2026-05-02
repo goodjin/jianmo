@@ -106,6 +106,32 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     }
   }
 
+  if (config.export.html) {
+    const th = config.export.html.theme;
+    if (th !== 'default' && th !== 'print-friendly') {
+      errors.push(`export.html.theme 必须是 "default" 或 "print-friendly"，当前值: ${String(th)}`);
+    }
+  }
+
+  if (config.ai !== undefined && typeof config.ai.rewriteSelectionEnabled !== 'boolean') {
+    errors.push(`ai.rewriteSelectionEnabled 必须是 boolean，当前值: ${String(config.ai.rewriteSelectionEnabled)}`);
+  }
+  if (config.ai) {
+    const p = config.ai.rewriteProvider;
+    if (p !== undefined && p !== 'none' && p !== 'mock' && p !== 'openai-compatible') {
+      errors.push(`ai.rewriteProvider 必须是 "none"|"mock"|"openai-compatible"，当前值: ${String(p)}`);
+    }
+    if (config.ai.rewriteEndpoint !== undefined && typeof config.ai.rewriteEndpoint !== 'string') {
+      errors.push(`ai.rewriteEndpoint 必须是 string，当前值: ${String(config.ai.rewriteEndpoint)}`);
+    }
+    if (config.ai.rewriteModel !== undefined && typeof config.ai.rewriteModel !== 'string') {
+      errors.push(`ai.rewriteModel 必须是 string，当前值: ${String(config.ai.rewriteModel)}`);
+    }
+    if (config.ai.rewriteTimeoutMs !== undefined && typeof config.ai.rewriteTimeoutMs !== 'number') {
+      errors.push(`ai.rewriteTimeoutMs 必须是 number，当前值: ${String(config.ai.rewriteTimeoutMs)}`);
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -139,7 +165,19 @@ const DEFAULT_CONFIG: ExtensionConfig = {
         bottom: 25,
         left: 20,
       },
+      includeToc: true,
+      displayHeaderFooter: true,
     },
+    html: {
+      theme: 'default',
+    },
+  },
+  ai: {
+    rewriteSelectionEnabled: false,
+    rewriteProvider: 'mock',
+    rewriteEndpoint: 'https://api.openai.com/v1/chat/completions',
+    rewriteModel: 'gpt-4o-mini',
+    rewriteTimeoutMs: 15000,
   },
 };
 
@@ -176,6 +214,13 @@ export class ConfigurationStore implements vscode.Disposable {
     // 获取用户配置中可能存在的更深层的嵌套
     const userExportPdf = vsConfig.get<Partial<ExtensionConfig['export']['pdf']>>('export.pdf', {});
     const userExportPdfMargin = vsConfig.get<Partial<ExtensionConfig['export']['pdf']['margin']>>('export.pdf.margin', {});
+    const htmlTheme = vsConfig.get<'default' | 'print-friendly'>('export.html.theme', 'default');
+    const pdfIncludeToc = vsConfig.get<boolean>('export.pdf.includeToc', true);
+    const pdfDisplayHeaderFooter = vsConfig.get<boolean>('export.pdf.displayHeaderFooter', true);
+    const aiRewriteProvider = vsConfig.get<'none' | 'mock' | 'openai-compatible'>('ai.rewrite.provider', 'mock');
+    const aiRewriteEndpoint = vsConfig.get<string>('ai.rewrite.endpoint', DEFAULT_CONFIG.ai?.rewriteEndpoint ?? '');
+    const aiRewriteModel = vsConfig.get<string>('ai.rewrite.model', DEFAULT_CONFIG.ai?.rewriteModel ?? '');
+    const aiRewriteTimeoutMs = vsConfig.get<number>('ai.rewrite.timeoutMs', DEFAULT_CONFIG.ai?.rewriteTimeoutMs ?? 15000);
 
     // 构建用户配置对象（处理更深层的嵌套）
     const userConfig: Partial<ExtensionConfig> = {
@@ -186,7 +231,19 @@ export class ConfigurationStore implements vscode.Disposable {
         pdf: {
           ...userExportPdf,
           margin: userExportPdfMargin || {},
+          includeToc: pdfIncludeToc,
+          displayHeaderFooter: pdfDisplayHeaderFooter,
         },
+        html: {
+          theme: htmlTheme === 'print-friendly' ? 'print-friendly' : 'default',
+        },
+      },
+      ai: {
+        rewriteSelectionEnabled: vsConfig.get<boolean>('ai.rewrite.enabled', false),
+        rewriteProvider: aiRewriteProvider,
+        rewriteEndpoint: aiRewriteEndpoint,
+        rewriteModel: aiRewriteModel,
+        rewriteTimeoutMs: aiRewriteTimeoutMs,
       },
     };
 

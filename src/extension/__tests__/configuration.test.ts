@@ -32,8 +32,12 @@ const validConfig: ExtensionConfig = {
     pdf: {
       format: 'A4',
       margin: { top: 25 as any, right: 20 as any, bottom: 25 as any, left: 20 as any },
+      includeToc: true,
+      displayHeaderFooter: true,
     },
+    html: { theme: 'default' },
   },
+  ai: { rewriteSelectionEnabled: false },
 };
 
 describe('deepMerge', () => {

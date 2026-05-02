@@ -60,9 +60,10 @@
 
     <FindReplacePanel
       :visible="findReplaceVisible"
-      :match-count="findMatches.length"
+      :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
       :match-count-truncated="findMatchesTruncated"
       :current-match-index="findActiveIdx"
+      :pattern-warning="findPatternWarning"
       @close="onFindPanelClose"
       @query-change="onFindQueryChange"
       @find-next="handleFindNext"
@@ -236,6 +237,7 @@
           @startup-event="onRichStartupEvent"
           @image-click="onRichImageClick"
           @image-context-menu="onRichImageContextMenu"
+          @open-external-link="onRichOpenExternalLink"
           @table-context="onRichTableContext"
           @table-context-menu="onRichTableContextMenu"
           ref="milkdownRef"
@@ -251,6 +253,9 @@
         v-if="editorReady && showOutline"
         :content="content"
         :current-mode="currentMode"
+        :active-heading-id="outlineHighlightHeadingId"
+        :collapsed-heading-ids="outlineCollapsedIds"
+        @update:collapsed-heading-ids="outlineCollapsedIds = $event"
         @jump="handleOutlineJump"
       />
     </div>
@@ -291,11 +296,14 @@ import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown } from './utils
 import {
   patternToRegExp,
   findAllMatchesInText,
+  countAllMatchesInText,
   findFirstMatchAfter,
   findLastMatchBefore,
   matchOrdinalInText,
   type FindPatternMode,
 } from './utils/findPattern';
+import { parseHeadings, generateHeadingId } from './shared/outline';
+import { mockRewriteSelection } from './utils/mockRewriteSelection';
 import type { ExtensionConfig, ExtensionMessage, EditorMode, LocalImageRefCheckResult } from '../../src/types';
 import { undoDepth, redoDepth } from '@codemirror/commands';
 
@@ -392,6 +400,11 @@ const richTableMenuY = ref(0);
 
 const toastOpen = ref(false);
 const toastMessage = ref('');
+const pendingRewriteSelection = ref<
+  | null
+  | { requestId: string; mode: 'rich' }
+  | { requestId: string; mode: 'source'; from: number; to: number }
+>(null);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const RICH_STARTUP_WATCHDOG_MS = 2500;
@@ -649,6 +662,10 @@ const currentImages = ref<string[]>([]);
 const currentImageIndex = ref(0);
 const currentImageSrc = ref('');
 const showOutline = ref(false);
+/** M40：大纲当前节高亮（scroll spy / 点击跳转） */
+const outlineHighlightHeadingId = ref('');
+/** M40：折叠的标题 id（随 webview state 持久化） */
+const outlineCollapsedIds = ref<string[]>([]);
 
 // Zoom (editor view)
 const MIN_ZOOM = 0.6;
@@ -707,12 +724,30 @@ const findState = reactive({
 });
 const findMatches = ref<{ from: number; to: number }[]>([]);
 const findMatchesTruncated = ref(false);
+/** M41：匹配总数（在列表截断时尽力估计；可能为下界） */
+const findTotalCount = ref<number>(0);
+/** M41：总数统计是否超时（true 表示 `findTotalCount` 为下界） */
+const findTotalCountTimedOut = ref(false);
 const findActiveIdx = ref(-1);
 /** 当前选区落在 UI 列表（截断前 N 条）之外时的匹配区间 */
 const findOffListMatch = ref<{ from: number; to: number } | null>(null);
 
 /** Rich 查找：模拟 CM6 的 head 位置（用于下一个/上一个），打开面板时归零 */
 const richFindAnchor = ref(0);
+
+/** M41：最近一次超过阈值的查找全量扫描耗时（ms），写入诊断 */
+const lastSlowFindRecomputeMs = ref(0);
+
+const findPatternWarning = computed(() => {
+  const raw = findState.findText?.trim() ?? '';
+  if (findState.patternMode !== 'regex' || !raw) return '';
+  const re = patternToRegExp(findState.findText, {
+    caseSensitive: findState.caseSensitive,
+    patternMode: findState.patternMode,
+    wholeWord: findState.wholeWord,
+  });
+  return re ? '' : '正则表达式无效（请检查括号、反斜杠等）';
+});
 
 /** 查找面板 UI 侧最多保留的匹配区间数，避免超大文档 GC 抖动（全部替换仍整篇处理） */
 const FIND_UI_MAX_MATCHES = 5000;
@@ -1026,6 +1061,43 @@ function handleMessage(event: MessageEvent) {
       }
       break;
     }
+
+    case 'AI_REWRITE_SELECTION_RESULT': {
+      const pending = pendingRewriteSelection.value;
+      if (!pending || pending.requestId !== message.payload.requestId) {
+        break;
+      }
+      pendingRewriteSelection.value = null;
+
+      if (message.payload.ok !== true) {
+        showToast(`润色失败：${message.payload.error}`);
+        break;
+      }
+
+      const out = message.payload.text;
+      if (pending.mode === 'rich') {
+        milkdownRef.value?.replacePlainSelection?.(out);
+        queueRichFocus();
+        setTimeout(() => {
+          const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+          if (latest && latest !== content.value) {
+            content.value = latest;
+            sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+          }
+        }, 0);
+      } else {
+        const view = editor.view.value;
+        if (!view) break;
+        view.dispatch({
+          changes: { from: pending.from, to: pending.to, insert: out },
+          selection: { anchor: pending.from + out.length },
+        });
+        focusEditor();
+        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: editor.getContent() } });
+      }
+      showToast('润色完成。');
+      break;
+    }
       
     case 'SAVE':
       // VS Code 触发的保存，也需要更新 TOC
@@ -1042,6 +1114,10 @@ function sendMessage(message: any) {
   postMessage(message);
 }
 
+function onRichOpenExternalLink(url: string): void {
+  sendMessage({ type: 'OPEN_EXTERNAL_LINK', payload: { url } });
+}
+
 function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_COMMAND' }>['payload']): void {
   if (payload.command === 'toggleOutline') {
     showOutline.value = !showOutline.value;
@@ -1053,6 +1129,66 @@ function handleEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDITOR_
   }
   if (payload.command === 'pastePlain') {
     void pastePlainAtSelection();
+    return;
+  }
+  if (payload.command === 'findNavigate') {
+    if (!findReplaceVisible.value) findReplaceVisible.value = true;
+    nextTick(() => {
+      if (payload.direction === 'next') handleFindNext();
+      else handleFindPrev();
+    });
+    return;
+  }
+  if (payload.command === 'documentReplace') {
+    const cur = content.value ?? '';
+    const next = cur.split(payload.from).join(payload.to);
+    if (next === cur) {
+      showToast('未找到可替换内容。');
+      return;
+    }
+    const n = cur.split(payload.from).length - 1;
+    replaceDocumentContent(next);
+    showToast(`已替换 ${n} 处。`);
+    return;
+  }
+  if (payload.command === 'wrapUrlLink') {
+    const urlish = /^https?:\/\/\S+$/i;
+    if (currentMode.value === 'rich') {
+      const raw = milkdownRef.value?.getSelectedPlainText?.() ?? '';
+      if (!urlish.test(raw.trim())) {
+        showToast('请选中 http(s) URL 再执行「包成链接」。');
+        return;
+      }
+      const u = raw.trim();
+      milkdownRef.value?.replacePlainSelection?.(`[${u}](${u})`);
+      queueRichFocus();
+      setTimeout(() => {
+        const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+        if (latest && latest !== content.value) {
+          content.value = latest;
+          sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+        }
+      }, 0);
+      return;
+    }
+    const v = editor.view.value;
+    if (!v) return;
+    const s = v.state.selection.main;
+    const slice = v.state.sliceDoc(s.from, s.to);
+    if (!urlish.test(slice.trim())) {
+      showToast('请选中 http(s) URL 再执行「包成链接」。');
+      return;
+    }
+    const u = slice.trim();
+    v.dispatch({
+      changes: { from: s.from, to: s.to, insert: `[${u}](${u})` },
+      selection: { anchor: s.from + `[${u}](${u})`.length },
+    });
+    focusEditor();
+    sendMessage({
+      type: 'CONTENT_CHANGE',
+      payload: { content: editor.getContent() },
+    });
     return;
   }
   if (payload.command === 'insert') {
@@ -1411,6 +1547,37 @@ function replaceDocumentContent(nextContent: string): void {
 }
 
 function handleWritingAssist(action: WritingAssistAction): void {
+  if (action === 'rewriteSelection') {
+    if (!config.value?.ai?.rewriteSelectionEnabled) {
+      showToast('未开启「选区润色」：请在设置中启用 markly.ai.rewrite.enabled。');
+      return;
+    }
+    const requestId = `rw-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (currentMode.value === 'rich') {
+      const t = milkdownRef.value?.getSelectedPlainText?.() ?? '';
+      if (!t.trim()) {
+        showToast('请先选中要润色的文字。');
+        return;
+      }
+      pendingRewriteSelection.value = { requestId, mode: 'rich' };
+      sendMessage({ type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId, text: t } });
+      showToast('正在请求润色…');
+    } else {
+      const view = editor.view.value;
+      if (!view) return;
+      const s = view.state.selection.main;
+      const t = view.state.sliceDoc(s.from, s.to);
+      if (!t.trim()) {
+        showToast('请先选中要润色的文字。');
+        return;
+      }
+      pendingRewriteSelection.value = { requestId, mode: 'source', from: s.from, to: s.to };
+      sendMessage({ type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId, text: t } });
+      showToast('正在请求润色…');
+    }
+    return;
+  }
+
   const current = currentMode.value === 'rich'
     ? String(milkdownRef.value?.getContent?.() || content.value || '')
     : editor.getContent();
@@ -1482,6 +1649,7 @@ function handleToggleLineNumbers() {
 }
 
 function recomputeFindMatches(preservedActiveIdx: number | null = null): void {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const v = editor.view.value;
   const text = currentMode.value === 'rich' ? (content.value ?? '') : v?.state.doc.toString() ?? '';
   const re = patternToRegExp(findState.findText, {
@@ -1492,13 +1660,27 @@ function recomputeFindMatches(preservedActiveIdx: number | null = null): void {
   if (!re || !findState.findText || !findState.findText.trim()) {
     findMatches.value = [];
     findMatchesTruncated.value = false;
+    findTotalCount.value = 0;
+    findTotalCountTimedOut.value = false;
     findActiveIdx.value = -1;
     findOffListMatch.value = null;
+    if (typeof performance !== 'undefined') {
+      const dt = performance.now() - t0;
+      if (dt > 50) lastSlowFindRecomputeMs.value = Math.round(dt);
+    }
     return;
   }
   const { matches, truncated } = findAllMatchesInText(text, re, FIND_UI_MAX_MATCHES);
   findMatches.value = matches;
   findMatchesTruncated.value = truncated;
+  findTotalCountTimedOut.value = false;
+  findTotalCount.value = matches.length;
+  if (truncated) {
+    // M41：列表截断时，额外尝试统计总数（有时间预算，避免卡住输入）
+    const counted = countAllMatchesInText(text, re, 25);
+    findTotalCount.value = Math.max(matches.length, counted.count);
+    findTotalCountTimedOut.value = counted.timedOut;
+  }
   findOffListMatch.value = null;
   if (findMatches.value.length === 0) {
     findActiveIdx.value = -1;
@@ -1507,6 +1689,10 @@ function recomputeFindMatches(preservedActiveIdx: number | null = null): void {
   } else if (findActiveIdx.value >= findMatches.value.length) {
     // 默认语义：activeIdx 只做 clamp，不强制跳到 0
     findActiveIdx.value = findMatches.value.length - 1;
+  }
+  if (typeof performance !== 'undefined') {
+    const dt = performance.now() - t0;
+    if (dt > 50) lastSlowFindRecomputeMs.value = Math.round(dt);
   }
 }
 
@@ -1732,6 +1918,7 @@ function handleFindReplaceOnce(): void {
     if (idx === -1) idx = 0;
     activateFindMatch(findMatches.value[idx]!);
     updateFindHighlightClass();
+    queueRichFocus();
     return;
   }
 
@@ -1790,6 +1977,7 @@ function handleReplaceAll(
     // Rich 侧：直接替换 markdown 字符串，再喂回解析器
     milkdownRef.value?.setContent?.(newText);
     content.value = newText;
+    queueRichFocus();
   } else {
     if (!v) return;
     v.dispatch({
@@ -1815,6 +2003,7 @@ watch(content, () => {
   }
   // M7-3：大文档自动降级（重渲染按需关闭）
   recomputePerfDegradeUi();
+  scheduleOutlineHeadingRefresh();
 });
 
 watch(richPerfDegradeUserFull, () => recomputePerfDegradeUi());
@@ -1822,6 +2011,24 @@ watch(richPerfDegradeUserFull, () => recomputePerfDegradeUi());
 watch(zoom, () => {
   applyZoomToDom();
   schedulePersistZoom();
+});
+
+watch(showOutline, (on) => {
+  if (on) scheduleOutlineHeadingRefresh();
+});
+
+watch(currentMode, () => {
+  scheduleOutlineHeadingRefresh();
+});
+
+watch(outlineCollapsedIds, () => {
+  try {
+    const prev = getState();
+    const base = prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {};
+    setState({ ...base, outlineCollapsedIds: [...outlineCollapsedIds.value] });
+  } catch {
+    // ignore state persistence failures
+  }
 });
 
 watch(findReplaceVisible, () => {
@@ -2014,6 +2221,13 @@ function buildDiagnosticsPayload() {
           lines: lineCount.value,
           computedRichPerfTier: computedRichPerfTier.value,
           richPerfEffectiveTier: richPerfEffectiveTier.value,
+          lastSlowFindRecomputeMs: lastSlowFindRecomputeMs.value,
+          find: {
+            uiMaxMatches: FIND_UI_MAX_MATCHES,
+            truncated: findMatchesTruncated.value,
+            totalCount: findTotalCount.value,
+            totalCountTimedOut: findTotalCountTimedOut.value,
+          },
         },
         config: {
           wrapPolicy: wrapPolicy.value,
@@ -2122,7 +2336,49 @@ function handleGlobalContextMenu(e: MouseEvent) {
   }
 }
 
+let outlineSpyRaf = 0;
+
+function scheduleOutlineHeadingRefresh(): void {
+  if (!showOutline.value || !editorReady.value) return;
+  if (outlineSpyRaf) return;
+  outlineSpyRaf = requestAnimationFrame(() => {
+    outlineSpyRaf = 0;
+    if (!showOutline.value) return;
+    if (currentMode.value === 'rich') refreshOutlineSpyRich();
+    else refreshOutlineSpyCm();
+  });
+}
+
+function refreshOutlineSpyRich(): void {
+  const root = document.querySelector('.milkdown-editor') as HTMLElement | null;
+  if (!root) return;
+  const heads = [...root.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')] as HTMLElement[];
+  const line = root.getBoundingClientRect().top + 28;
+  let best = '';
+  for (const h of heads) {
+    if (h.getBoundingClientRect().top <= line) best = h.id;
+  }
+  if (best && best !== outlineHighlightHeadingId.value) outlineHighlightHeadingId.value = best;
+}
+
+function refreshOutlineSpyCm(): void {
+  const v = editor.view.value;
+  if (!v) return;
+  const offset = v.state.selection.main.head;
+  const hs = parseHeadings(content.value);
+  let slug = '';
+  for (const h of hs) {
+    if (h.from <= offset) slug = generateHeadingId(h.text);
+  }
+  if (slug && slug !== outlineHighlightHeadingId.value) outlineHighlightHeadingId.value = slug;
+}
+
+function onDocumentScrollOutlineSpy(): void {
+  scheduleOutlineHeadingRefresh();
+}
+
 function handleOutlineJump(pos: number, headingId: string) {
+  outlineHighlightHeadingId.value = headingId;
   if (currentMode.value === 'rich') {
     // 与大纲点击同一帧内 ProseMirror 可能尚未稳定；延后一帧再滚动手风琴容器内的 scrollTop
     nextTick(() => {
@@ -2283,6 +2539,16 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('pointerdown', handleWindowPointerDownCapture, true);
   window.addEventListener('markly:toast' as any, handleToastEvent as any);
+  document.addEventListener('scroll', onDocumentScrollOutlineSpy, true);
+
+  try {
+    const st = getState();
+    if (st && typeof st === 'object' && Array.isArray((st as { outlineCollapsedIds?: unknown }).outlineCollapsedIds)) {
+      outlineCollapsedIds.value = [...((st as { outlineCollapsedIds: string[] }).outlineCollapsedIds)];
+    }
+  } catch {
+    /* ignore */
+  }
 
   // 监听系统主题变化
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChangeListener);
@@ -2305,6 +2571,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('pointerdown', handleWindowPointerDownCapture, true);
   window.removeEventListener('markly:toast' as any, handleToastEvent as any);
+  document.removeEventListener('scroll', onDocumentScrollOutlineSpy, true);
   window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', themeChangeListener);
 
   if (editorContainerRef.value) {

@@ -17,8 +17,12 @@ const minimalConfig: ExtensionConfig = {
     pdf: {
       format: 'A4',
       margin: { top: 25, right: 20, bottom: 25, left: 20 },
+      includeToc: true,
+      displayHeaderFooter: true,
     },
+    html: { theme: 'default' },
   },
+  ai: { rewriteSelectionEnabled: false },
 };
 
 describe('messageGuards — Extension → Webview', () => {
@@ -72,6 +76,11 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleOutline' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'toggleFindReplace' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'pastePlain' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'findNavigate', direction: 'next' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'findNavigate', direction: 'previous' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'documentReplace', from: './old.png', to: './new.png' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'wrapUrlLink' } },
+    { type: 'EDITOR_COMMAND', payload: { command: 'writingAssist', value: 'rewriteSelection' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'addRowAfter' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteTable' } },
     { type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'deleteCol' } },
@@ -80,6 +89,8 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'THEME_CHANGE', payload: { theme: 'Default Dark Modern' } },
     { type: 'getScrollPosition', requestId: 'rid-1' },
     { type: 'setScrollPosition', scrollTop: 10, scrollLeft: 2 },
+    { type: 'AI_REWRITE_SELECTION_RESULT', payload: { requestId: 'rw-1', ok: true, text: 'Hello.' } },
+    { type: 'AI_REWRITE_SELECTION_RESULT', payload: { requestId: 'rw-2', ok: false, error: 'No key' } },
   ];
 
   it('each listed ExtensionMessage is accepted', () => {
@@ -101,6 +112,15 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'insert', value: 'unknown' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'richTable', value: 'unknown' } })).toBe(false);
     expect(isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'toggleFindReplace', value: 'x' } })).toBe(false);
+    expect(
+      isExtensionMessage({ type: 'EDITOR_COMMAND', payload: { command: 'documentReplace', from: '', to: 'z' } })
+    ).toBe(false);
+    expect(
+      isExtensionMessage({
+        type: 'EDITOR_COMMAND',
+        payload: { command: 'findNavigate', direction: 'next', extra: true },
+      })
+    ).toBe(false);
   });
 
   it('isExtensionConfig matches minimalConfig', () => {
@@ -129,7 +149,9 @@ describe('messageGuards — Webview → Extension', () => {
       payload: { src: 's.png', images: ['s.png'], index: 0 },
     },
     { type: 'OPEN_IMAGE_EDITOR', payload: { src: 's.png' } },
+    { type: 'OPEN_EXTERNAL_LINK', payload: { url: 'https://example.com' } },
     { type: 'EXPORT', payload: { format: 'pdf' } },
+    { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
     {
       type: 'scrollPositionResponse',
       requestId: 'uri-1',
@@ -150,6 +172,7 @@ describe('messageGuards — Webview → Extension', () => {
     expect(isWebViewMessage({ type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'x', refs: [1] } })).toBe(false);
     expect(isWebViewMessage({ type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'unknown' } })).toBe(false);
     expect(isWebViewMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: 1 } })).toBe(false);
+    expect(isWebViewMessage({ type: 'OPEN_EXTERNAL_LINK', payload: { url: '' } })).toBe(false);
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
   });
 });

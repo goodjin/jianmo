@@ -24,6 +24,21 @@ export function toMarkdownImageRelativePath(documentUri: vscode.Uri, imageUri: v
   return rel || path.basename(imageUri.fsPath);
 }
 
+/** 从 Markdown 正文中收集 `![](...)` 的 src（含相对路径），用于导出前校验。 */
+export function extractMarkdownLocalImageRefs(markdown: string): string[] {
+  const out: string[] = [];
+  const re = /!\[[^\]]*\]\(\s*([^)\s]+)\s*(?:\s+"[^"]*")?\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(markdown)) !== null) {
+    const raw = String(m[1] ?? '').trim();
+    if (!raw) continue;
+    const src = raw.split(/[?#]/)[0] ?? raw;
+    if (!src || /^(https?:|data:|file:)/i.test(src)) continue;
+    out.push(src);
+  }
+  return out;
+}
+
 export async function checkLocalMarkdownImageRefs(
   documentUri: vscode.Uri,
   refs: string[],

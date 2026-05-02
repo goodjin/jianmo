@@ -35,12 +35,28 @@ vi.mock('vscode', () => {
 
 import {
   checkLocalMarkdownImageRefs,
+  extractMarkdownLocalImageRefs,
   isLocalMarkdownImageRef,
   normalizeMarkdownImagePath,
   resolveMarkdownImageUri,
   toMarkdownImageRelativePath,
 } from '../imagePaths';
 import * as vscode from 'vscode';
+
+describe('extractMarkdownLocalImageRefs', () => {
+  it('collects relative paths and skips http(s)/data', () => {
+    const md = '![](a.png) x ![b](https://x/y.png) ![c](./d/e.jpg "t")';
+    expect(extractMarkdownLocalImageRefs(md)).toEqual(['a.png', './d/e.jpg']);
+  });
+
+  it('strips query/hash on path', () => {
+    expect(extractMarkdownLocalImageRefs('![](x.png?v=1#h)')).toEqual(['x.png']);
+  });
+
+  it('returns empty when no images', () => {
+    expect(extractMarkdownLocalImageRefs('# hi')).toEqual([]);
+  });
+});
 
 describe('image path resolution', () => {
   it('classifies local markdown image refs', () => {

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtmlPdf, generateAnchor, generateTocPdf, markdownToPdfHtml } from '../pdfExport';
+import type { PdfConfig } from '@types';
+import {
+  escapeHtmlPdf,
+  generateAnchor,
+  generateTocPdf,
+  markdownToPdfHtml,
+  buildPdfHtmlDocument,
+  pdfExportOptionsFromPdfConfig,
+} from '../pdfExport';
 
 describe('escapeHtmlPdf', () => {
   it('escapes & < > " \'', () => {
@@ -100,5 +108,50 @@ describe('markdownToPdfHtml', () => {
 
     expect(html).toContain('<code class="language-txt">$E=mc^2$');
     expect(html).toContain('class="katex"');
+  });
+
+  it('renders GFM table cells', async () => {
+    const html = await markdownToPdfHtml('| a | b |\n|---|---|\n| 1 | 2 |');
+    expect(html).toContain('<table>');
+    expect(html).toContain('<td');
+    expect(html).toContain('1');
+  });
+});
+
+describe('buildPdfHtmlDocument', () => {
+  it('injects <base> for resolving relative assets when baseHref provided', () => {
+    const html = buildPdfHtmlDocument('<p>x</p>', '', { baseHref: 'file:///Users/me/project/' });
+    expect(html).toContain('<base href="file:///Users/me/project/">');
+  });
+
+  it('embeds print-oriented rules for tables, code blocks and block math', () => {
+    const html = buildPdfHtmlDocument('<p>x</p>', '');
+    expect(html).toContain('table-header-group');
+    expect(html).toContain('.katex-display');
+    expect(html).toContain('page-break-inside: avoid');
+    expect(html).toContain('break-inside: auto');
+    expect(html).toContain('white-space: pre-wrap');
+  });
+});
+
+describe('pdfExportOptionsFromPdfConfig', () => {
+  it('maps mm margins and flags for Puppeteer', () => {
+    const pdf: PdfConfig = {
+      format: 'Letter',
+      margin: { top: 10, right: 11, bottom: 12, left: 13 },
+      includeToc: false,
+      displayHeaderFooter: false,
+    };
+    const o = pdfExportOptionsFromPdfConfig(pdf, 'file:///tmp/doc/');
+    expect(o.format).toBe('Letter');
+    expect(o.margin).toEqual({
+      top: '10mm',
+      right: '11mm',
+      bottom: '12mm',
+      left: '13mm',
+    });
+    expect(o.includeToc).toBe(false);
+    expect(o.displayHeaderFooter).toBe(false);
+    expect(o.baseHref).toBe('file:///tmp/doc/');
   });
 });

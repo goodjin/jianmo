@@ -73,6 +73,12 @@ export interface FindAllMatchesResult {
   truncated: boolean;
 }
 
+export interface CountAllMatchesResult {
+  count: number;
+  /** 超过时间预算提前停止时为 true（count 为已扫描到的下界） */
+  timedOut: boolean;
+}
+
 /**
  * 在全文范围内找出所有非重叠匹配（全局正则）。
  * @param maxResults 可选上限，避免超大文档 + 高频匹配时数组与 GC 压力（查找「全部替换」仍应对整篇单独处理）
@@ -97,6 +103,26 @@ export function findAllMatchesInText(
     }
   }
   return { matches: out, truncated: false };
+}
+
+/**
+ * 仅统计匹配总数（不保存每个 match 的 range），用于大文档 + 高频匹配时提升可预期性：
+ * UI 列表截断时仍能显示「约有多少个匹配」。
+ */
+export function countAllMatchesInText(text: string, re: RegExp, timeBudgetMs = 25): CountAllMatchesResult {
+  const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
+  const r = new RegExp(re.source, flags);
+  let m: RegExpExecArray | null;
+  let count = 0;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  while ((m = r.exec(text)) !== null) {
+    count++;
+    if (m[0].length === 0) r.lastIndex++;
+    if (typeof performance !== 'undefined' && performance.now() - t0 > timeBudgetMs) {
+      return { count, timedOut: true };
+    }
+  }
+  return { count, timedOut: false };
 }
 
 /**

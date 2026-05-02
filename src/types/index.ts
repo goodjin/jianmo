@@ -89,6 +89,8 @@ export interface PdfConfig {
     bottom: MarginValue;
     left: MarginValue;
   };
+  includeToc: boolean;
+  displayHeaderFooter: boolean;
 }
 
 export interface ExtensionConfig {
@@ -96,6 +98,22 @@ export interface ExtensionConfig {
   image: ImageConfig;
   export: {
     pdf: PdfConfig;
+    /** HTML 导出主题（工作区 `markly.export.html.theme`） */
+    html?: {
+      theme: 'default' | 'print-friendly';
+    };
+  };
+  /** M47：选区「润色」开关（工作区 `markly.ai.rewrite.enabled`） */
+  ai?: {
+    rewriteSelectionEnabled: boolean;
+    /** rewrite provider（none/mock/openai-compatible）。默认 mock（方便离线/测试）。 */
+    rewriteProvider?: 'none' | 'mock' | 'openai-compatible';
+    /** openai-compatible：HTTP endpoint（例如 `https://api.openai.com/v1/chat/completions` 或自建兼容端点） */
+    rewriteEndpoint?: string;
+    /** openai-compatible：模型名（默认 `gpt-4o-mini` 之类可由用户自行配置） */
+    rewriteModel?: string;
+    /** 超时（毫秒） */
+    rewriteTimeoutMs?: number;
   };
 }
 
@@ -150,14 +168,23 @@ export type ExtensionMessage =
         | { command: 'toggleOutline' }
         | { command: 'toggleFindReplace' }
         | { command: 'pastePlain' }
+        | { command: 'findNavigate'; direction: 'next' | 'previous' }
+        | { command: 'documentReplace'; from: string; to: string }
+        | { command: 'wrapUrlLink' }
         | { command: 'richTable'; value: RichTableCommandValue }
         | { command: 'imageAsset'; value: ImageAssetCommandValue }
-        | { command: 'writingAssist'; value: 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables' };
+        | {
+            command: 'writingAssist';
+            value: 'summarize' | 'suggestTitle' | 'fixMarkdown' | 'tidyTables' | 'rewriteSelection';
+          };
     }
   /** 旧 Text Editor 路径曾下发；预览模式可不使用 */
   | { type: 'THEME_CHANGE'; payload: { theme: string } }
   | { type: 'getScrollPosition'; requestId: string }
   | { type: 'setScrollPosition'; scrollTop: number; scrollLeft: number };
+  /** M47：rewriteSelection 结果回填 */
+  | { type: 'AI_REWRITE_SELECTION_RESULT'; payload: { requestId: string; ok: true; text: string } }
+  | { type: 'AI_REWRITE_SELECTION_RESULT'; payload: { requestId: string; ok: false; error: string } };
 
 export type WebViewMessage =
   | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition; version?: number } }
@@ -165,12 +192,15 @@ export type WebViewMessage =
   | { type: 'SAVE_IMAGE'; payload: { data: string; filename: string } }
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
+  | { type: 'OPEN_EXTERNAL_LINK'; payload: { url: string } }
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' } }
   | { type: 'READY'; payload?: undefined }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string } }
   | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
   | { type: 'OPEN_IMAGE_DIRECTORY'; payload: { kind: 'document' | 'assets' | 'resolved'; resolvedPath?: string } }
   | { type: 'REPAIR_IMAGE_REF'; payload: { ref: string } }
+  /** M47：请求宿主执行 rewriteSelection（provider 可控、SecretStorage 存 key） */
+  | { type: 'AI_REWRITE_SELECTION_REQUEST'; payload: { requestId: string; text: string } }
   | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
 
 // 导出结果 - 使用联合类型区分成功/失败

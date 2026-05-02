@@ -11,6 +11,23 @@ import { undo as cmUndo, redo as cmRedo, undoDepth, redoDepth } from '@codemirro
 import type { EditorMode, EditorOptions, EditorInstance } from '../types';
 import { createEditorState, createEditorView, destroyEditor } from '../core';
 
+function findMarkdownLinkAround(doc: string, pos: number): { from: number; to: number; text: string; url: string } | null {
+  const p = Math.max(0, Math.min(pos, doc.length));
+  const windowSize = 600;
+  const start = Math.max(0, p - windowSize);
+  const end = Math.min(doc.length, p + windowSize);
+  const slice = doc.slice(start, end);
+  const re = /\[([^\]]+)\]\(([^)]+)\)/g;
+  for (let m = re.exec(slice); m; m = re.exec(slice)) {
+    const from = start + (m.index ?? 0);
+    const to = from + m[0].length;
+    if (p >= from && p <= to) {
+      return { from, to, text: m[1] ?? '', url: m[2] ?? '' };
+    }
+  }
+  return null;
+}
+
 /**
  * 编辑器 Hook
  * @param options - 编辑器配置选项
@@ -440,6 +457,36 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
 
     switch (type) {
       case 'link': {
+        const full = state.doc.toString();
+        const hasSelection = selection.from < selection.to;
+        const maybeLink =
+          (hasSelection ? null : findMarkdownLinkAround(full, selection.from)) ||
+          (selectedText ? findMarkdownLinkAround(selectedText, 0) : null);
+
+        // 光标在链接内：编辑该链接（文本 + URL）
+        if (!hasSelection && maybeLink) {
+          const nextText = promptInput('链接文字:', maybeLink.text) ?? maybeLink.text;
+          const nextUrl = promptInput('链接地址:', maybeLink.url) ?? maybeLink.url;
+          insertText = `[${nextText || maybeLink.text}](${nextUrl || maybeLink.url || 'https://'})`;
+          dispatch({
+            changes: { from: maybeLink.from, to: maybeLink.to, insert: insertText },
+            selection: { anchor: maybeLink.from + insertText.length },
+          });
+          return;
+        }
+
+        // 选区正好是一个完整链接：编辑它
+        if (hasSelection) {
+          const link = findMarkdownLinkAround(selectedText, Math.min(1, selectedText.length));
+          if (link && link.from === 0 && link.to === selectedText.length) {
+            const nextText = promptInput('链接文字:', link.text) ?? link.text;
+            const nextUrl = promptInput('链接地址:', link.url) ?? link.url;
+            insertText = `[${nextText || link.text}](${nextUrl || link.url || 'https://'})`;
+            break;
+          }
+        }
+
+        // 默认：插入链接（有选区时不询问文字）
         const linkText = selectedText || promptInput('链接文字:', '链接文字') || '链接文字';
         const linkUrl = promptInput('链接地址:', 'https://') || 'https://';
         insertText = `[${linkText}](${linkUrl})`;

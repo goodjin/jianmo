@@ -4,9 +4,15 @@ import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
-import { exportToPdf } from '@core/export/pdfExport';
+import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
-import { checkLocalMarkdownImageRefs, resolveMarkdownImageUri, toMarkdownImageRelativePath } from './imagePaths';
+import {
+  checkLocalMarkdownImageRefs,
+  extractMarkdownLocalImageRefs,
+  resolveMarkdownImageUri,
+  toMarkdownImageRelativePath,
+} from './imagePaths';
+import { rewriteSelectionViaProvider } from '@extension/ai/rewriteSelection';
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -256,6 +262,23 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         }
         break;
 
+      case 'OPEN_EXTERNAL_LINK': {
+        const url = String((message as any).payload?.url ?? '');
+        if (!url.trim()) break;
+        try {
+          const u = vscode.Uri.parse(url);
+          // 仅放行 http/https
+          if (u.scheme === 'http' || u.scheme === 'https') {
+            await vscode.env.openExternal(u);
+          } else {
+            vscode.window.showWarningMessage('仅支持打开 http/https 链接。');
+          }
+        } catch {
+          vscode.window.showWarningMessage('链接无效，无法打开。');
+        }
+        break;
+      }
+
       case 'SAVE':
         // 处理保存 - 保存当前文档内容
         if (message.payload?.content !== undefined) {
@@ -276,6 +299,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         // 处理导出 - 导出为不同格式
         await this.exportDocument(uri, message.payload);
         break;
+
+      case 'AI_REWRITE_SELECTION_REQUEST': {
+        const requestId = message.payload.requestId;
+        const r = await rewriteSelectionViaProvider(message.payload.text, this.config, this.context);
+        this.postMessage(uri, {
+          type: 'AI_REWRITE_SELECTION_RESULT',
+          payload: r.ok
+            ? { requestId, ok: true, text: r.text }
+            : { requestId, ok: false, error: r.error },
+        });
+        break;
+      }
 
       case 'getScrollPosition':
         // 处理获取滚动位置的请求
@@ -402,16 +437,27 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         await exportToHtml(doc.content, saveUri.fsPath, {
           includeToc: true,
           title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
+          htmlTheme: this.config.export.html?.theme ?? 'default',
         });
         vscode.window.showInformationMessage(`HTML 已导出: ${saveUri.fsPath}`);
         return;
       }
 
       if (payload.format === 'pdf') {
-        await exportToPdf(doc.content, saveUri.fsPath, {
-          includeToc: true,
-          displayHeaderFooter: true,
-        });
+        const baseHref = vscode.Uri.file(path.dirname(docUri.fsPath)).toString(true) + '/';
+        const localRefs = extractMarkdownLocalImageRefs(doc.content);
+        const imgCheck = await checkLocalMarkdownImageRefs(docUri, localRefs);
+        const missing = imgCheck.filter((r) => !r.exists);
+        if (missing.length > 0) {
+          void vscode.window.showWarningMessage(
+            `导出 PDF：有 ${missing.length} 个本地图片引用未找到文件，PDF 中可能显示为裂图。相对路径已按文档目录解析（见 <base>）。`
+          );
+        }
+        await exportToPdf(
+          doc.content,
+          saveUri.fsPath,
+          pdfExportOptionsFromPdfConfig(this.config.export.pdf, baseHref)
+        );
         vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
         return;
       }

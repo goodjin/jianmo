@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.5.14",
+  "version": "1.7.0",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -56,9 +56,24 @@
         "icon": "$(search)"
       },
       {
+        "command": "markly.find.next",
+        "title": "Find: Next Match",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "markly.find.previous",
+        "title": "Find: Previous Match",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "markly.edit.pastePlain",
         "title": "Edit: Paste as Plain Text",
         "icon": "$(clippy)"
+      },
+      {
+        "command": "markly.edit.wrapUrlLink",
+        "title": "Edit: Wrap Selection as Markdown Link (URL)",
+        "icon": "$(link-external)"
       },
       {
         "command": "markly.insert.table",
@@ -104,6 +119,16 @@
         "command": "markly.image.normalizeRefs",
         "title": "Images: Normalize Local Image Paths",
         "icon": "$(symbol-file)"
+      },
+      {
+        "command": "markly.image.batchReplaceInDocument",
+        "title": "Images: Batch Replace Text in Document",
+        "icon": "$(replace-all)"
+      },
+      {
+        "command": "markly.image.replaceMovedImageRef",
+        "title": "Images: Replace Image Reference (Pick Old/New)",
+        "icon": "$(files)"
       },
       {
         "command": "markly.table.addRowBefore",
@@ -189,6 +214,21 @@
         "command": "markly.assist.tidyTables",
         "title": "Writing: Tidy Markdown Tables",
         "icon": "$(table)"
+      },
+      {
+        "command": "markly.assist.rewriteSelection",
+        "title": "Writing: Rewrite Selection (local mock)",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "markly.ai.setApiKey",
+        "title": "AI: Set API Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "markly.ai.clearApiKey",
+        "title": "AI: Clear API Key",
+        "icon": "$(trash)"
       }
     ],
     "keybindings": [
@@ -304,6 +344,56 @@
             "left": 20
           },
           "description": "PDF page margins in mm"
+        },
+        "markly.export.pdf.includeToc": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include table of contents in PDF export"
+        },
+        "markly.export.pdf.displayHeaderFooter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Display header/footer in PDF export"
+        },
+        "markly.export.html.theme": {
+          "type": "string",
+          "default": "default",
+          "enum": [
+            "default",
+            "print-friendly"
+          ],
+          "description": "HTML export theme: screen default vs print-oriented layout/CSS"
+        },
+        "markly.ai.rewrite.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow selection rewrite assist in the editor (uses local mock until a provider is configured)"
+        },
+        "markly.ai.rewrite.provider": {
+          "type": "string",
+          "default": "mock",
+          "enum": [
+            "none",
+            "mock",
+            "openai-compatible"
+          ],
+          "description": "Rewrite provider: none/mock/openai-compatible"
+        },
+        "markly.ai.rewrite.endpoint": {
+          "type": "string",
+          "default": "https://api.openai.com/v1/chat/completions",
+          "description": "openai-compatible endpoint URL"
+        },
+        "markly.ai.rewrite.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "openai-compatible model name"
+        },
+        "markly.ai.rewrite.timeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "description": "openai-compatible request timeout in milliseconds"
         }
       }
     },
@@ -330,6 +420,7 @@
     "check:bundle:extension": "node ./scripts/check_extension_bundle.mjs",
     "check:release": "node ./scripts/check-release.mjs",
     "preflight": "npm run lint && npm test && npm run build && npm run check:bundle && npm run check:release",
+    "gates:stable": "npm run lint && npm test && npm run build && npm run check:bundle",
     "m8:baseline": "node ./scripts/m8-baseline.mjs",
     "dev:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --format=cjs --platform=node --watch --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "dev:webview": "cd webview && npm run dev",

@@ -70,12 +70,34 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   if (fmt !== 'A4' && fmt !== 'A3' && fmt !== 'Letter' && fmt !== 'Legal') return false;
   const margin = pdf.margin;
   if (!isRecord(margin)) return false;
-  return (
-    isNumber(margin.top) &&
-    isNumber(margin.right) &&
-    isNumber(margin.bottom) &&
-    isNumber(margin.left)
-  );
+  if (!(isNumber(margin.top) && isNumber(margin.right) && isNumber(margin.bottom) && isNumber(margin.left))) {
+    return false;
+  }
+  if (typeof (pdf as { includeToc?: unknown }).includeToc !== 'boolean') return false;
+  if (typeof (pdf as { displayHeaderFooter?: unknown }).displayHeaderFooter !== 'boolean') return false;
+  if (exp.html !== undefined) {
+    if (!isRecord(exp.html)) return false;
+    const th = exp.html.theme;
+    if (th !== 'default' && th !== 'print-friendly') return false;
+  }
+  if ((x as { ai?: unknown }).ai !== undefined) {
+    const ai = (x as { ai?: Record<string, unknown> }).ai;
+    if (!isRecord(ai)) return false;
+    if (typeof ai.rewriteSelectionEnabled !== 'boolean') return false;
+    const provider = ai.rewriteProvider;
+    if (
+      provider !== undefined &&
+      provider !== 'none' &&
+      provider !== 'mock' &&
+      provider !== 'openai-compatible'
+    ) {
+      return false;
+    }
+    if (ai.rewriteEndpoint !== undefined && !isString(ai.rewriteEndpoint)) return false;
+    if (ai.rewriteModel !== undefined && !isString(ai.rewriteModel)) return false;
+    if (ai.rewriteTimeoutMs !== undefined && !isNumber(ai.rewriteTimeoutMs)) return false;
+  }
+  return true;
 }
 
 function isHostDiagnostics(x: unknown): x is HostDiagnostics {
@@ -164,6 +186,24 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       if (p.command === 'pastePlain') {
         return Object.keys(p).length === 1;
       }
+      if (p.command === 'findNavigate') {
+        const ks = Object.keys(p);
+        return (
+          ks.length === 2 &&
+          (p as { direction?: unknown }).direction !== undefined &&
+          ((p as { direction: string }).direction === 'next' ||
+            (p as { direction: string }).direction === 'previous')
+        );
+      }
+      if (p.command === 'documentReplace') {
+        const ks = Object.keys(p);
+        const from = (p as { from?: unknown }).from;
+        const to = (p as { to?: unknown }).to;
+        return ks.length === 3 && isString(from) && isString(to) && from.length > 0;
+      }
+      if (p.command === 'wrapUrlLink') {
+        return Object.keys(p).length === 1;
+      }
       if (p.command === 'insert') {
         return (
           p.value === 'table' ||
@@ -185,7 +225,8 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
           p.value === 'summarize' ||
           p.value === 'suggestTitle' ||
           p.value === 'fixMarkdown' ||
-          p.value === 'tidyTables'
+          p.value === 'tidyTables' ||
+          p.value === 'rewriteSelection'
         );
       }
       return false;
@@ -198,6 +239,13 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       return isString(msg.requestId);
     case 'setScrollPosition':
       return isNumber(msg.scrollTop) && isNumber(msg.scrollLeft);
+    case 'AI_REWRITE_SELECTION_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || p.requestId.trim().length === 0) return false;
+      if (p.ok === true) return isString((p as { text?: unknown }).text);
+      if (p.ok === false) return isString((p as { error?: unknown }).error) && String((p as { error: string }).error).trim().length > 0;
+      return false;
+    }
     default:
       return false;
   }
@@ -243,6 +291,15 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
       const p = msg.payload;
       return isRecord(p) && isString(p.ref);
     }
+    case 'AI_REWRITE_SELECTION_REQUEST': {
+      const p = msg.payload;
+      return (
+        isRecord(p) &&
+        isString(p.requestId) &&
+        p.requestId.trim().length > 0 &&
+        isString(p.text)
+      );
+    }
     case 'OPEN_IMAGE_PREVIEW': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.src) || !Array.isArray(p.images) || !isNumber(p.index)) {
@@ -253,6 +310,10 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
     case 'OPEN_IMAGE_EDITOR': {
       const p = msg.payload;
       return isRecord(p) && isString(p.src);
+    }
+    case 'OPEN_EXTERNAL_LINK': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.url) && p.url.trim().length > 0;
     }
     case 'EXPORT': {
       const p = msg.payload;

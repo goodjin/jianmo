@@ -126,6 +126,12 @@ describe('buildHtmlDocument', () => {
     const html = buildHtmlDocument('', '', { ...defaultOpts, title: undefined });
     expect(html).toContain('<title>导出文档</title>');
   });
+
+  it('adds print-friendly body class when htmlTheme is print-friendly', () => {
+    const html = buildHtmlDocument('<p>x</p>', '', { ...defaultOpts, htmlTheme: 'print-friendly' });
+    expect(html).toContain('class="markly-export-print-friendly"');
+    expect(html).toContain('body.markly-export-print-friendly');
+  });
 });
 
 describe('markdownToHtml export rendering', () => {

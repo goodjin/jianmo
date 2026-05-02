@@ -8,6 +8,8 @@ export interface HtmlExportOptions {
   title?: string;
   inlineCss?: boolean;
   darkMode?: boolean;
+  /** default：屏读；print-friendly：版心更贴打印、含基础 @media print */
+  htmlTheme?: 'default' | 'print-friendly';
 }
 
 const defaultOptions: HtmlExportOptions = {
@@ -15,6 +17,7 @@ const defaultOptions: HtmlExportOptions = {
   title: '导出文档',
   inlineCss: true,
   darkMode: false,
+  htmlTheme: 'default',
 };
 
 /** HTML 转义，防止 XSS */
@@ -142,6 +145,8 @@ export function readKatexCss(): string {
 
 export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOptions): string {
   const { darkMode } = opts;
+  const printFriendly = opts.htmlTheme === 'print-friendly';
+  const bodyClass = printFriendly ? 'markly-export-print-friendly' : '';
   const bgColor = darkMode ? '#0d1117' : '#ffffff';
   const textColor = darkMode ? '#c9d1d9' : '#24292e';
   const codeBg = darkMode ? '#161b22' : '#f6f8fa';
@@ -402,6 +407,18 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
       }
     }
 
+    ${
+      printFriendly
+        ? `
+    body.markly-export-print-friendly {
+      max-width: none;
+      font-size: 11pt;
+      padding: 24px 12px;
+    }
+    `
+        : ''
+    }
+
     /* 打印样式 */
     @media print {
       body {
@@ -419,7 +436,7 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
     }
   </style>
 </head>
-<body>
+<body${bodyClass ? ` class="${bodyClass}"` : ''}>
   ${tocHtml}
   <div class="content">
     ${content}

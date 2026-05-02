@@ -235,6 +235,42 @@ describe('useEditor', () => {
       expect(prompt).toHaveBeenCalledTimes(1);
     });
 
+    it('insertNode link: 光标在已有链接内时应编辑该链接', async () => {
+      const prompt = vi.fn()
+        .mockReturnValueOnce('新文字')
+        .mockReturnValueOnce('https://new.example.com');
+      const { result: { createEditor, insertNode, getContent, view, setContent } } = withSetup(() =>
+        useEditor({ promptInput: prompt })
+      );
+      createEditor(container);
+      setContent('before [old](https://old.example.com) after');
+      await nextTick();
+      // 光标放在 old 中间
+      const cursor = 'before '.length + 2;
+      view.value!.dispatch({ selection: { anchor: cursor } });
+
+      insertNode('link');
+      expect(getContent()).toBe('before [新文字](https://new.example.com) after');
+      expect(prompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('insertNode link: 选中完整链接时应编辑该链接', async () => {
+      const prompt = vi.fn()
+        .mockReturnValueOnce('T')
+        .mockReturnValueOnce('https://t.example.com');
+      const { result: { createEditor, insertNode, getContent, view, setContent } } = withSetup(() =>
+        useEditor({ promptInput: prompt })
+      );
+      createEditor(container);
+      setContent('[a](https://a.example.com)');
+      await nextTick();
+      view.value!.dispatch({ selection: { anchor: 0, head: getContent().length } });
+
+      insertNode('link');
+      expect(getContent()).toBe('[T](https://t.example.com)');
+      expect(prompt).toHaveBeenCalledTimes(2);
+    });
+
     it('insertNode image: promptInput 返回自定义值', async () => {
       const prompt = vi.fn()
         .mockReturnValueOnce('截图')

@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
-import type { ExtensionMessage, RichTableCommandValue } from '@types';
-import { exportToPdf } from '@core/export/pdfExport';
+import type { ExtensionMessage, PdfConfig, RichTableCommandValue } from '@types';
+import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
+import { toMarkdownImageRelativePath } from '@extension/provider/imagePaths';
+import { clearAiApiKey, setAiApiKey } from '@extension/ai/rewriteSelection';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
@@ -144,10 +146,26 @@ export function registerCommands(
             progress.report({ message: '正在生成 PDF...' });
             console.log('[PDF Export] Starting export to:', saveUri.fsPath);
 
-            await exportToPdf(content, saveUri.fsPath, {
-              includeToc: true,
-              displayHeaderFooter: true,
+            const vs = vscode.workspace.getConfiguration('markly');
+            const margin = vs.get<PdfConfig['margin']>('export.pdf.margin', {
+              top: 25,
+              right: 20,
+              bottom: 25,
+              left: 20,
             });
+            const pdfCfg: PdfConfig = {
+              format: vs.get<PdfConfig['format']>('export.pdf.format', 'A4'),
+              margin: {
+                top: margin?.top ?? 25,
+                right: margin?.right ?? 20,
+                bottom: margin?.bottom ?? 25,
+                left: margin?.left ?? 20,
+              },
+              includeToc: vs.get<boolean>('export.pdf.includeToc', true),
+              displayHeaderFooter: vs.get<boolean>('export.pdf.displayHeaderFooter', true),
+            };
+            const baseHref = vscode.Uri.file(path.dirname(editor.document.fileName)).toString(true) + '/';
+            await exportToPdf(content, saveUri.fsPath, pdfExportOptionsFromPdfConfig(pdfCfg, baseHref));
 
             // 验证文件是否生成
             const fs = require('fs');
@@ -215,9 +233,13 @@ export function registerCommands(
             const content = editor.document.getText();
             // 从文件名前提取标题
             const title = path.basename(editor.document.fileName, '.md');
+            const htmlTheme =
+              vscode.workspace.getConfiguration('markly').get<'default' | 'print-friendly'>('export.html.theme', 'default') ??
+              'default';
             await exportToHtml(content, saveUri.fsPath, {
               includeToc: true,
               title,
+              htmlTheme,
             });
             vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
@@ -252,9 +274,74 @@ export function registerCommands(
     () => postEditorCommand({ command: 'toggleFindReplace' })
   );
 
+  const findNextCmd = vscode.commands.registerCommand('markly.find.next', () =>
+    postEditorCommand({ command: 'findNavigate', direction: 'next' })
+  );
+
+  const findPreviousCmd = vscode.commands.registerCommand('markly.find.previous', () =>
+    postEditorCommand({ command: 'findNavigate', direction: 'previous' })
+  );
+
   const pastePlainCmd = vscode.commands.registerCommand('markly.edit.pastePlain', () =>
     postEditorCommand({ command: 'pastePlain' })
   );
+
+  const wrapUrlLinkCmd = vscode.commands.registerCommand('markly.edit.wrapUrlLink', () =>
+    postEditorCommand({ command: 'wrapUrlLink' })
+  );
+
+  const imageBatchReplaceCmd = vscode.commands.registerCommand(
+    'markly.image.batchReplaceInDocument',
+    async () => {
+      const from = await vscode.window.showInputBox({
+        title: '批量替换',
+        prompt: '将文档中以下内容全部替换（例如图片路径片段）',
+        placeHolder: './old.png',
+      });
+      if (from === undefined) return;
+      const trimmed = from.trim();
+      if (!trimmed) {
+        vscode.window.showWarningMessage('查找内容不能为空。');
+        return;
+      }
+      const to = await vscode.window.showInputBox({
+        title: '批量替换',
+        prompt: '替换为',
+        placeHolder: './new.png',
+      });
+      if (to === undefined) return;
+      await postEditorCommand({ command: 'documentReplace', from: trimmed, to });
+    }
+  );
+
+  const imageReplaceMovedRefCmd = vscode.commands.registerCommand('markly.image.replaceMovedImageRef', async () => {
+    const editor = vscode.window.activeTextEditor;
+    const docUri = editor?.document?.uri;
+    if (!docUri) {
+      vscode.window.showInformationMessage('请先打开一个 Markdown 文件。');
+      return;
+    }
+
+    const pick = async (title: string) => {
+      const sel = await vscode.window.showOpenDialog({
+        title,
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: { Images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
+      });
+      return sel?.[0];
+    };
+
+    const oldUri = await pick('选择“旧”的图片文件（移动/重命名前）');
+    if (!oldUri) return;
+    const newUri = await pick('选择“新”的图片文件（移动/重命名后）');
+    if (!newUri) return;
+
+    const from = toMarkdownImageRelativePath(docUri, oldUri);
+    const to = toMarkdownImageRelativePath(docUri, newUri);
+    await postEditorCommand({ command: 'documentReplace', from, to });
+  });
 
   const insertTableCmd = vscode.commands.registerCommand(
     'markly.insert.table',
@@ -309,6 +396,14 @@ export function registerCommands(
     () => postEditorCommand({ command: 'writingAssist', value: 'tidyTables' })
   );
 
+  const assistRewriteSelectionCmd = vscode.commands.registerCommand(
+    'markly.assist.rewriteSelection',
+    () => postEditorCommand({ command: 'writingAssist', value: 'rewriteSelection' })
+  );
+
+  const aiSetApiKeyCmd = vscode.commands.registerCommand('markly.ai.setApiKey', () => setAiApiKey(context));
+  const aiClearApiKeyCmd = vscode.commands.registerCommand('markly.ai.clearApiKey', () => clearAiApiKey(context));
+
   context.subscriptions.push(
     toggleModeCmd,
     exportPdfCmd,
@@ -316,7 +411,12 @@ export function registerCommands(
     exportImageCmd,
     toggleOutlineCmd,
     toggleFindReplaceCmd,
+    findNextCmd,
+    findPreviousCmd,
     pastePlainCmd,
+    wrapUrlLinkCmd,
+    imageBatchReplaceCmd,
+    imageReplaceMovedRefCmd,
     insertTableCmd,
     insertCodeBlockCmd,
     insertImageCmd,
@@ -327,6 +427,9 @@ export function registerCommands(
     assistSummarizeCmd,
     assistSuggestTitleCmd,
     assistFixMarkdownCmd,
-    assistTidyTablesCmd
+    assistTidyTablesCmd,
+    assistRewriteSelectionCmd,
+    aiSetApiKeyCmd,
+    aiClearApiKeyCmd
   );
 }

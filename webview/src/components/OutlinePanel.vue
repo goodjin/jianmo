@@ -53,15 +53,18 @@ interface OutlineItem {
 const props = defineProps<{
   content: string;
   currentMode: EditorMode;
+  /** 当前章节高亮（scroll spy / 跳转由父组件更新） */
+  activeHeadingId: string;
+  /** 折叠节点 id 列表（与 vscode webview state 同步由父组件负责） */
+  collapsedHeadingIds: string[];
 }>();
 
 const emit = defineEmits<{
   (e: 'jump', pos: number, headingId: string): void;
+  (e: 'update:collapsedHeadingIds', ids: string[]): void;
 }>();
 
 const outline = ref<OutlineItem[]>([]);
-const activeHeadingId = ref<string>('');
-const collapsedIds = ref<Set<string>>(new Set());
 const OUTLINE_PARSE_DEBOUNCE_MS = 250;
 let parseTimer: ReturnType<typeof setTimeout> | null = null;
 let hasParsedOnce = false;
@@ -82,7 +85,7 @@ function parseOutline(content: string): OutlineItem[] {
       level: heading.level,
       text: heading.text,
       pos: heading.from,
-      collapsed: collapsedIds.value.has(id),
+      collapsed: props.collapsedHeadingIds.includes(id),
       hasChildren,
     };
   });
@@ -111,6 +114,14 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => props.collapsedHeadingIds,
+  () => {
+    outline.value = parseOutline(props.content);
+  },
+  { deep: true }
+);
+
 onBeforeUnmount(() => {
   if (parseTimer) {
     clearTimeout(parseTimer);
@@ -119,16 +130,14 @@ onBeforeUnmount(() => {
 });
 
 function handleClick(item: OutlineItem) {
-  activeHeadingId.value = item.id;
   emit('jump', item.pos, item.id);
 }
 
 function toggleCollapse(item: OutlineItem) {
-  const next = new Set(collapsedIds.value);
+  const next = new Set(props.collapsedHeadingIds);
   if (next.has(item.id)) next.delete(item.id);
   else next.add(item.id);
-  collapsedIds.value = next;
-  outline.value = parseOutline(props.content);
+  emit('update:collapsedHeadingIds', [...next]);
 }
 
 const visibleOutline = computed(() => {
@@ -149,7 +158,6 @@ const visibleOutline = computed(() => {
   return result;
 });
 
-const currentMode = computed(() => props.currentMode);
 </script>
 
 <style scoped>

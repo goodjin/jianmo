@@ -20,6 +20,7 @@
             {{ matchPositionLabel }} / {{ matchCount }}{{ matchCountTruncated ? '+' : '' }}
           </div>
           <div class="match-info no-match" v-else-if="findText.trim()">无匹配</div>
+          <div v-if="patternWarning" class="match-info no-match">{{ patternWarning }}</div>
         </div>
 
         <div class="icon-actions" role="group" aria-label="查找操作">
@@ -114,14 +115,19 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import type { FindPatternMode } from '@/utils/findPattern';
 
-const props = defineProps<{
-  visible: boolean;
-  matchCount: number;
-  /** 匹配数已达上限（仅统计前 N 条），展示为「n / N+」 */
-  matchCountTruncated?: boolean;
-  /** 当前高亮匹配，0..matchCount-1，无匹配时为 -1 */
-  currentMatchIndex: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    visible: boolean;
+    matchCount: number;
+    /** 匹配数已达上限（仅统计前 N 条），展示为「n / N+」 */
+    matchCountTruncated?: boolean;
+    /** 当前高亮匹配，0..matchCount-1，无匹配时为 -1 */
+    currentMatchIndex: number;
+    /** 正则无效等提示（M38） */
+    patternWarning?: string;
+  }>(),
+  { patternWarning: '', matchCountTruncated: false }
+);
 
 const emit = defineEmits<{
   (e: 'close'): void;

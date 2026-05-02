@@ -33,6 +33,7 @@ import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
 import type { RichPerfTier } from '../utils/richPerfTier';
 import { setRuntimeRichPerfTier } from '../utils/richPerfRuntime';
 import { decideTableGridSelectionFillMapping, parseTablePasteMatrix } from '../plugins/markly-table-rich';
+import { isSafeExternalHttpUrl, normalizeUrl } from '../utils/url';
 
 // TOC 标记
 const TOC_PLACEHOLDER = '<!-- TOC -->';
@@ -87,6 +88,7 @@ const emit = defineEmits<{
   (e: 'image-click', src: string, images: string[], index: number): void;
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
+  (e: 'open-external-link', url: string): void;
   (e: 'ready', success: boolean): void;
   (e: 'startup-event', payload: { stage: string; detail?: Record<string, unknown> }): void;
   (e: 'table-context', payload: { inTable: boolean }): void;
@@ -899,6 +901,10 @@ function insertNode(type: string): void {
   if (!editor) return;
 
   if (type === 'link') {
+    // M39：如果光标/选区已在 Link mark 内，优先编辑链接 URL
+    if (editLinkAtSelection()) {
+      return;
+    }
     let md = '[链接文字](https://example.com)';
     try {
       const view = editor.ctx.get(editorViewCtx);
@@ -951,6 +957,78 @@ function insertNode(type: string): void {
   }
 
   insertMarkdown(markdown);
+}
+
+function editLinkAtSelection(): boolean {
+  if (!editor) return false;
+  let view;
+  try {
+    view = editor.ctx.get(editorViewCtx);
+  } catch {
+    return false;
+  }
+  const { state, dispatch } = view;
+  const link = state.schema.marks.link;
+  if (!link) return false;
+
+  const { from, to, empty } = state.selection;
+  // 选区有文本：若整个选区都在 link mark 下，直接改这段
+  if (!empty) {
+    let href: string | null = null;
+    state.doc.nodesBetween(from, to, (node) => {
+      if (!node.isText) return;
+      const m = link.isInSet(node.marks);
+      if (m && typeof (m.attrs as any)?.href === 'string') {
+        href = (m.attrs as any).href;
+      }
+    });
+    if (!href) return false;
+    const next = window.prompt('链接地址:', href);
+    if (next === null) return true; // 用户取消：视作已处理
+    const tr = state.tr.removeMark(from, to, link).addMark(from, to, link.create({ href: next }));
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
+
+  // 光标：扩展到整个 link mark 范围
+  const $pos = state.selection.$from;
+  const marks = $pos.marks();
+  const active = link.isInSet(marks);
+  if (!active) return false;
+  const href = typeof (active.attrs as any)?.href === 'string' ? (active.attrs as any).href : '';
+  const next = window.prompt('链接地址:', href);
+  if (next === null) return true;
+
+  const parent = $pos.parent;
+  const offset = $pos.parentOffset;
+  let start = offset;
+  let end = offset;
+
+  // 向左扫描同一 parent 内的 text nodes
+  for (let i = $pos.index() - 1, cur = offset; i >= 0; i--) {
+    const child = parent.child(i);
+    if (!child.isText) break;
+    const m = link.isInSet(child.marks);
+    if (!m) break;
+    cur -= child.nodeSize;
+    start = cur;
+  }
+  // 当前 text node 本身也算在内，向右扫描
+  for (let i = $pos.index(), cur = offset; i < parent.childCount; i++) {
+    const child = parent.child(i);
+    if (!child.isText) break;
+    const m = link.isInSet(child.marks);
+    if (!m) break;
+    cur += child.nodeSize;
+    end = cur;
+  }
+
+  const fromAbs = $pos.start() + start;
+  const toAbs = $pos.start() + end;
+  if (fromAbs >= toAbs) return false;
+  const tr = state.tr.removeMark(fromAbs, toAbs, link).addMark(fromAbs, toAbs, link.create({ href: next }));
+  dispatch(tr.scrollIntoView());
+  return true;
 }
 
 function insertMarkdown(markdown: string): boolean {
@@ -1077,6 +1155,17 @@ function resolveImageUrl(src: string): string {
   return src;
 }
 
+function isTocAnchor(anchor: HTMLElement): boolean {
+  const list = anchor.closest('ul, ol') as HTMLElement | null;
+  if (!list) return false;
+  const prev = list.previousElementSibling as HTMLElement | null;
+  if (!prev) return false;
+  const name = prev.tagName?.toLowerCase();
+  if (!name || !/^h[1-6]$/.test(name)) return false;
+  const t = (prev.textContent || '').trim().toLowerCase();
+  return t.includes('table of contents') || t.includes('目录') || t.includes('toc');
+}
+
 // 绑定图片和链接事件
 function bindImageEvents(): void {
   if (!editorRef.value) return;
@@ -1093,10 +1182,25 @@ function bindImageEvents(): void {
       if (href.startsWith('#')) {
         e.preventDefault();
         const headingId = href.substring(1);
-        emit('toc-click', headingId);
-        scrollToHeading(headingId);
+        const inToc = isTocAnchor(anchor);
+        // TOC 内：单击即跳；正文内：需要 Ctrl/Cmd+Click，避免选择文本时误触导航
+        if (inToc || e.metaKey || e.ctrlKey) {
+          emit('toc-click', headingId);
+          scrollToHeading(headingId);
+        }
         return;
       }
+
+      // 外部链接：避免 webview 内导航；仅在 Ctrl/Cmd+Click 时打开
+      e.preventDefault();
+      const normalized = normalizeUrl(href);
+      if (!normalized || !isSafeExternalHttpUrl(normalized)) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        emit('open-external-link', normalized);
+      }
+      return;
     }
     
     if (target.tagName === 'IMG') {
@@ -1612,11 +1716,37 @@ function pastePlainAtSelection(text: string): void {
   }
 }
 
+function getSelectedPlainText(): string {
+  if (!editor) return '';
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { from, to } = view.state.selection;
+    return view.state.doc.textBetween(from, to, '\n');
+  } catch {
+    return '';
+  }
+}
+
+/** 将选区替换为纯文本（不经 Markdown 解析） */
+function replacePlainSelection(text: string): void {
+  if (!editor) return;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { from, to } = view.state.selection;
+    const tr = view.state.tr.deleteRange(from, to).insertText(text ?? '', from);
+    view.dispatch(tr.scrollIntoView());
+  } catch (e) {
+    console.warn('[MilkdownEditor] replacePlainSelection failed:', e);
+  }
+}
+
 defineExpose({
   applyFormat,
   insertNode,
   insertMarkdown,
   pastePlainAtSelection,
+  getSelectedPlainText,
+  replacePlainSelection,
   focus,
   getContent,
   setContent,
