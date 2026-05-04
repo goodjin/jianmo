@@ -1,5 +1,5 @@
 <template>
-  <div class="toolbar">
+  <div class="toolbar" role="toolbar" aria-label="Markly 格式与插入工具栏">
     <!-- 模式切换 -->
     <div
       class="toolbar-group mode-switch"

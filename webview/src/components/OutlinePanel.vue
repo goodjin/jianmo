@@ -1,5 +1,10 @@
 <template>
-  <div class="outline-panel" v-if="outline.length > 0">
+  <div
+    v-if="outline.length > 0"
+    class="outline-panel"
+    role="region"
+    aria-label="文档大纲"
+  >
     <div class="outline-header">
       <span class="outline-title">大纲</span>
     </div>

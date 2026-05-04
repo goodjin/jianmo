@@ -183,5 +183,39 @@ describe('useFindReplace', () => {
 
       expect(view.dispatch).toHaveBeenCalled();
     });
+
+    it('replace 允许替换为空串以删除当前匹配（M₃₉）', async () => {
+      const view = createMockView('axa');
+      const { findText, replaceText, replace } = useFindReplace({ editorView: ref(view as any) });
+
+      findText.value = 'x';
+      replaceText.value = '';
+      await nextTick();
+
+      replace();
+
+      expect(view.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          changes: { from: 1, to: 2, insert: '' },
+        })
+      );
+    });
+
+    it('replaceAll 后清空匹配列表（M₃₉）', async () => {
+      const view = createMockView('aa');
+      const { findText, replaceText, replaceAll, matches, totalMatches } = useFindReplace({
+        editorView: ref(view as any),
+      });
+
+      findText.value = 'a';
+      replaceText.value = 'b';
+      await nextTick();
+      expect(totalMatches.value).toBeGreaterThan(0);
+
+      replaceAll();
+
+      expect(matches.value).toEqual([]);
+      expect(totalMatches.value).toBe(0);
+    });
   });
 });

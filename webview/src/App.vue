@@ -1,5 +1,5 @@
 <template>
-  <div class="md-editor-app" :class="appClasses">
+  <div class="md-editor-app" :class="appClasses" role="application" aria-label="Markly Markdown 编辑器">
     <Toolbar
       v-if="editorReady"
       :mode="currentMode"
@@ -581,8 +581,12 @@ function insertUploadedImageMarkdown(markdown: string): void {
 const imageHandler = useImageHandler({
   editorView: editor.view,
   insertMarkdown: insertUploadedImageMarkdown,
+  compressThreshold: () => Number(config.value?.image?.compressThreshold) || 512000,
   onSaved: () => showToast('图片已保存并插入。'),
   onError: (err) => showToast(`图片保存失败：${err.message}。请重新粘贴或拖入图片重试。`, 4200),
+  onCompressingStart: () => showToast('正在压缩大图（超过工作区压缩阈值）…', 3200),
+  onHeavyImageWarning: ({ mb, maxFileSizeMb }) =>
+    showToast(`当前图片约 ${mb.toFixed(1)}MB，接近上限 ${maxFileSizeMb}MB，保存可能稍慢。`, 3800),
 });
 
 function handleImagePaste(event: ClipboardEvent): void {
@@ -1495,12 +1499,15 @@ function handleInsert(type: string) {
 }
 
 function queueRichFocus(): void {
-  queueMicrotask(() => {
-    try {
-      milkdownRef.value?.focus?.();
-    } catch {
-      // Focus restoration must not break editing commands.
-    }
+  // 双 rAF：等 ProseMirror 布局/选区更新后再聚焦，减少工具栏与查找操作后焦点丢失（M₇）
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      try {
+        milkdownRef.value?.focus?.();
+      } catch {
+        // Focus restoration must not break editing commands.
+      }
+    });
   });
 }
 
@@ -1751,6 +1758,7 @@ function activateFindMatch(m: { from: number; to: number }): void {
       milkdownRef.value?.selectPlainTextOccurrence?.(needle, ord);
     }
     richFindAnchor.value = m.to;
+    queueRichFocus();
   } else {
     dispatchFindSelection(m);
   }
@@ -2219,6 +2227,15 @@ function buildDiagnosticsPayload() {
         doc: {
           chars: charCount.value,
           lines: lineCount.value,
+          /** M₈：体量档位（仅诊断，不改变编辑行为） */
+          docBaselineTier: (() => {
+            const n = charCount.value;
+            if (n < 5000) return 'xs';
+            if (n < 50_000) return 's';
+            if (n < 200_000) return 'm';
+            if (n < 500_000) return 'l';
+            return 'xl';
+          })(),
           computedRichPerfTier: computedRichPerfTier.value,
           richPerfEffectiveTier: richPerfEffectiveTier.value,
           lastSlowFindRecomputeMs: lastSlowFindRecomputeMs.value,
@@ -2337,6 +2354,8 @@ function handleGlobalContextMenu(e: MouseEvent) {
 }
 
 let outlineSpyRaf = 0;
+/** M₃₅：滚动事件节流，避免大文档滚动时高频 query DOM */
+let outlineSpyThrottleTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleOutlineHeadingRefresh(): void {
   if (!showOutline.value || !editorReady.value) return;
@@ -2374,7 +2393,11 @@ function refreshOutlineSpyCm(): void {
 }
 
 function onDocumentScrollOutlineSpy(): void {
-  scheduleOutlineHeadingRefresh();
+  if (outlineSpyThrottleTimer != null) return;
+  outlineSpyThrottleTimer = setTimeout(() => {
+    outlineSpyThrottleTimer = null;
+    scheduleOutlineHeadingRefresh();
+  }, 120);
 }
 
 function handleOutlineJump(pos: number, headingId: string) {
@@ -2567,6 +2590,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (outlineSpyThrottleTimer != null) {
+    clearTimeout(outlineSpyThrottleTimer);
+    outlineSpyThrottleTimer = null;
+  }
   window.removeEventListener('message', handleMessage);
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('pointerdown', handleWindowPointerDownCapture, true);

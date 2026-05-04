@@ -21,3 +21,4 @@
 - 本机/CI 可重复门禁：`npm run gates:stable`（见根目录 `README.md` → Testing）。
 - ExTester UI 测（`npm run test:vscode:ui`）保留为**需桌面**的扩展链路，不作为无头 CI 硬门禁。
 - M46-4（失败自动打包 webview 控制台）：暂缓，仍以本地 DevTools / ExTester 日志为主。
+- M₂₄ 表格 UI 稳定集：`e2e/ui-suite/markly-ui.test.js` 中 Rich 表格 Tab/TSV/行插入等用例可作为扩展回归入口（需本机 ExTester）。

@@ -1,8 +1,13 @@
 <template>
-  <div class="find-replace-panel" v-if="visible">
+  <div
+    v-if="visible"
+    class="find-replace-panel"
+    role="search"
+    aria-label="查找和替换"
+  >
     <div class="panel-header">
       <span class="panel-title">查找和替换</span>
-      <button class="close-btn" type="button" @click="close">×</button>
+      <button class="close-btn" type="button" aria-label="关闭查找和替换" @click="close">×</button>
     </div>
 
     <div class="panel-body">

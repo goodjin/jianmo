@@ -2,7 +2,9 @@
   <button
     class="toolbar-btn"
     :class="{ active }"
+    type="button"
     :title="title"
+    :aria-label="title"
     :disabled="disabled"
     @click="$emit('click')"
   >

@@ -1,5 +1,7 @@
 # Markly Product Roadmap 2026
 
+> **依赖有序的 50 项总览**（M₁–M₅₀：前序不依赖后序）：见 [`docs/milestones-M01-M50.md`](./milestones-M01-M50.md)。发版记录见根目录 [`CHANGELOG.md`](../CHANGELOG.md)。
+
 ## 结论
 
 Markly 后续产品路线以 **Rich 作为主编辑体验**。Source 保留为源码编辑和可靠兜底；IR 不再作为主路线继续投入。

@@ -76,6 +76,7 @@ describe('M41 large doc find predictability', () => {
     const pkg = vm.buildDiagnosticsPayload();
     expect((pkg as any).text).toContain('"find"');
     expect((pkg as any).text).toContain('"uiMaxMatches"');
+    expect((pkg as any).text).toContain('"docBaselineTier"');
   });
 });
 

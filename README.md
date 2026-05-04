@@ -74,6 +74,8 @@ Search `markly` in VSCode settings:
 | `markly.editor.theme` | Editor theme (`auto`, `light`, `dark`) | `auto` |
 | `markly.editor.fontSize` | Font size | `14` |
 | `markly.editor.defaultForMarkdown` | Use Markly as default Markdown editor | `true` |
+| `markly.editor.enableShiki` | 代码块 Shiki 高亮；大文档高档位不加载；Rich 创建失败会自动降级无 Shiki | `false` |
+| `markly.editor.enableMermaid` | Mermaid 图表（Rich） | `true` |
 | `markly.export.pdf.format` | PDF page format | `A4` |
 | `markly.export.pdf.margin` | PDF margins (mm) | 上/右/下/左各默认约 25/20/25/20 |
 | `markly.export.pdf.includeToc` | PDF 是否含目录 | `true` |
@@ -92,7 +94,11 @@ npm run build
 npm run gates:stable
 ```
 
-`gates:stable` 为 **lint + 单测 + 构建 + 包体检查**，可在无桌面环境的 CI 中作为门禁。`npm run test:vscode:ui`（ExTester）依赖本机 UI 与 ChromeDriver，适合发布前手测，**不要**在无显示器的 CI 里当作必失败项；说明见 `docs/m46-stable-gates-plan.md`。
+`gates:stable` 为 **lint + 单测 + 构建 + 包体检查**，可在无桌面环境的 CI 中作为门禁。`npm run test:vscode:ui`（ExTester）依赖本机 UI 与 ChromeDriver，适合发布前手测，**不要**在无显示器的 CI 里当作必失败项；说明见 `docs/m46-stable-gates-plan.md`。表格等 Rich 关键路径亦见 `e2e/ui-suite/markly-ui.test.js`。
+
+## Release（M₅₀）
+
+发版前请更新根目录 **`CHANGELOG.md`**（[Keep a Changelog](https://keepachangelog.com/)），并执行 `npm run check:release`（若已配置）与 `npm run gates:stable`。根与 `webview/package.json` 的 **version** 须一致（SemVer）。
 
 ## License
 

@@ -27,10 +27,14 @@ export interface UseImageHandlerOptions {
   insertMarkdown?: (markdown: string) => void;
   onSaved?: (payload: { path: string; filename: string }) => void;
   onError?: (error: Error) => void;
+  /** 超过阈值将走 canvas 压缩；开始压缩前回调（M₃₀ 可感知） */
+  onCompressingStart?: () => void;
+  /** 接近 maxFileSize 上限时提示（M₃₁ 大文件） */
+  onHeavyImageWarning?: (info: { mb: number; maxFileSizeMb: number }) => void;
   maxWidth?: number;
   maxHeight?: number;
   quality?: number;
-  compressThreshold?: number;
+  compressThreshold?: number | (() => number);
   maxFileSize?: number;
 }
 
@@ -62,6 +66,8 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     insertMarkdown,
     onSaved,
     onError,
+    onCompressingStart,
+    onHeavyImageWarning,
   } = options;
 
   const { postMessage, onMessage } = useVSCode();
@@ -140,6 +146,12 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     if (fileSizeMB > maxFileSize) {
       throw new Error(`图片大小超过限制 (${maxFileSize}MB)`);
     }
+    if (fileSizeMB >= maxFileSize * 0.65) {
+      onHeavyImageWarning?.({ mb: fileSizeMB, maxFileSizeMb: maxFileSize });
+    }
+
+    const compressThresholdBytes =
+      typeof compressThreshold === 'function' ? compressThreshold() : compressThreshold;
 
     isProcessing.value = true;
     progress.value = 10;
@@ -149,7 +161,8 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
       let dataUrl = await readFileAsDataURL(file);
       progress.value = 30;
 
-      if (file.size > compressThreshold) {
+      if (file.size > compressThresholdBytes) {
+        onCompressingStart?.();
         dataUrl = await compressImage(dataUrl);
       }
       progress.value = 60;

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionMessage, PdfConfig, RichTableCommandValue } from '@types';
+import { formatExportFailure } from '@core/export/exportErrors';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
 import { toMarkdownImageRelativePath } from '@extension/provider/imagePaths';
@@ -185,10 +186,7 @@ export function registerCommands(
             }
           } catch (error) {
             console.error('[PDF Export] Error:', error);
-            vscode.window.showErrorMessage(
-              `PDF 导出失败: ${error instanceof Error ? error.message : String(error)}`,
-              '查看日志'
-            ).then(selection => {
+            vscode.window.showErrorMessage(formatExportFailure('pdf', error), '查看日志').then((selection) => {
               if (selection === '查看日志') {
                 vscode.commands.executeCommand('workbench.action.toggleDevTools');
               }
@@ -243,7 +241,7 @@ export function registerCommands(
             });
             vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
-            vscode.window.showErrorMessage(`导出失败: ${error instanceof Error ? error.message : String(error)}`);
+            vscode.window.showErrorMessage(formatExportFailure('html', error));
           }
         }
       );

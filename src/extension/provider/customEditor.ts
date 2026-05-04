@@ -4,6 +4,7 @@ import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
+import { formatExportFailure } from '@core/export/exportErrors';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
 import {
@@ -464,9 +465,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
 
       vscode.window.showWarningMessage(`暂不支持导出 ${payload.format}`);
     } catch (error) {
-      vscode.window.showErrorMessage(
-        `导出 ${String(payload.format).toUpperCase()} 失败: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const fmt = String(payload.format);
+      const msg =
+        fmt === 'pdf' || fmt === 'html' ? formatExportFailure(fmt, error) : `导出 ${fmt.toUpperCase()} 失败: ${error instanceof Error ? error.message : String(error)}`;
+      vscode.window.showErrorMessage(msg);
     }
   }
 

@@ -24,6 +24,14 @@ const MilkdownEditorStub = {
   },
 };
 
+async function flushDoubleRaf(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 describe('EDITOR_COMMAND message handling', () => {
   beforeEach(() => {
     milkdownCalls.insertNode.mockReset();
@@ -100,6 +108,7 @@ describe('EDITOR_COMMAND message handling', () => {
     );
     await wrapper.vm.$nextTick();
     await Promise.resolve();
+    await flushDoubleRaf();
 
     expect(milkdownCalls.insertNode).toHaveBeenCalledWith('codeBlock');
     expect(milkdownCalls.focus).toHaveBeenCalled();
@@ -129,6 +138,7 @@ describe('EDITOR_COMMAND message handling', () => {
     );
     await wrapper.vm.$nextTick();
     await Promise.resolve();
+    await flushDoubleRaf();
 
     expect(milkdownCalls.runRichTableOp).toHaveBeenCalledWith('addColAfter');
     expect(milkdownCalls.focus).toHaveBeenCalled();
@@ -194,6 +204,7 @@ describe('EDITOR_COMMAND message handling', () => {
     );
     await flushPromises();
     await wrapper.vm.$nextTick();
+    await flushDoubleRaf();
 
     expect((globalThis as any).navigator.clipboard.readText).toHaveBeenCalled();
     expect(milkdownCalls.pastePlainAtSelection).toHaveBeenCalledWith('clip-plain');

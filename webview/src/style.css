@@ -49,6 +49,15 @@ body {
   word-break: break-word;
 }
 
+/* M₂₂：大表格在编辑区内滚动，减轻整页被宽表/长表拖死 */
+.milkdown-editor table {
+  display: block;
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
 /* VSCode CSS Variables */
 :root {
   --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;

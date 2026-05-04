@@ -181,6 +181,65 @@ describe('useImageHandler', () => {
     });
   });
 
+  it('超过压缩阈值时调用 onCompressingStart 再走压缩与上传（M₃₀）', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(999);
+    const onCompressingStart = vi.fn();
+    vi.stubGlobal(
+      'FileReader',
+      class {
+        result = 'data:image/png;base64,abc';
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        readAsDataURL() {
+          this.onload?.();
+        }
+      }
+    );
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn().mockReturnValue({ drawImage: vi.fn() }),
+      toDataURL: vi.fn().mockReturnValue('data:image/jpeg;base64,smaller'),
+    };
+    vi.stubGlobal('document', {
+      ...document,
+      createElement: vi.fn().mockReturnValue(mockCanvas),
+    });
+    const mockImg: any = {
+      width: 10,
+      height: 10,
+      set src(_val: string) {
+        queueMicrotask(() => this.onload?.());
+      },
+      onload: null as (() => void) | null,
+      onerror: null,
+    };
+    vi.stubGlobal('Image', vi.fn(() => mockImg));
+
+    const insertMarkdown = vi.fn();
+    const { handlePaste } = useImageHandler({
+      editorView: ref(null),
+      insertMarkdown,
+      compressThreshold: 4,
+      onCompressingStart,
+    });
+    const file = new File([new Uint8Array(10)], 'big.png', { type: 'image/png' });
+    const event = {
+      clipboardData: { items: [{ type: 'image/png', getAsFile: () => file }] },
+      preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent;
+
+    const pending = handlePaste(event);
+    await vi.waitFor(() => expect(onCompressingStart).toHaveBeenCalled());
+    await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+    vscodeMock.listeners[0]?.({
+      type: 'IMAGE_SAVED',
+      payload: { filename: 'image-999.png', path: 'assets/image-999.png' },
+    });
+    await pending;
+    expect(insertMarkdown).toHaveBeenCalled();
+  });
+
   describe('compressImage', () => {
     it('应该调用 canvas API 进行压缩', async () => {
       const mockCanvas = {
