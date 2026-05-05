@@ -25,6 +25,9 @@ const gzipBytes = gzipSync(await readFile(bundle)).length;
 const rel = path.relative(root, bundle);
 
 console.log(`[bundle-check] ${rel}: size=${fmtBytes(info.size)} gzip≈${fmtBytes(gzipBytes)}`);
+console.log(
+  '[bundle-check] M96: puppeteer 为 esbuild external；mermaid/shiki 为依赖，策略见 resources/BUNDLE_GOVERNANCE.md'
+);
 
 const errors = [];
 if (info.size > MAX_BYTES) errors.push(`size ${info.size} > ${MAX_BYTES}`);

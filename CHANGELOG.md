@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-05-05
+
+### Added
+
+- **M₉₁–M₁₀₀（产品化与工程收口）**：Getting Started 引导（`walkthroughs` **Markly 快速上手**）；全部命令 **Markly** 分组；设置项补充 **`markdownDescription`**（遥测、图片目录、Mermaid/Shiki、导出预检等）；**Help: Open Recovery & Troubleshooting**（`markly.help.recoveryCenter`）与 **`resources/TROUBLESHOOTING.md`**；**`markly.telemetry.enabled`**（默认 `false`，开启后仅本地 Output 计数）；工程文档 **`resources/BUNDLE_GOVERNANCE.md`**、**`PERFORMANCE_NOTES.md`**、**`CROSS_PLATFORM.md`**；**`docs/marketplace/FAQ.md`**、**`docs/M100-2.0-GATE.md`**；宿主 bundle 检查脚本增加 M96 策略提示。`ExtensionConfig.telemetry`、契约 `isExtensionConfig`、配置校验与相关单测已更新。
+
 ## [1.38.0] - 2026-05-05
 
 ### Added

@@ -56,6 +56,8 @@ export function isEditorMode(x: unknown): x is EditorMode {
 
 export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   if (!isRecord(x)) return false;
+  const telemetry = (x as { telemetry?: unknown }).telemetry;
+  if (!isRecord(telemetry) || typeof (telemetry as { enabled?: unknown }).enabled !== 'boolean') return false;
   const editor = x.editor;
   const image = x.image;
   const exp = x.export;

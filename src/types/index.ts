@@ -124,6 +124,10 @@ export interface PdfConfig {
 }
 
 export interface ExtensionConfig {
+  /** M95：可选本地遥测开关（仅 Output；不向第三方发送） */
+  telemetry: {
+    enabled: boolean;
+  };
   editor: EditorConfig;
   image: ImageConfig;
   /** M90：自定义模板目录（工作区 `markly.templates.userDirectory`） */

@@ -3,6 +3,7 @@ import type { ExtensionConfig, ExtensionMessage, WebViewMessage } from '../index
 import { isExtensionConfig, isExtensionMessage, isWebViewMessage } from '../messageGuards';
 
 const minimalConfig: ExtensionConfig = {
+  telemetry: { enabled: false },
   editor: {
     theme: 'auto',
     fontSize: 14,
@@ -190,6 +191,12 @@ describe('messageGuards — Extension → Webview', () => {
   it('isExtensionConfig matches minimalConfig', () => {
     expect(isExtensionConfig(minimalConfig)).toBe(true);
     expect(isExtensionConfig({})).toBe(false);
+  });
+
+  it('isExtensionConfig rejects missing telemetry (M95)', () => {
+    const bad: Record<string, unknown> = { ...minimalConfig };
+    delete bad.telemetry;
+    expect(isExtensionConfig(bad)).toBe(false);
   });
 
   it('isExtensionConfig accepts M82 export.html optional fields', () => {

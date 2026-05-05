@@ -14,6 +14,7 @@ import { deepMerge, validateConfig } from '../configuration';
 import type { ExtensionConfig } from '../../types';
 
 const validConfig: ExtensionConfig = {
+  telemetry: { enabled: false },
   templates: { userDirectory: '' },
   editor: {
     theme: 'auto',
@@ -203,6 +204,13 @@ describe('validateConfig', () => {
     const result = validateConfig(cfg);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e: string) => e.includes('templates.userDirectory'))).toBe(true);
+  });
+
+  it('rejects non-boolean telemetry.enabled (M95)', () => {
+    const cfg = deepMerge(validConfig, { telemetry: { enabled: 1 as any } } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('telemetry'))).toBe(true);
   });
 
   it('rejects non-boolean export.preflight.blockOnIssues (M83)', () => {

@@ -160,6 +160,10 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     }
   }
 
+  if (typeof config.telemetry?.enabled !== 'boolean') {
+    errors.push(`telemetry.enabled 必须是 boolean，当前值: ${String((config as ExtensionConfig).telemetry?.enabled)}`);
+  }
+
   if (config.ai !== undefined && typeof config.ai.rewriteSelectionEnabled !== 'boolean') {
     errors.push(`ai.rewriteSelectionEnabled 必须是 boolean，当前值: ${String(config.ai.rewriteSelectionEnabled)}`);
   }
@@ -189,6 +193,9 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
  * 默认配置
  */
 const DEFAULT_CONFIG: ExtensionConfig = {
+  telemetry: {
+    enabled: false,
+  },
   editor: {
     theme: 'auto',
     fontSize: 14,
@@ -288,9 +295,13 @@ export class ConfigurationStore implements vscode.Disposable {
     const aiRewriteModel = vsConfig.get<string>('ai.rewrite.model', DEFAULT_CONFIG.ai?.rewriteModel ?? '');
     const aiRewriteTimeoutMs = vsConfig.get<number>('ai.rewrite.timeoutMs', DEFAULT_CONFIG.ai?.rewriteTimeoutMs ?? 15000);
     const templatesUserDirectory = String(vsConfig.get<string>('templates.userDirectory', '') ?? '').trim();
+    const telemetryEnabled = vsConfig.get<boolean>('telemetry.enabled', false);
 
     // 构建用户配置对象（处理更深层的嵌套）
     const userConfig: Partial<ExtensionConfig> = {
+      telemetry: {
+        enabled: telemetryEnabled,
+      },
       templates: {
         userDirectory: templatesUserDirectory,
       },

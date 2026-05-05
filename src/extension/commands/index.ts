@@ -18,6 +18,8 @@ import {
   expandUserTemplateDirectoryInput,
   listMarkdownTemplatesInUserDirectory,
 } from '@extension/templates/userTemplateDirectory';
+import { openRecoveryCenter } from '@extension/help/openRecoveryCenter';
+import { recordMarklyEvent } from '@extension/telemetry/localTelemetry';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
@@ -200,6 +202,7 @@ export function registerCommands(
             if (fs.existsSync(saveUri.fsPath)) {
               const stats = fs.statSync(saveUri.fsPath);
               console.log('[PDF Export] Success! File size:', stats.size, 'bytes');
+              recordMarklyEvent('export.pdf.ok', { kb: String(Math.round(stats.size / 1024)) });
               vscode.window.showInformationMessage(
                 `PDF 导出成功! (${(stats.size / 1024).toFixed(1)} KB)`,
                 '打开文件'
@@ -583,6 +586,10 @@ export function registerCommands(
     }
   });
 
+  const recoveryCenterCmd = vscode.commands.registerCommand('markly.help.recoveryCenter', async () => {
+    await openRecoveryCenter(context);
+  });
+
   context.subscriptions.push(
     toggleModeCmd,
     exportPdfCmd,
@@ -614,6 +621,7 @@ export function registerCommands(
     aiClearApiKeyCmd,
     aiOpenPrivacyNoticeCmd,
     copyExportFailureDiagnosticsCmd,
-    newFromTemplateCmd
+    newFromTemplateCmd,
+    recoveryCenterCmd
   );
 }

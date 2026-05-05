@@ -10,6 +10,7 @@ import { withSetup } from '../../utils/testUtils';
 import type { ExtensionMessage, ExtensionConfig, WebViewMessage } from '@types';
 
 const minimalConfig: ExtensionConfig = {
+  telemetry: { enabled: false },
   editor: {
     theme: 'auto',
     fontSize: 14,

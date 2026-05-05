@@ -78,16 +78,16 @@
 
 | 编号 | 里程碑 | 验收要点 | 状态 |
 |------|--------|----------|------|
-| M₉₁ | 首次使用引导 | Rich/Source/导出/快捷键 | □ |
-| M₉₂ | Command Palette 分组 | `markly.*` 可发现性 | □ |
-| M₉₃ | 设置页说明优化 | 常见项有示例 | □ |
-| M₉₄ | 错误自救中心 | 集中入口修复 Rich/导出/资产 | □ |
-| M₉₅ | 可选匿名遥测 | 默认关闭；隐私说明 | □ |
-| M₉₆ | 包体治理二期 | Puppeteer/Shiki/Mermaid 策略 | □ |
-| M₉₇ | 启动性能专项 | 首次打开 Markdown | □ |
-| M₉₈ | 跨平台一致性 | Win/Linux/macOS | □ |
-| M₉₉ | Marketplace 素材 | 截图/动图/FAQ | □ |
-| M₁₀₀ | 2.0 评审门禁 | M₅₁–M₉₉ 收口复盘；是否 semver major | □ |
+| M₉₁ | 首次使用引导 | Rich/Source/导出/快捷键 | ✅ `contributes.walkthroughs`（`markly.welcome`）；激活事件 `onWalkthrough:markly.welcome` |
+| M₉₂ | Command Palette 分组 | `markly.*` 可发现性 | ✅ 全部命令 `category: Markly`（`package.json`） |
+| M₉₃ | 设置页说明优化 | 常见项有示例 | ✅ `markdownDescription`：`telemetry`、`image.saveDirectory`、`enableMermaid/Shiki`、`preflight.*` 等 |
+| M₉₄ | 错误自救中心 | 集中入口修复 Rich/导出/资产 | ✅ `markly.help.recoveryCenter`；`resources/TROUBLESHOOTING.md` |
+| M₉₅ | 可选匿名遥测 | 默认关闭；隐私说明 | ✅ `markly.telemetry.enabled`（默认 false）；本地 Output「Markly Telemetry (local)」；配置说明 |
+| M₉₆ | 包体治理二期 | Puppeteer/Shiki/Mermaid 策略 | ✅ `resources/BUNDLE_GOVERNANCE.md`；`check_extension_bundle.mjs` 日志提示 |
+| M₉₇ | 启动性能专项 | 首次打开 Markdown | ✅ `resources/PERFORMANCE_NOTES.md` |
+| M₉₈ | 跨平台一致性 | Win/Linux/macOS | ✅ `resources/CROSS_PLATFORM.md` |
+| M₉₉ | Marketplace 素材 | 截图/动图/FAQ | ✅ `docs/marketplace/FAQ.md`（清单 + 截图/动图占位说明） |
+| M₁₀₀ | 2.0 评审门禁 | M₅₁–M₉₉ 收口复盘；是否 semver major | ✅ `docs/M100-2.0-GATE.md` |
 
 ---
 

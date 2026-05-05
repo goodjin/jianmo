@@ -7,6 +7,7 @@ import { registerCommands, getWebview } from './commands';
 import type { ExtensionMessage } from '@types';
 import { buildRenameImageRefReplacements } from './image/renameImageRefs';
 import { validateAiRewriteSetup } from './ai/validateAiRewriteConfig';
+import { recordMarklyEvent } from './telemetry/localTelemetry';
 
 let modeController: ModeController | undefined;
 let documentStore: DocumentStore | undefined;
@@ -76,6 +77,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // 注册命令
   registerCommands(context, modeController, documentStore);
+
+  recordMarklyEvent('extension.activate');
 
   // M71：AI 配置校验命令（避免用户改 settings 后不知为何失败）
   context.subscriptions.push(

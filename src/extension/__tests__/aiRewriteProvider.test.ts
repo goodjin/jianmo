@@ -35,6 +35,7 @@ describe('redactAssistErrorSnippet', () => {
 describe('rewriteSelectionViaProvider', () => {
   it('returns error when feature disabled', async () => {
     const cfg: ExtensionConfig = {
+      telemetry: { enabled: false },
       editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
       image: {
         saveDirectory: './assets',
@@ -51,6 +52,7 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('mock provider rewrites deterministically', async () => {
     const cfg: ExtensionConfig = {
+      telemetry: { enabled: false },
       editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
       image: {
         saveDirectory: './assets',
@@ -68,6 +70,7 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('provider none returns error', async () => {
     const cfg: ExtensionConfig = {
+      telemetry: { enabled: false },
       editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
       image: {
         saveDirectory: './assets',
@@ -85,6 +88,7 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('openai-compatible errors when api key missing', async () => {
     const cfg: ExtensionConfig = {
+      telemetry: { enabled: false },
       editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
       image: {
         saveDirectory: './assets',
@@ -117,6 +121,7 @@ describe('rewriteSelectionViaProvider', () => {
     vi.stubGlobal('fetch', fetchMock as any);
     try {
       const cfg: ExtensionConfig = {
+        telemetry: { enabled: false },
         editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
         image: {
         saveDirectory: './assets',

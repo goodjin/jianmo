@@ -52,6 +52,7 @@ describe('M72 rewrite selection diff preview', () => {
     vm.currentMode = 'source';
     vm.content = 'hello world';
     vm.config = {
+      telemetry: { enabled: false },
       editor: {
         theme: 'auto',
         fontSize: 14,
