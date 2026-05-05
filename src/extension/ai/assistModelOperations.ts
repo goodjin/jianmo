@@ -231,5 +231,24 @@ export function createAssistModelOperations(
   if (!snap.enabled) return disabledOps();
   if (snap.provider === 'none') return noneOps();
   if (snap.provider === 'mock') return mockOps;
-  return new OpenAiCompatAssistModelOperations(snap, deps);
+  // M169：避免误触并发狂发请求（最小防护：同一时刻只允许 1 个 in-flight 请求）
+  const inner = new OpenAiCompatAssistModelOperations(snap, deps);
+  let inFlight = 0;
+  const guard = async <T>(fn: () => Promise<AssistResult<T>>): Promise<AssistResult<T>> => {
+    if (inFlight >= 1) {
+      return { ok: false, error: 'AI 请求过于频繁：请等待上一条请求完成。' };
+    }
+    inFlight++;
+    try {
+      return await fn();
+    } finally {
+      inFlight = Math.max(0, inFlight - 1);
+    }
+  };
+  return {
+    rewriteSelection: (t) => guard(() => inner.rewriteSelection(t)),
+    summarize: (i) => guard(() => inner.summarize(i)),
+    suggestTitles: (t) => guard(() => inner.suggestTitles(t)),
+    convertTextToGfmTable: (t) => guard(() => inner.convertTextToGfmTable(t)),
+  };
 }

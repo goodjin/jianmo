@@ -1,0 +1,4 @@
+{
+  "decoratorTsCount": 16,
+  "note": "Count of *.ts files directly under webview/src/core/decorators (excludes __tests__). Bump only when IR-freeze reviewer approves decorator module add/remove."
+}

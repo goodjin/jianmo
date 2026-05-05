@@ -34,10 +34,30 @@ if (!rootPkg.engines || typeof rootPkg.engines.vscode !== 'string' || !rootPkg.e
   errors.push('package.json engines.vscode is required');
 }
 
+/** 根目录常累积历史 vsix；仅在显式发版校验时要求文件名与当前 version 一致 */
 const expectedVsix = `${rootPkg.name}-${rootPkg.version}.vsix`;
 const vsixFiles = fs.readdirSync(root).filter((name) => name.endsWith('.vsix'));
-if (vsixFiles.length > 0 && !vsixFiles.includes(expectedVsix)) {
-  errors.push(`expected ${expectedVsix} when VSIX files exist; found ${vsixFiles.join(', ')}`);
+if (
+  process.env.MARKLY_CHECK_VSIX === '1' &&
+  vsixFiles.length > 0 &&
+  !vsixFiles.includes(expectedVsix)
+) {
+  errors.push(`expected ${expectedVsix} when MARKLY_CHECK_VSIX=1; found ${vsixFiles.join(', ')}`);
+}
+
+/** M₅₀：当前版本必须在 CHANGELOG 中有对应二级标题（便于发版可追溯） */
+const changelogPath = path.join(root, 'CHANGELOG.md');
+if (fs.existsSync(changelogPath)) {
+  const changelog = fs.readFileSync(changelogPath, 'utf-8');
+  const escaped = rootPkg.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const hdr = new RegExp(`^##\\s*\\[${escaped}\\]`, 'm');
+  if (!hdr.test(changelog)) {
+    errors.push(
+      `CHANGELOG.md must contain heading "## [${rootPkg.version}]" (release notes for current package.json version)`
+    );
+  }
+} else {
+  errors.push('CHANGELOG.md is missing (required for release hygiene)');
 }
 
 if (errors.length) {

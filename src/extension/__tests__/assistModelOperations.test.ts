@@ -72,6 +72,38 @@ describe('createAssistModelOperations (M80)', () => {
     expect(String(init?.headers?.authorization)).toContain('secret');
   });
 
+  it('M169: openai-compatible rejects concurrent requests (rate guard)', async () => {
+    let resolveFetch: (() => void) | null = null;
+    const fetchFn = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = () =>
+            resolve({
+              ok: true,
+              json: async () => ({ choices: [{ message: { content: 'DONE' } }] }),
+            });
+        })
+    );
+    const ops = createAssistModelOperations(
+      snap({
+        provider: 'openai-compatible',
+        endpoint: 'https://example.com/v1/chat/completions',
+      }),
+      { getBearerToken: async () => 'secret', fetchFn: fetchFn as any }
+    );
+
+    const p1 = ops.rewriteSelection('x');
+    const p2 = ops.rewriteSelection('y');
+    const r2 = await p2;
+    expect(r2.ok).toBe(false);
+    if (r2.ok) throw new Error('expected fail');
+    expect(r2.error).toContain('过于频繁');
+
+    resolveFetch?.();
+    const r1 = await p1;
+    expect(r1.ok).toBe(true);
+  });
+
   it('mock table fails on non-delimited input with stable message', async () => {
     const ops = createAssistModelOperations(snap(), { getBearerToken: async () => undefined });
     const r = await ops.convertTextToGfmTable('not a table');

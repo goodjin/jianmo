@@ -7,7 +7,9 @@ import {
   buildMermaidExportBootstrapScript,
   getMermaidExportDocumentCss,
   transformMermaidFencesForExport,
+  type MermaidScriptBundling,
 } from './mermaidExport';
+import { buildDiagramTocAnchors } from './mermaidFenceUtils';
 
 export interface HtmlExportOptions {
   includeToc?: boolean;
@@ -22,6 +24,10 @@ export interface HtmlExportOptions {
   documentBaseDir?: string;
   /** 输出目录下的资产子目录名（单层）；非法值会回退为 `markly-html-assets` */
   assetsSubdirectory?: string;
+  /** M40：embedded=内联 mermaid.min.js（默认）；external=CDN（HTML 更小，需联网） */
+  mermaidScriptBundling?: MermaidScriptBundling;
+  /** M156：导出取消（由上层传入） */
+  abortSignal?: AbortSignal;
 }
 
 const defaultOptions: HtmlExportOptions = {
@@ -67,9 +73,15 @@ export async function exportToHtml(
   outputPath: string,
   options: HtmlExportOptions = {}
 ): Promise<void> {
+  if (options.abortSignal?.aborted) {
+    throw new Error('Export cancelled');
+  }
   const opts = { ...defaultOptions, ...options };
 
   let fullHtml = await buildExportHtmlString(markdownContent, opts);
+  if (options.abortSignal?.aborted) {
+    throw new Error('Export cancelled');
+  }
 
   if (opts.copyLocalImages && opts.documentBaseDir) {
     const docDir = path.resolve(opts.documentBaseDir);
@@ -102,13 +114,17 @@ export function generateToc(markdown: string): string {
     }
   }
 
-  if (headings.length === 0) return '';
+  const diagrams = buildDiagramTocAnchors(markdown);
+  if (headings.length === 0 && diagrams.length === 0) return '';
 
   let tocHtml = '<nav class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
     // 使用 escapeHtml 防止 XSS
     tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
+  }
+  for (const d of diagrams) {
+    tocHtml += `<li class="toc-diagram"><a href="#${d.anchor}">${escapeHtml(d.label)}</a></li>`;
   }
   tocHtml += '</ul></nav>';
 
@@ -134,7 +150,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     return `<h${level} id="${anchor}"${attrs}>${escapeHtml(text)}</h${level}>`;
   });
 
-  return transformMermaidFencesForExport(withAnchors);
+  return transformMermaidFencesForExport(withAnchors, markdown);
 }
 
 export function renderMarkdownMath(markdown: string): string {
@@ -501,6 +517,27 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
         page-break-inside: avoid;
         break-inside: avoid;
       }
+
+      /* M32：分页时尽量重复表头（依赖 UA 对 thead 的表格头组语义） */
+      thead {
+        display: table-header-group;
+      }
+
+      tfoot {
+        display: table-footer-group;
+      }
+
+      table {
+        page-break-inside: auto;
+        break-inside: auto;
+      }
+
+      tr,
+      th,
+      td {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
     }
   </style>
 </head>
@@ -509,7 +546,9 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
   <div class="content">
     ${content}
   </div>
-${buildMermaidExportBootstrapScript(opts.darkMode ? 'dark' : 'default')}
+${buildMermaidExportBootstrapScript(opts.darkMode ? 'dark' : 'default', {
+    bundling: opts.mermaidScriptBundling ?? 'embedded',
+  })}
 </body>
 </html>`;
 }

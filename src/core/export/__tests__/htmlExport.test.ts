@@ -49,8 +49,16 @@ describe('escapeHtml', () => {
 });
 
 describe('generateToc', () => {
-  it('returns empty string for markdown without headings', () => {
+  it('returns empty string for markdown without headings or diagrams', () => {
     expect(generateToc('Hello\nWorld')).toBe('');
+  });
+
+  it('M42: includes diagram anchors when headings absent', () => {
+    const md = ['```mermaid', '%% alt: Flow', 'graph TD;A-->B', '```'].join('\n');
+    const toc = generateToc(md);
+    expect(toc).toContain('href="#markly-diagram-1"');
+    expect(toc).toContain('toc-diagram');
+    expect(toc).toContain('Flow');
   });
 
   it('generates TOC for single heading', () => {
@@ -155,6 +163,15 @@ describe('buildHtmlDocument', () => {
     expect(html).toMatch(/body\.markly-export-print-friendly pre[\s\S]*?tab-size: 4/);
   });
 
+  it('M32: print CSS requests repeating table header group semantics', () => {
+    const html = buildHtmlDocument('<p>x</p>', '', defaultOpts);
+    const printIdx = html.indexOf('@media print');
+    expect(printIdx).toBeGreaterThan(-1);
+    const printBlock = html.slice(printIdx, printIdx + 1800);
+    expect(printBlock).toContain('thead');
+    expect(printBlock).toContain('table-header-group');
+  });
+
   it('M85: HTML document embeds mermaid CSS and bootstrap', () => {
     const html = buildHtmlDocument('<div class="mermaid markly-mermaid-await">x</div>', '', defaultOpts);
     expect(html).toContain('.markly-mermaid-await');
@@ -192,6 +209,28 @@ describe('markdownToHtml export rendering', () => {
     expect(html).toContain('<code class="language-ts">');
     expect(html).toContain('type="checkbox"');
     expect(html).toContain('<img src="assets/a.png" alt="Alt">');
+  });
+
+  it('M31: GFM table cell may contain inline math (KaTeX) after markdownToHtml', async () => {
+    const md = ['| 量 | 表达式 |', '| --- | --- |', '| 质能 | $E=mc^2$ |'].join('\n');
+    const html = await markdownToHtml(md);
+    expect(html).toContain('<table>');
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('E=mc');
+  });
+
+  it('M29：长管道表导出含 thead/tbody 且行数可观', async () => {
+    const rows = ['| H1 | H2 |', '| -- | -- |'];
+    for (let i = 0; i < 25; i++) {
+      rows.push(`| c${i}1 | c${i}2 |`);
+    }
+    const html = await markdownToHtml(rows.join('\n'));
+    expect(html).toContain('<thead>');
+    expect(html).toContain('<tbody>');
+    const trCount = (html.match(/<tr\b/g) ?? []).length;
+    expect(trCount).toBeGreaterThanOrEqual(26);
+    expect(html).toContain('c241');
+    expect(html).toContain('<th>H1</th>');
   });
 
   it('renders inline and block math with KaTeX output', async () => {

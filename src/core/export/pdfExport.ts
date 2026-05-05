@@ -9,7 +9,9 @@ import {
   getMermaidExportDocumentCss,
   transformMermaidFencesForExport,
   type ExportMermaidTheme,
+  type MermaidScriptBundling,
 } from './mermaidExport';
+import { buildDiagramTocAnchors } from './mermaidFenceUtils';
 
 export interface PdfExportOptions {
   format?: 'A4' | 'A3' | 'Letter' | 'Legal';
@@ -27,6 +29,10 @@ export interface PdfExportOptions {
   template?: PdfExportTemplateId;
   /** 用于解析导出时的相对图片路径（通常传入 markdown 文件所在目录的 file:// URL）。 */
   baseHref?: string;
+  /** M40：与 HTML 导出一致；PDF 一般用 embedded（离线渲染） */
+  mermaidScriptBundling?: MermaidScriptBundling;
+  /** M156：导出取消（由上层传入） */
+  abortSignal?: AbortSignal;
 }
 
 const defaultOptions: PdfExportOptions = {
@@ -76,6 +82,9 @@ export async function exportToPdf(
   outputPath: string,
   options: PdfExportOptions = {}
 ): Promise<void> {
+  if (options.abortSignal?.aborted) {
+    throw new Error('Export cancelled');
+  }
   const opts = { ...defaultOptions, ...options };
 
   // 注意：ExTester/VS Code UI 测试环境并不一定会为扩展安装 node_modules。
@@ -91,6 +100,7 @@ export async function exportToPdf(
   });
 
   try {
+    if (options.abortSignal?.aborted) throw new Error('Export cancelled');
     const page = await browser.newPage();
 
     // 生成 TOC
@@ -101,13 +111,19 @@ export async function exportToPdf(
 
     // 转换 Markdown 为 HTML
     const htmlContent = await markdownToPdfHtml(markdownContent);
+    if (options.abortSignal?.aborted) throw new Error('Export cancelled');
 
     // 构建完整 HTML
     const tpl: PdfExportTemplateId = opts.template ?? 'default';
-    const fullHtml = buildPdfHtmlDocument(htmlContent, tocHtml, { baseHref: opts.baseHref, template: tpl });
+    const fullHtml = buildPdfHtmlDocument(htmlContent, tocHtml, {
+      baseHref: opts.baseHref,
+      template: tpl,
+      mermaidScriptBundling: opts.mermaidScriptBundling ?? 'embedded',
+    });
 
     // 加载页面（内联 Mermaid；等待图表渲染后再打 PDF）
     await page.setContent(fullHtml, { waitUntil: 'load' });
+    if (options.abortSignal?.aborted) throw new Error('Export cancelled');
     try {
       await page.waitForFunction(
         () => {
@@ -150,12 +166,16 @@ export function generateTocPdf(markdown: string): string {
     }
   }
 
-  if (headings.length === 0) return '';
+  const diagrams = buildDiagramTocAnchors(markdown);
+  if (headings.length === 0 && diagrams.length === 0) return '';
 
   let tocHtml = '<div class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
     tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtmlPdf(h.text)}</a></li>`;
+  }
+  for (const d of diagrams) {
+    tocHtml += `<li class="toc-diagram"><a href="#${d.anchor}">${escapeHtmlPdf(d.label)}</a></li>`;
   }
   tocHtml += '</ul></div><div class="page-break"></div>';
 
@@ -178,7 +198,7 @@ export async function markdownToPdfHtml(markdown: string): Promise<string> {
     return `<h${level} id="${anchor}">${escapeHtmlPdf(text)}</h${level}>`;
   });
 
-  return transformMermaidFencesForExport(withAnchors);
+  return transformMermaidFencesForExport(withAnchors, markdown);
 }
 
 /** 统一的锚点生成函数 */
@@ -240,14 +260,21 @@ export function getPdfTemplateExtraCss(template: PdfExportTemplateId): string {
 export function buildPdfHtmlDocument(
   content: string,
   tocHtml: string,
-  opts?: { baseHref?: string; template?: PdfExportTemplateId; mermaidTheme?: ExportMermaidTheme }
+  opts?: {
+    baseHref?: string;
+    template?: PdfExportTemplateId;
+    mermaidTheme?: ExportMermaidTheme;
+    mermaidScriptBundling?: MermaidScriptBundling;
+  }
 ): string {
   const baseTag = opts?.baseHref ? `<base href="${escapeHtmlPdf(String(opts.baseHref))}">` : '';
   const template: PdfExportTemplateId = opts?.template ?? 'default';
   const bodyClass = `markly-pdf markly-pdf--${template}`;
   const extraCss = getPdfTemplateExtraCss(template);
   const mermaidTheme: ExportMermaidTheme = opts?.mermaidTheme ?? 'default';
-  const mermaidBoot = buildMermaidExportBootstrapScript(mermaidTheme);
+  const mermaidBoot = buildMermaidExportBootstrapScript(mermaidTheme, {
+    bundling: opts?.mermaidScriptBundling ?? 'embedded',
+  });
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>

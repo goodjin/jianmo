@@ -67,8 +67,15 @@ describe('generateAnchor', () => {
 });
 
 describe('generateTocPdf', () => {
-  it('returns empty string when no headings', () => {
+  it('returns empty string when no headings and no mermaid fences', () => {
     expect(generateTocPdf('Just a paragraph')).toBe('');
+  });
+
+  it('M42: lists mermaid TOC entry without headings', () => {
+    const md = ['```mermaid', 'pie title T', '"a": 1', '```'].join('\n');
+    const toc = generateTocPdf(md);
+    expect(toc).toContain('markly-diagram-1');
+    expect(toc).toContain('toc-diagram');
   });
 
   it('generates TOC with heading text escaped', () => {
@@ -117,6 +124,13 @@ describe('markdownToPdfHtml', () => {
     expect(html).toContain('<table>');
     expect(html).toContain('<td');
     expect(html).toContain('1');
+  });
+
+  it('M43: passes markdown so %% alt labels mermaid export node', async () => {
+    const md = ['```mermaid', '%% alt: Pie', 'pie title T', '"a": 1', '```'].join('\n');
+    const html = await markdownToPdfHtml(md);
+    expect(html).toContain('id="markly-diagram-1"');
+    expect(html).toContain('aria-label="Pie"');
   });
 });
 

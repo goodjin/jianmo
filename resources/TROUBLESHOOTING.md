@@ -4,9 +4,13 @@
 
 ## Rich 模式卡顿 / 空白 / 表格异常
 
-1. 尝试 **Markly: Toggle Edit Mode** 切到 **Source** 再切回 **Rich**，或重载窗口（**Developer: Reload Window**）。
-2. 在设置中关闭 **`markly.editor.enableShiki`** 或 **`markly.editor.enableMermaid`**，大文档可与工具栏 **档位** 提示联动降级。
-3. 表格相关：见仓库文档 **Rich 表格** 说明（`docs/RICH_TABLE_USER_GUIDE.md`，源码仓库内）。
+1. 若看到顶部提示条「Rich 启动失败/超时，已切换到 Source」，可直接点：
+   - **重试 Rich**：无需重开文件即可再试一次
+   - **复制诊断信息**：复制一段可直接贴到 Issue 的脱敏信息
+   - **重载 Webview**：仅重载当前编辑器页面（不等同于重载 VS Code 窗口）
+2. 尝试 **Markly: Toggle Edit Mode** 切到 **Source** 再切回 **Rich**，或重载窗口（**Developer: Reload Window**）。
+3. 在设置中关闭 **`markly.editor.enableShiki`** 或 **`markly.editor.enableMermaid`**，大文档可与工具栏 **档位** 提示联动降级。
+4. 表格相关：见仓库文档 **Rich 表格** 说明（`docs/RICH_TABLE_USER_GUIDE.md`，源码仓库内）。
 
 ## 导出 PDF / HTML 失败
 

@@ -8,7 +8,12 @@ import { extractMarkdownLinkHrefs, resolveMarkdownHrefToFsPath } from '@core/mar
 
 export type { ExportPreflightScope } from '@types';
 
-export type ExportPreflightIssueKind = 'missing_image' | 'broken_math' | 'missing_local_link';
+export type ExportPreflightIssueKind =
+  | 'missing_image'
+  | 'broken_math'
+  | 'missing_local_link'
+  /** M46：`image.remoteHttpsHostsAllowlist` 非空时，HTTPS 外链图 host 不在名单中 */
+  | 'remote_image_host';
 
 export interface ExportPreflightIssue {
   kind: ExportPreflightIssueKind;
@@ -52,11 +57,55 @@ export function detectBrokenMathDelimiters(markdown: string): string | undefined
   return undefined;
 }
 
+function normalizeRemoteImageHost(host: string): string {
+  return String(host ?? '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]!
+    .toLowerCase()
+    .replace(/^www\./, '');
+}
+
+function hostMatchesAllowlist(host: string, allowEntry: string): boolean {
+  const h = normalizeRemoteImageHost(host);
+  const a = String(allowEntry ?? '').trim().toLowerCase();
+  if (!h || !a) return false;
+  // M133：仅支持一种受控通配：*.example.com（匹配 example.com 与其任意子域）
+  if (a.startsWith('*.')) {
+    const base = normalizeRemoteImageHost(a.slice(2));
+    if (!base) return false;
+    return h === base || h.endsWith(`.${base}`);
+  }
+  return h === normalizeRemoteImageHost(a);
+}
+
+/** `![](https://...)` 外链图；返回小写、去 `www.` 的 host */
+export function extractHttpsMarkdownImageHosts(markdown: string): { src: string; host: string }[] {
+  const out: { src: string; host: string }[] = [];
+  const seen = new Set<string>();
+  for (const m of String(markdown ?? '').matchAll(/!\[([^\]]*)\]\(\s*(https?:\/\/[^)\s]+)/gi)) {
+    const src = m[2] ?? '';
+    try {
+      const u = new URL(src);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+      const host = normalizeRemoteImageHost(u.host);
+      if (!host || seen.has(src)) continue;
+      seen.add(src);
+      out.push({ src, host });
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
 export function analyzeMarkdownExportPreflight(options: {
   markdown: string;
   sourceFileFsPath: string;
   workspaceRootFsPath: string;
   scope: ExportPreflightScope;
+  /** M46：非空时，仅允许列表内 host 出现在 `![](https://...)` 中（http 同检） */
+  remoteHttpsHostsAllowlist?: string[];
   existsSync?: (p: string) => boolean;
 }): ExportPreflightIssue[] {
   const exists = options.existsSync ?? fs.existsSync;
@@ -87,6 +136,19 @@ export function analyzeMarkdownExportPreflight(options: {
           ref,
           resolvedPath: p,
         });
+      }
+    }
+
+    const allow = (options.remoteHttpsHostsAllowlist ?? []).map((h) => String(h ?? '').trim()).filter(Boolean);
+    if (allow.length > 0) {
+      for (const { src, host } of extractHttpsMarkdownImageHosts(markdown)) {
+        if (!allow.some((a) => hostMatchesAllowlist(host, a))) {
+          issues.push({
+            kind: 'remote_image_host',
+            message: `外链图片 host 不在白名单 (${host})：${src}`,
+            ref: src,
+          });
+        }
       }
     }
   }

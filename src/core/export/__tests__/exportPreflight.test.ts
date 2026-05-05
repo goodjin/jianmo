@@ -6,6 +6,7 @@ import {
   analyzeMarkdownExportPreflight,
   detectBrokenMathDelimiters,
   stripFencedCodeAndHtmlCommentsForMathScan,
+  extractHttpsMarkdownImageHosts,
 } from '../exportPreflight';
 
 describe('detectBrokenMathDelimiters', () => {
@@ -98,5 +99,51 @@ describe('analyzeMarkdownExportPreflight', () => {
       scope: 'images',
     });
     expect(issues).toHaveLength(0);
+  });
+
+  it('M46: non-empty host allowlist flags remote https images outside list', () => {
+    const issues = analyzeMarkdownExportPreflight({
+      markdown: '![](https://evil.test/a.png)',
+      sourceFileFsPath: '/tmp/x.md',
+      workspaceRootFsPath: '/tmp',
+      scope: 'images',
+      remoteHttpsHostsAllowlist: ['allowed.example'],
+      existsSync: () => true,
+    });
+    expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('evil.test'))).toBe(true);
+  });
+
+  it('M46: allowlist accepts host case-insensitive and ignores leading www.', () => {
+    const issues = analyzeMarkdownExportPreflight({
+      markdown: '![](https://WWW.AllowED.example/x.png)',
+      sourceFileFsPath: '/tmp/x.md',
+      workspaceRootFsPath: '/tmp',
+      scope: 'images',
+      remoteHttpsHostsAllowlist: ['allowed.example'],
+      existsSync: () => true,
+    });
+    expect(issues.filter((i) => i.kind === 'remote_image_host')).toHaveLength(0);
+  });
+
+  it('M133: allowlist supports "*.example" to allow subdomains', () => {
+    const issues = analyzeMarkdownExportPreflight({
+      markdown: '![](https://a.allowed.example/x.png)\n![](https://allowed.example/y.png)\n![](https://evil.test/z.png)',
+      sourceFileFsPath: '/tmp/x.md',
+      workspaceRootFsPath: '/tmp',
+      scope: 'images',
+      remoteHttpsHostsAllowlist: ['*.allowed.example'],
+      existsSync: () => true,
+    });
+    expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('evil.test'))).toBe(true);
+    expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('a.allowed.example'))).toBe(false);
+    expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('allowed.example/y.png'))).toBe(false);
+  });
+});
+
+describe('extractHttpsMarkdownImageHosts', () => {
+  it('collects src rows and normalizes host casing', () => {
+    const rows = extractHttpsMarkdownImageHosts('![](https://A.EXAMPLE/x.png)\n![](https://b.test/y.png)');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.host).sort()).toEqual(['a.example', 'b.test']);
   });
 });

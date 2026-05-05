@@ -15,6 +15,14 @@ describe('transformMermaidFencesForExport (M85)', () => {
     expect(out).not.toContain('<code class="language-mermaid">');
   });
 
+  it('M42/M43: stable DOM id + aria-label from fenced %% alt markdown', () => {
+    const html = '<pre><code class="language-mermaid">graph TD; A--&gt;B</code></pre>';
+    const md = ['```mermaid', '%% alt: 拓扑', 'graph TD; A-->B', '```'].join('\n');
+    const out = transformMermaidFencesForExport(html, md);
+    expect(out).toContain('id="markly-diagram-1"');
+    expect(out).toContain('aria-label="拓扑"');
+  });
+
   it('ignores non-mermaid code blocks', () => {
     const html = '<pre><code class="language-ts">const x = 1;</code></pre>';
     expect(transformMermaidFencesForExport(html)).toBe(html);
@@ -36,6 +44,14 @@ describe('buildMermaidExportBootstrapScript', () => {
     expect(boot).toContain('mermaid.initialize');
     expect(boot).toContain('"dark"');
     expect(boot).toContain('markly-mermaid-await');
+  });
+
+  it('M40: external bundling uses CDN script tag instead of inlined bundle', () => {
+    const boot = buildMermaidExportBootstrapScript('default', { bundling: 'external' });
+    expect(boot).toContain('cdn.jsdelivr.net/npm/mermaid@');
+    expect(boot).toContain('<script src=');
+    const embedded = buildMermaidExportBootstrapScript('default', { bundling: 'embedded' });
+    expect(embedded.length).toBeGreaterThan(boot.length + 5000);
   });
 });
 
