@@ -7,6 +7,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.11] - 2026-05-05
+
+### Changed
+
+- **M₁₀₀（2.0 门禁执行）**：按 [`docs/M100-2.0-GATE.md`](docs/M100-2.0-GATE.md) 完成收口记录：M₅₁–M₉₉ 矩阵可验收、gates/release 可查、无不兼容协议/默认破坏性变更的结论下 **保持 1.x（本版 PATCH）**。[`MARKDOWN_CAPABILITIES.md`](docs/MARKDOWN_CAPABILITIES.md) 增补 **§5.7** 指向本文。
+
+## [1.39.10] - 2026-05-05
+
+### Documentation
+
+- **M₉₀–M₉₉ 矩阵收口**：[`docs/MARKDOWN_CAPABILITIES.md`](docs/MARKDOWN_CAPABILITIES.md) 增补 **§5.6**（用户模板目录、Welcome walkthrough、`Markly` 命令分组、设置说明、自救中心与 `TROUBLESHOOTING`、遥测、包体/性能/跨平台资源文档、Marketplace FAQ）。矩阵见 [`docs/milestones-M51-M100.md`](docs/milestones-M51-M100.md)。**M₁₀₀**（2.0 门禁）见 [`docs/M100-2.0-GATE.md`](docs/M100-2.0-GATE.md)，未纳入本表。
+
+## [1.39.9] - 2026-05-05
+
+### Documentation
+
+- **M₈₀–M₈₉ 矩阵收口**：[`docs/MARKDOWN_CAPABILITIES.md`](docs/MARKDOWN_CAPABILITIES.md) 增补 **§5.5**（AI Provider 分层、PDF 模板、HTML 打包图、导出预检、代码块/Mermaid 导出、失败诊断拷贝、Rich 复制、导出 HTML 预览、模板库与用户目录提示）。矩阵与证据见 [`docs/milestones-M51-M100.md`](docs/milestones-M51-M100.md)。
+
+## [1.39.8] - 2026-05-05
+
+### Documentation
+
+- **M₇₀–M₇₉ 矩阵收口**：[`docs/MARKDOWN_CAPABILITIES.md`](docs/MARKDOWN_CAPABILITIES.md) 增补 **§5.4**（长文档 fixture 门禁、AI Validate Setup、润色预览/摘要/标题建议、结构修复与转表、结构建议面板、隐私说明、AI 操作历史）；并注明默认不向远程发送全文、详见 `privacy/AI_PRIVACY.md`。实现与单测参见 [`docs/milestones-M51-M100.md`](docs/milestones-M51-M100.md) M₇₀–M₇₉ 各行。
+
+## [1.39.7] - 2026-05-05
+
+### Documentation
+
+- **M₆₀–M₆₉ 矩阵收口**：[`docs/MARKDOWN_CAPABILITIES.md`](docs/MARKDOWN_CAPABILITIES.md) 增补 **§5.3**（表格用户说明指路 `RICH_TABLE_USER_GUIDE`、大纲筛选/拖拽/锚点冲突、反向链接与内链悬停预览、档位与查找命中列表、工作区查找、Source/IR ATX 折叠）。实现与单测在此前迭代已落地（见 [`docs/milestones-M51-M100.md`](docs/milestones-M51-M100.md) M₆₀–M₆₉ 行）。
+
+## [1.39.6] - 2026-05-05
+
+### Added
+
+- **M₅₀**：`npm run check:release` 现校验 **CHANGELOG** 含当前 `package.json` 版本对应的 `## [x.y.z]` 标题（与根 / webview 版本对齐、SemVer、repository / bugs / engines 等一并检查）。`.vsix` 文件名与版本一致改为 **可选**：`MARKLY_CHECK_VSIX=1` 时在根目录存在 `.vsix` 则须含 `markly-x.y.z.vsix`，避免本机堆积历史包导致误失败。
+- **M₅₈**：新增表格往返 fixture [`docs/fixtures/m9/15-table-mixed-align-sparse.md`](docs/fixtures/m9/15-table-mixed-align-sparse.md)（三列左/中/右对齐 + 稀疏空单元格 + 格内不含 `|` 的反引号码片），纳入 [`richFixtureRoundTrip.test.ts`](webview/src/__tests__/richFixtureRoundTrip.test.ts)。
+
+### Notes
+
+- **M₅₁–M₅₇、M₅₉**：执行矩阵见 [`docs/milestones-M51-M100.md`](docs/milestones-M51-M100.md)（重命名修引用、粘贴同名策略、资产列表面板、批量修图、未引用资产、Rich 表快捷键、粘贴预览、大表性能档位等）——本版以 **发布门禁 + M58 补测** 收口，无行为回归。
+
+## [1.39.5] - 2026-05-05
+
+### Added
+
+- **M40**：`markly.export.diagram.mermaidScriptBundling`（`embedded` | `external`）；HTML/PDF/导出预览共用。
+- **M42/M43**：导出目录含 Mermaid 锚点（`markly-diagram-n`）；围栏内 `%% alt:` 写入 `aria-label`。
+- **M45**：`markly.editor.deferDiagramRenderInRich`——Rich 下跳过 Mermaid 初始化。
+- **M46**：`markly.image.remoteHttpsHostsAllowlist` + 导出预检外链图 host 告警。
+- **M47**：粘贴 SVG 时轻量剥离 script/event handler/foreignObject（`webview/src/utils/svgSanitize.ts`）。
+- **M49**：`markly.image.pasteImageBasenamePrefix`，粘贴图为 `{前缀}-日期时间-随机.扩展`。
+
+### Changed
+
+- 大纲：`parseMermaidOutlineEntries` 与标题按源码位置合并排序，支持跳转到图表块（Rich：`scrollToHeading`）。
+- Rich Mermaid：`themeVariables` 从 VS Code CSS 变量读取主色与字体。
+
+## [1.39.4] - 2026-05-05
+
+### Added
+
+- **M30**：[`docs/M30_TABLE_CELL_BLOCKS.md`](docs/M30_TABLE_CELL_BLOCKS.md)；fixture [`docs/fixtures/m9/14-table-cell-linebreaks.md`](docs/fixtures/m9/14-table-cell-linebreaks.md) + [`richFixtureRoundTrip.test.ts`](webview/src/__tests__/richFixtureRoundTrip.test.ts)。
+- **M31**：[`docs/M31_TABLE_MATH_MATRIX.md`](docs/M31_TABLE_MATH_MATRIX.md)；HTML 导出表内行内公式单测。
+- **M34–M35（可选顺延）**：[`docs/M34_M35_TABLE_CSV_VALIDATION_OPTIONAL.md`](docs/M34_M35_TABLE_CSV_VALIDATION_OPTIONAL.md)。
+- **M36**：[`docs/M36_MERMAID_VERSION_POLICY.md`](docs/M36_MERMAID_VERSION_POLICY.md)；`webview` 将 **`mermaid` 锁为精确版本** `11.12.3`。
+- **M37**：Rich Mermaid 渲染 **代际令牌**，丢弃过时 `m.render` 结果（[`MilkdownEditor.vue`](webview/src/components/MilkdownEditor.vue)、[`DiagramRenderer.vue`](webview/src/components/DiagramRenderer.vue)）。
+- **M38**：Mermaid **离线/加载失败**时的可视占位与源码回退；`DiagramRenderer` 离线提示文案。
+- **M39**：[`docs/M39_PLANTUML_PLUGIN_SPIKE.md`](docs/M39_PLANTUML_PLUGIN_SPIKE.md)；[`webview/src/diagrams/pluggableDiagramHost.ts`](webview/src/diagrams/pluggableDiagramHost.ts) 宿主类型桩；[`m39-rich-link-anchor-plan.md`](docs/m39-rich-link-anchor-plan.md) 补充与路线图 M39 编号区分说明。
+
+### Changed
+
+- **M32**：导出 HTML **`@media print`** 增补 `thead`/`tbody`/`tr`/`td`/`th` 分页与 **表头组**语义（[`htmlExport.ts`](src/core/export/htmlExport.ts) + 单测）。
+- **M33**：窄视口下 Rich 表格 **字号 / 格内 padding**（[`MilkdownEditor.vue`](webview/src/components/MilkdownEditor.vue)）。
+- [`docs/RICH_SOURCE_PARITY_CHECKLIST.md`](docs/RICH_SOURCE_PARITY_CHECKLIST.md) 管道表格行链至 M30。
+
+## [1.39.3] - 2026-05-05
+
+### Added
+
+- **M20**：[`docs/RICH_SOURCE_UNDO_SEMANTICS.md`](docs/RICH_SOURCE_UNDO_SEMANTICS.md)；`useEditor` 撤销栈切换语义单测。
+- **M21/M26**：阶段性文档 [`docs/M21_BLOCK_DRAG_REORDER_SPIKE.md`](docs/M21_BLOCK_DRAG_REORDER_SPIKE.md)、[`docs/M26_TABLE_VIRTUALIZATION.md`](docs/M26_TABLE_VIRTUALIZATION.md)。
+- **M24**：脚注 fixture（`docs/fixtures/m9/05-footnotes.md`）在 Rich 往返中补充 **行内引用** 断言 [`richFixtureRoundTrip.test.ts`](webview/src/__tests__/richFixtureRoundTrip.test.ts)。
+- **M25**：[`webview/src/utils/__tests__/url.test.ts`](webview/src/utils/__tests__/url.test.ts)；`m39-rich-link-anchor-plan.md` 增补 Wiki 链评估段落。
+- **M27**：`MARKLY_TABLE_HTML_CLIPBOARD_MAX_CHARS` + HTML 超限 toast + [`markly-table-rich.test.ts`](webview/src/plugins/__tests__/markly-table-rich.test.ts)；[`docs/RICH_TABLE_USER_GUIDE.md`](docs/RICH_TABLE_USER_GUIDE.md) 说明。
+- **M28**：[`docs/M28_TABLE_A11Y.md`](docs/M28_TABLE_A11Y.md)；`MilkdownEditor` 表格 `:focus-within` 轮廓与 `::selection`。
+- **M29**：[`htmlExport.test.ts`](src/core/export/__tests__/htmlExport.test.ts) 长表 `thead/tbody`/行数断言。
+
+### Changed
+
+- **M22/M23**：`App.vue`、`MilkdownEditor.vue` 窄视口（`max-width: 520px`）边距与侧栏宽度。
+- [`docs/RICH_SOURCE_PARITY_CHECKLIST.md`](docs/RICH_SOURCE_PARITY_CHECKLIST.md) 撤销行链接至 M20 语义文档。
+
+## [1.39.2] - 2026-05-05
+
+### Added
+
+- **M10**：[`docs/IR_REMOVAL_PHASE0.md`](docs/IR_REMOVAL_PHASE0.md)（IR 剔除构建可行性：双栈、`define`/懒加载/删码顺序）；[`webview/vite.config.ts`](webview/vite.config.ts) 增补指向说明。
+- **M11**：`marklyRichListIndentKeymapPlugin`（列表 Tab / Shift-Tab）抽取到 [`webview/src/plugins/markly-table-rich.ts`](webview/src/plugins/markly-table-rich.ts)；[`webview/src/__tests__/richListIndentKeymap.test.ts`](webview/src/__tests__/richListIndentKeymap.test.ts)。
+- **M12**：[`webview/src/__tests__/richNewlineSerialization.test.ts`](webview/src/__tests__/richNewlineSerialization.test.ts)（硬换行与列表折行 stabilize）。
+- **M13–M14**：共用 HTML 粘贴净化 [`webview/src/utils/richPasteSanitize.ts`](webview/src/utils/richPasteSanitize.ts)、黑名单 [`webview/src/utils/pasteDenylist.ts`](webview/src/utils/pasteDenylist.ts)；表格路径改调用该入口。
+- **M15**：[`docs/RICH_IME_MANUAL.md`](docs/RICH_IME_MANUAL.md) + [`webview/src/__tests__/richImeComposition.test.ts`](webview/src/__tests__/richImeComposition.test.ts)（jsdom 烟雾）。
+- **M16**：块级工具栏命令前「扩选区不单独入撤销栈」语义，见 [`docs/M16_BLOCK_FORMAT_SEMANTICS.md`](docs/M16_BLOCK_FORMAT_SEMANTICS.md)。
+- **M17**：`prosemirror-gapcursor` + 样式；[`docs/M17_PROSEMIRROR_GAPCURSOR.md`](docs/M17_PROSEMIRROR_GAPCURSOR.md)。
+- **M18**：Rich 空文档占位引导（[`MilkdownEditor.vue`](webview/src/components/MilkdownEditor.vue) 外壳层）。
+- **M19**：多段 **`toggleMark` 顺序**单测 [`webview/src/__tests__/richMultiParagraphToggleMark.test.ts`](webview/src/__tests__/richMultiParagraphToggleMark.test.ts)。
+
+### Changed
+
+- 验收清单 [`docs/RICH_SOURCE_PARITY_CHECKLIST.md`](docs/RICH_SOURCE_PARITY_CHECKLIST.md) 补充 M11–M19 可追溯条目。
+
+## [1.39.1] - 2026-05-05
+
+### Added
+
+- **IR 冻结（工程纪律 M01–M09）**：维护者文档 [`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md)，入口盘点 [`docs/IR_ENTRYPOINT_AUDIT.md`](docs/IR_ENTRYPOINT_AUDIT.md)，[`docs/RICH_SOURCE_PARITY_CHECKLIST.md`](docs/RICH_SOURCE_PARITY_CHECKLIST.md)，[`docs/TECH_DEBT_PREVIEW_RICH_NAMING.md`](docs/TECH_DEBT_PREVIEW_RICH_NAMING.md)；[`npm run check:ir-freeze`](scripts/check-ir-freeze.mjs)（`webview/src/core/decorators` 顶层 `*.ts` 数量基线）；PR 模板 [`.github/pull_request_template.md`](.github/pull_request_template.md)；CI 与该检查对齐。
+
+### Changed
+
+- Webview「复制诊断信息」载荷：在 `app` 段增加 **`editorModeTracked`**（`rich` / `source` / `legacy-ir`）；**`mode`** 仍为原始 **`EditorMode` 字符串**（含 `ir`）。
+- AI 操作历史列表中非 Rich 条目的模式文案由「IR/源码」调整为「源码」（历史类型本为 CM6 `source`，不区分 IR/Source 子态）。
+
 ## [1.39.0] - 2026-05-05
 
 ### Added

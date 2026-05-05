@@ -110,6 +110,10 @@ Search `markly` in VSCode settings:
 
 宿主侧写作能力已拆分为 **快照配置 + `AssistModelOperations` + HTTP 传输**（详见 `CHANGELOG` M80）：后续若要接其它 SaaS Provider，主要在扩展宿主增加装配，而不必复制四套 `fetch` 逻辑。
 
+## Contributing / IR freeze
+
+维护政策与 **`ir`（CodeMirror 装饰器中间模式）** 冻结约定见 **[`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md)**。提交 PR 前请勾选 [`.github/pull_request_template.md`](.github/pull_request_template.md)，并确保 **`npm run gates:stable`**（含 **`check:ir-freeze`**）通过。
+
 ## Testing
 
 ```bash
@@ -122,7 +126,7 @@ npm run gates:stable
 
 ## Release（M₅₀）
 
-发版前请更新根目录 **`CHANGELOG.md`**（[Keep a Changelog](https://keepachangelog.com/)），并执行 `npm run check:release`（若已配置）与 `npm run gates:stable`。根与 `webview/package.json` 的 **version** 须一致（SemVer）。
+发版前请更新根目录 **`CHANGELOG.md`**（[Keep a Changelog](https://keepachangelog.com/)），并执行 `npm run check:release` 与 `npm run gates:stable`。`check:release` 会校验根与 `webview/package.json` 的 **version** 一致（SemVer）、`repository` / `bugs` / `engines.vscode`，且 **CHANGELOG 须含当前版本的 `## [x.y.z]` 标题**。打包后若需校验根目录 **仅** 存在与版本匹配的 `.vsix`，可执行 `MARKLY_CHECK_VSIX=1 npm run check:release`。
 
 ## License
 

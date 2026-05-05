@@ -530,6 +530,74 @@ graph TD
 | **实时预览** | 部分语法（如 Mermaid）需要异步渲染 |
 | **格式保真** | 某些 Markdown 变体语法会丢失 |
 
+### 5.3 Markly 增补：表格说明与长文档导航（M₆₀–M₆₉）
+
+以下内容描述 **Markly** 在 VS Code/Webview 中提供的编辑能力边界（与上文「通用 Markdown 语法」并行阅读即可）。
+
+| 编号 | 能力 | 概要 |
+|------|------|------|
+| M₆₀ | 表格用户说明 | 插入/删表行列、粘贴 TSV·CSV·HTML 与软上限、`Insert Table`/整理类命令：**`docs/RICH_TABLE_USER_GUIDE.md`** |
+| M₆₁ | 大纲搜索 | 侧栏大纲支持按关键字过滤标题（以及与 Mermaid 图表条目的合并列表） |
+| M₆₂ | 大纲拖拽调序 | 多个顶级 `#` 章节时可通过拖动手柄调整整块顺序 |
+| M₆₃ | 锚点冲突提示 | 重复标题生成的 slug 冲突时大纲标 ⚠；跳转/`#` 链接可能落在首条同名标题 |
+| M₆₄ | 反向链接 | 侧栏列出工作区内 Markdown **链入当前文档** 的引用 |
+| M₆₅ | 内链悬停预览 | Rich 模式下 `*.md` 内链悬停可请求宿主返回目标标题与摘要预览 |
+| M₆₆ | 大文档档位提示 | 工具栏展示文档体量档位（XS/S/M/L/XL）及当前 Rich 降级项（如 Shiki/Mermaid） |
+| M₆₇ | 查找命中列表 | 「查找替换」面板展示匹配条目预览列表，单击跳转到对应命中 |
+| M₆₈ | 工作区查找入口 | 查找面板 **🔎** 调起 `workbench.action.findInFiles` 并填入当前检索词 |
+| M₆₉ | ATX 标题折叠 | **Source/IR** gutter 可对 ATX 标题折叠，范围至下一条同级或更高级标题 |
+
+### 5.4 Markly 增补：大文档门禁与写作/AI 辅助（M₇₀–M₇₉）
+
+> **默认行为**：未在设置中开启 **AI**（`markly.ai.rewrite.enabled`）或未配置 **openai-compatible** 时，不向远程发送全文；各能力出站范围见随包 **`privacy/AI_PRIVACY.md`**（命令：**AI: Open Privacy Notice**）。
+
+| 编号 | 能力 | 概要 |
+|------|------|------|
+| M₇₀ | 长文档稳定门禁 | Fixture `docs/fixtures/m70/` + Vitest **`largeDocStabilityGate.test.ts`**：跨过 Rich 档位阈值时节流/banner 文案稳定 |
+| M₇₁ | AI 配置校验 | 命令 **AI: Validate Setup**（`markly.ai.validateSetup`）；设置变更时对缺失 Endpoint/模型/密钥/超时给出提示 |
+| M₇₂ | 润色 Diff 预览 | 选区润色结果弹窗对照后再替换 |
+| M₇₃ | AI 摘要侧栏 | 「摘要」全文/当前节，`AI_SUMMARY_REQUEST/RESULT` |
+| M₇₄ | AI 标题建议二期 | 多候选与简短理由，可替换一级标题，`AI_SUGGEST_TITLES_*` |
+| M₇₅ | Markdown 结构修复二期 | 「Fix Markdown Structure」：`fixMarkdownStructuralPhaseTwo`（fence 外标题层级、列表符号、task 勾选、段落空行） |
+| M₇₆ | 选区转 GFM（AI） | `AI_CONVERT_TEXT_TO_TABLE_*`，Mock/Provider 预览后写入 |
+| M₇₇ | 长文结构建议 | 侧栏检测重复锚点、标题跳级、首标题过深；点击与大纲同源跳转 |
+| M₇₈ | AI 隐私说明 | `privacy/AI_PRIVACY.md`、设置项 markdown 描述、README 摘要 |
+| M₇₉ | AI 操作历史 | 侧栏记录润色/转表替换，支持回看片段与有条件的撤销，`aiApplyHistory.ts` |
+
+### 5.5 Markly 增补：AI Provider 底座与导出/交付（M₈₀–M₈₉）
+
+| 编号 | 能力 | 概要 |
+|------|------|------|
+| M₈₀ | AI Provider 分层 | `AssistModelOperations`、`openAiCompatibleChatCompletion`、`gfmTableLocal.ts`：各 AI 能力与密钥/`fetch` 桥接隔离，便于替换 Provider |
+| M₈₁ | PDF 双模板 | 设置 **`markly.export.pdf.template`**：`default` \| `academic`（印刷向衬线与页眉区别） |
+| M₈₂ | HTML 本地图打包 | **`markly.export.html.copyLocalImages`** + **`markly.export.html.assetsSubdirectory`**：可选用相对文档目录拷贝图片并重写 `<img src>` |
+| M₈₃ | 导出前预检 | **`markly.export.preflight.scope`**（`off` / `images` / `full`）与 **`markly.export.preflight.blockOnIssues`**；缺图 / 可疑公式 / 坏链等 |
+| M₈₄ | 代码块导出可读性 | HTML/PDF 中 `pre`/`code` 长行换行、`tab-size`、打印与学术模板一致性 |
+| M₈₅ | Mermaid 导出对齐 | **`mermaidExport.ts`**：`transformMermaidFencesForExport`、嵌入 `mermaid.min.js`（或 CDN，见 **`markly.export.diagram.mermaidScriptBundling`**）、HTML/PDF 共用引导脚本；可选围栏内 **`%% alt:`** |
+| M₈₆ | 导出失败诊断 | 命令 **Copy failure diagnostics**：脱敏信息便于提交 issue **`exportDiagnostics.ts`** |
+| M₈₇ | Rich 结构化复制 | 选区复制为邮件/IM 友好 HTML：**`richClipboard.ts`**（Source/IR CM 管线） |
+| M₈₈ | 发布前 HTML 预览 | 命令 **`markly.preview.exportHtml`**：与 **`buildExportHtmlString`** 同管线，`htmlPreviewImgRewrite` 重写本地图为 Webview URI |
+| M₈₉ | 文档模板库 | 内置 **`templates/*.md`**，命令 **`markly.template.newFromLibrary`**；自选模板目录为 **M₉₀**（`markly.templates.userDirectory`） |
+
+### 5.6 Markly 增补：模板目录、产品与工程基建（M₉₀–M₉₉）
+
+| 编号 | 能力 | 概要 |
+|------|------|------|
+| M₉₀ | 用户模板目录 | 设置 **`markly.templates.userDirectory`**：`userTemplateDirectory.ts` 与内置模板一并出现在 **New Markdown from Template…** QuickPick |
+| M₉₁ | 欢迎使用引导 | **`contributes.walkthroughs`**（`markly.welcome`）：Rich/Source、导出与快捷方式入门 |
+| M₉₂ | Command Palette 分组 | 全部 **`markly.*`** 命令带 **`category: Markly`**，便于在命令面板中检索 |
+| M₉₃ | 设置页可读性 | 关键项 **`markdownDescription`**（遥测、图片目录、Mermaid/Shiki、`preflight`、导出/HTML、AI、模板路径等） |
+| M₉₄ | 自救与排障 | 命令 **`markly.help.recoveryCenter`**（见 **`resources/TROUBLESHOOTING.md`**） |
+| M₉₅ | 本地遥测（可选） | **`markly.telemetry.enabled`** 默认 **`false`**；开启后计数写入 Output「Markly Telemetry (local)」 |
+| M₉₆ | 包体与依赖策略 | **`resources/BUNDLE_GOVERNANCE.md`**；根脚本 **`check_extension_bundle` / check_webview_bundle** 提示 Shiki/Mermaid/Puppeteer 边界 |
+| M₉₇ | 启动性能说明 | **`resources/PERFORMANCE_NOTES.md`**（首开 Markdown、懒加载等） |
+| M₉₈ | 跨平台说明 | **`resources/CROSS_PLATFORM.md`**（Win / Linux / macOS 差异与注意点） |
+| M₉₉ | 上架素材说明 | **`docs/marketplace/FAQ.md`**：截图/动图清单与市场文案占位指引 |
+
+### 5.7 Milestone M₁₀₀（2.0 评审门禁）
+
+计划在 **semver major（2.0.0）** 前或过 major 发行线时：按 **`docs/M100-2.0-GATE.md`** 逐项核对「M₅₁–M₉₉ 收口、契约单测、gates、是否破坏性变更」，并由发版 Owner 在该文档勾选 **保持 1.x** 或 **升 2.0.0**（附迁移）。**不作为**替换 `npm run gates:stable` 的自动化脚本。
+
 ---
 
 ## 六、最佳实践建议

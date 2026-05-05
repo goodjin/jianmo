@@ -19,7 +19,7 @@ Communication between extension and webview uses `postMessage`/`onDidReceiveMess
 - `extension/index.ts` - Activation entry, registers CustomEditorProvider, commands, config listener
 - `extension/provider/customEditor.ts` - `MarkdownEditorProvider` implements `CustomEditorProvider`, manages webview lifecycle, handles message routing, document save/export
 - `core/documentStore/` - In-memory document state management
-- `core/modeController/` - Editor mode (IR/source) state coordination
+- `core/modeController/` - Extension-side mode bookkeeping (`source` / `preview` names; preview maps to webview Rich)
 - `core/export/` - PDF and HTML export (PDF uses puppeteer)
 
 ### Webview Side (`webview/src/`)
@@ -34,8 +34,13 @@ Communication between extension and webview uses `postMessage`/`onDidReceiveMess
 `src/types/index.ts` is imported by both sides. The webview resolves it via Vite alias `@types -> ../src/types`. The extension uses tsconfig path alias `@types/* -> src/types/*`.
 
 ### Editor Modes
-- **IR mode** (`'ir'`): Intermediate Representation - markdown source with CM6 decorators that render headings, emphasis, links, etc. visually inline
-- **Source mode** (`'source'`): Plain markdown source editing with monospace font
+- **Rich mode** (`'rich'`): Primary WYSIWYG — Milkdown / ProseMirror; serializes to Markdown on save. New product work targets Rich first.
+- **Source mode** (`'source'`): Plain Markdown in CodeMirror (monospace).
+- **IR mode** (`'ir'`, CodeMirror + decorators): **Frozen** — no new features or UX investment; regressions may be fixed only when blocking users; scheduled for eventual removal once Rich/Source coverage is sufficient.
+
+Protocol and types may still mention `'ir'` for backward compatibility until the deprecation phase completes.
+
+Contributor-facing freeze policy (must-read for PRs): [`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md).
 
 ## Build & Dev Commands
 

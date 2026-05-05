@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.39.0",
+  "version": "1.39.11",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -500,6 +500,11 @@
           ],
           "description": "Rich mode: draggable column widths in tables. Auto skips the plugin for large tables (same soft limits as table paste) to reduce scroll/selection latency; use on/off to force."
         },
+        "markly.editor.deferDiagramRenderInRich": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "为 `true` 时 Rich 模式 **完全不初始化 Mermaid**，图表保持 ```mermaid 源码块形态（省电/卡顿时可开）。导出 HTML/PDF 不受影响。"
+        },
         "markly.editor.defaultForMarkdown": {
           "type": "boolean",
           "default": true,
@@ -564,6 +569,15 @@
           "default": "markly-html-assets",
           "description": "M82: Subfolder name under the HTML output directory for copied images. Must be a single segment (no /, \\, or ..)."
         },
+        "markly.export.diagram.mermaidScriptBundling": {
+          "type": "string",
+          "default": "embedded",
+          "enum": [
+            "embedded",
+            "external"
+          ],
+          "markdownDescription": "**M40**：导出 HTML/PDF/预览里的 Mermaid 脚本注入方式。\n\n- **embedded（默认）**：内联扩展自带的 `mermaid.min.js`，离线可渲染，文件较大。\n- **external**：从 jsDelivr 拉取与扩展固定版本一致的 `mermaid.min.js`，HTML 体积小，导出环境需联网。"
+        },
         "markly.export.preflight.scope": {
           "type": "string",
           "default": "full",
@@ -580,6 +594,19 @@
           "default": false,
           "description": "M83: When true, if preflight finds any issue, show a modal and require confirmation before exporting.",
           "markdownDescription": "为 `true` 时，预检发现问题会 **弹窗确认** 后才继续导出；`false` 时仅展示问题（若实现为通知）或仍允许一键继续。适合「不想带着错图就发 PDF」的工作流。"
+        },
+        "markly.image.remoteHttpsHostsAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "**M46**：HTTPS 外链图片 **host** 允许列表。\n\n- **空数组（默认）**：不额外告警。\n- **非空**：在导出预检「images/full」范围内，对每个 `![](https://…)` 检查 host（忽略大小写、`www.` 前缀）是否列出；不符合则报错/提示。**http://** 同样检查。"
+        },
+        "markly.image.pasteImageBasenamePrefix": {
+          "type": "string",
+          "default": "paste",
+          "markdownDescription": "**M49**：粘贴/保存到工作区的图片文件名前缀：`{前缀}-YYYYMMDD-HHmmss-{随机}.{扩展}`。\n\n仅影响 **新生成** 的文件名。"
         },
         "markly.templates.userDirectory": {
           "type": "string",
@@ -639,12 +666,13 @@
     "build": "npm run build:extension && npm run build:webview",
     "build:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --external:puppeteer --format=cjs --platform=node --minify --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "build:webview": "cd webview && npm run build",
+    "check:ir-freeze": "node ./scripts/check-ir-freeze.mjs",
     "check:bundle": "node ./scripts/check_webview_bundle.mjs && node ./scripts/check_extension_bundle.mjs",
     "check:bundle:webview": "node ./scripts/check_webview_bundle.mjs",
     "check:bundle:extension": "node ./scripts/check_extension_bundle.mjs",
     "check:release": "node ./scripts/check-release.mjs",
-    "preflight": "npm run lint && npm test && npm run build && npm run check:bundle && npm run check:release",
-    "gates:stable": "npm run lint && npm test && npm run build && npm run check:bundle",
+    "preflight": "npm run lint && npm run check:ir-freeze && npm test && npm run build && npm run check:bundle && npm run check:release",
+    "gates:stable": "npm run lint && npm run check:ir-freeze && npm test && npm run build && npm run check:bundle",
     "m8:baseline": "node ./scripts/m8-baseline.mjs",
     "dev:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --format=cjs --platform=node --watch --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "dev:webview": "cd webview && npm run dev",
