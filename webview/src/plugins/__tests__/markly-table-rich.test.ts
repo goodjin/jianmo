@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Schema, Slice } from '@milkdown/prose/model';
 import { EditorState, TextSelection } from '@milkdown/prose/state';
 import { EditorView } from '@milkdown/prose/view';
@@ -16,6 +16,8 @@ import {
   decideTableGridSelectionFillMapping,
   htmlTablePasteHasNonTableContent,
   parseHtmlTableToGrid,
+  recoverOversizedPasteGrid,
+  truncatePasteGridToLimits,
   parseCsvLine,
   parseCsvLineStrict,
   parseDelimitedGridForTablePaste,
@@ -24,6 +26,20 @@ import {
 } from '../markly-table-rich';
 
 describe('table edge regressions (M10-2)', () => {
+  it('recoverOversizedPasteGrid truncates oversized HTML table paste', () => {
+    const bigRows = Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 3 }, (_, r) => `<tr><td>a${r}</td><td>b${r}</td></tr>`).join('');
+    const html = `<table>${bigRows}</table>`;
+    const parsed = parseTablePasteMatrix(html, '');
+    expect(parsed.reason).toBe('over_limit');
+    const rec = recoverOversizedPasteGrid(parsed, html, '');
+    expect(rec.truncatedFromOverLimit).toBe(true);
+    expect(rec.grid).not.toBe(null);
+    expect(rec.grid!.length).toBeLessThanOrEqual(MARKLY_TABLE_PASTE_MAX_ROWS);
+    expect(rec.grid!.length * Math.max(...rec.grid!.map((r) => r.length))).toBeLessThanOrEqual(MARKLY_TABLE_PASTE_MAX_CELLS);
+    const same = truncatePasteGridToLimits(rec.grid!);
+    expect(same).toEqual(rec.grid);
+  });
+
   it('CellSelection mismatch should reject (avoid expanding table)', () => {
     const m = decideTableGridSelectionFillMapping({ gridHeight: 2, gridWidth: 2, selHeight: 2, selWidth: 3 });
     expect(m.mode).toBe('reject');
@@ -416,6 +432,16 @@ describe('markly-table-rich parseTablePasteMatrix', () => {
 });
 
 describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
+  let confirmSpy: ReturnType<typeof vi.spyOn<typeof window, 'confirm'>>;
+
+  beforeEach(() => {
+    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    confirmSpy.mockRestore();
+  });
+
   function createTestSchema() {
     const nodes = {
       doc: { content: 'block+' },
@@ -645,6 +671,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     const view = new EditorView(host, { state });
 
     const html = `<p>before</p><table><tr><td>A</td><td>B</td></tr></table><p>after</p>`;
+    confirmSpy.mockReturnValueOnce(false);
     const event = ({
       clipboardData: {
         getData: (type: string) => (type === 'text/html' ? html : type === 'text/plain' ? 'before\nA\tB\nafter' : ''),
@@ -713,7 +740,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     host.remove();
   });
 
-  it('表格外粘贴超限矩阵时：toast + return true（拦截），且不会插入 table', () => {
+  it('表格外粘贴超限矩阵且用户取消：toast「已取消」+ return true，且不会插入 table', () => {
     const schema = createTestSchema();
     const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);
     const p = doc.child(0);
@@ -733,6 +760,8 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
       return origDispatch(e);
     }) as any;
 
+    confirmSpy.mockReturnValueOnce(false);
+
     const bigRows = Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 1 }, (_, r) => `<tr><td>r${r}c1</td><td>r${r}c2</td></tr>`).join('');
     const html = `<table>${bigRows}</table>`;
     const event = ({
@@ -742,9 +771,49 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
     expect(handled).toBe(true);
     expect(docHasTable(schema, view.state.doc)).toBe(false);
-    expect(dispatched.some((e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('上限'))).toBe(true);
+    expect(
+      dispatched.some(
+        (e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('已取消')
+      )
+    ).toBe(true);
 
     window.dispatchEvent = origDispatch;
+    view.destroy();
+    host.remove();
+  });
+
+  it('表格外粘贴超限矩阵且用户确认：截断后插入 Markdown 表格', () => {
+    const schema = createTestSchema();
+    const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);
+    const p = doc.child(0);
+    const cursorPos = 1 + p.content.size;
+    const selection = TextSelection.create(doc, cursorPos);
+
+    const plugin = createMarklyTableGridPastePlugin();
+    const state = EditorState.create({ schema, doc, selection, plugins: [plugin] });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    confirmSpy.mockReturnValueOnce(true);
+
+    const bigRows = Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 1 }, (_, r) => `<tr><td>x${r}</td><td>y${r}</td></tr>`).join('');
+    const html = `<table>${bigRows}</table>`;
+    const event = ({
+      clipboardData: { getData: (type: string) => (type === 'text/html' ? html : '') },
+      preventDefault: vi.fn(),
+    } as unknown) as ClipboardEvent;
+
+    const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
+    expect(handled).toBe(true);
+    expect(docHasTable(schema, view.state.doc)).toBe(true);
+    let trCount = 0;
+    view.state.doc.descendants((n: any) => {
+      if (n.type?.name === 'table_row') trCount++;
+      return true;
+    });
+    expect(trCount).toBeLessThanOrEqual(MARKLY_TABLE_PASTE_MAX_ROWS);
+
     view.destroy();
     host.remove();
   });
@@ -1138,7 +1207,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     host.remove();
   });
 
-  it('N4-4 表格内 CellSelection：超限矩阵会 toast + 拦截（return true），且 doc 不变', () => {
+  it('N4-4 表格内 CellSelection：超限矩阵预览取消后会 toast「已取消」+ 拦截，且 doc 不变', () => {
     const schema = createTestSchema();
     const doc = create2x2TableDoc(schema, [
       ['h1', 'h2'],
@@ -1179,10 +1248,13 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
       return origDispatch(e);
     }) as any;
 
+    confirmSpy.mockReturnValueOnce(false);
+
     const tooManyRows =
       Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 1 }, () => '1\t2').join('\n') + '\n';
     const event = ({
       clipboardData: { getData: (type: string) => (type === 'text/plain' ? tooManyRows : '') },
+      preventDefault: vi.fn(),
     } as unknown) as ClipboardEvent;
 
     const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
@@ -1190,7 +1262,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     expect(view.state.doc.toJSON()).toEqual(before);
     expect(
       dispatched.some(
-        (e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('过大')
+        (e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('已取消')
       )
     ).toBe(true);
 
@@ -1199,7 +1271,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     host.remove();
   });
 
-  it('N4-4 表格内 TextSelection：超限矩阵会 toast + 拦截（return true），避免默认粘贴卡顿', () => {
+  it('N4-4 表格内 TextSelection：超限矩阵预览取消后会 toast「已取消」+ 拦截，避免默认粘贴卡顿', () => {
     const schema = createTestSchema();
     const doc = create2x2TableDoc(schema, [
       ['h1', 'h2'],
@@ -1240,10 +1312,13 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
       return origDispatch(e);
     }) as any;
 
+    confirmSpy.mockReturnValueOnce(false);
+
     const tooManyRows =
       Array.from({ length: MARKLY_TABLE_PASTE_MAX_ROWS + 1 }, () => '1\t2').join('\n') + '\n';
     const event = ({
       clipboardData: { getData: (type: string) => (type === 'text/plain' ? tooManyRows : '') },
+      preventDefault: vi.fn(),
     } as unknown) as ClipboardEvent;
 
     const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
@@ -1251,7 +1326,7 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     expect(view.state.doc.toJSON()).toEqual(before);
     expect(
       dispatched.some(
-        (e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('过大')
+        (e) => (e as any).type === 'markly:toast' && String((e as any).detail?.message ?? '').includes('已取消')
       )
     ).toBe(true);
 

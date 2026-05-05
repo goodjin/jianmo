@@ -7,6 +7,242 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-05-05
+
+### Added
+
+- **M90（自定义模板目录）**：设置 **`markly.templates.userDirectory`** 为含 `*.md` / `*.markdown` 的目录（绝对路径或 `~/…`）。**New Markdown from Template…** 在「内置模板」下增加 **「自定义模板」** 分区，与 M89 内置模板同一流程另存为并打开。安全：读取用户文件时校验路径落在该目录下。实现：`userTemplateDirectory.ts`、`loadUserTemplate.ts`；单测：`userTemplateDirectory.test.ts`、配置/契约测试。
+
+## [1.37.0] - 2026-05-05
+
+### Added
+
+- **M89（文档模板库）**：内置 **会议记录、周报、项目 README、博客文章、学习笔记** 五套 Markdown 模板（仓库根目录 `templates/*.md`，打进 VSIX）。命令 **`markly.template.newFromLibrary`**（**New Markdown from Template…**）：QuickPick 选择模板 → 另存为 → 用 Markly 打开。实现：`src/extension/templates/`。
+
+## [1.36.0] - 2026-05-05
+
+### Added
+
+- **M88（发布前预览）**：使用与 **导出 HTML** 相同的 `buildExportHtmlString` 管线在侧栏 **Webview** 中只读预览（目录、KaTeX、Mermaid 等与导出一致）；本地相对路径图片改写为 Webview 可加载 URI。命令 **`markly.preview.exportHtml`**；工具栏增加预览按钮（与 PDF/HTML 导出并列）。实现：`src/core/export/htmlExport.ts`、`src/core/export/htmlPreviewImgRewrite.ts`、`src/extension/preview/exportHtmlPreview.ts`；单测：`htmlExport.test.ts`、`htmlPreviewImgRewrite.test.ts`。
+
+## [1.35.0] - 2026-05-05
+
+### Added
+
+- **M87（富文本复制）**：**源码 / IR** 模式下复制选区时除 Markdown 文本外写入 **`text/html`**（由 `marked` 渲染片段）；**Rich** 模式下用 ProseMirror **`DOMSerializer`** 序列化选区为 HTML，并写入可读 **`text/plain`**。便于粘贴到邮件客户端与多数 IM 保留标题、列表、加粗、表格等结构。实现：`webview/src/utils/richClipboard.ts`、`webview/src/core/editor.ts`、`marklyRichClipboardCopyPlugin`（`markly-table-rich.ts`）；单测：`richClipboard.test.ts`。
+
+## [1.34.0] - 2026-05-05
+
+### Added
+
+- **M86（导出失败诊断包）**：**PDF / HTML** 导出失败时错误通知提供 **「复制诊断包」**（错误信息与堆栈路径已脱敏）；命令 **`markly.export.copyFailureDiagnostics`** 可复制最近一次导出失败诊断。自定义编辑器侧导出失败与命令面板导出共用同一套逻辑。实现：`src/core/export/exportDiagnostics.ts`、`src/extension/export/exportFailureUi.ts`；单测：`exportDiagnostics.test.ts`。
+
+## [1.33.0] - 2026-05-05
+
+### Added
+
+- **M85（Mermaid 导出一致）**：导出 **HTML** 与 **PDF** 共用 `src/core/export/mermaidExport.ts`：将 marked 产出的 ` ```mermaid ` 围栏转为 `<div class="mermaid markly-mermaid-await">`，内联 **`mermaid.min.js`**（运行时从扩展 `node_modules` 读取），在 **`DOMContentLoaded`** 中 **`mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme })`** 与 **`mermaid.run({ querySelector: '.markly-mermaid-await' })`**，与编辑器侧 `webview/src/config/mermaid.ts` 默认策略对齐；**HTML** 主题随 `darkMode` 在 `default`/`dark` 间切换，**PDF** 固定浅色 `default`。PDF 在 **`page.setContent`** 后 **`waitForFunction`** 等待各占位块出现 **`svg`**（超时仍导出）。根依赖 **`mermaid` 升至 `^11.12.3`** 与 webview 对齐。单测：`mermaidExport.test.ts`、`htmlExport.test.ts`、`pdfExport.test.ts`。
+
+## [1.32.0] - 2026-05-05
+
+### Added
+
+- **M84（代码块导出增强）**：**PDF** 与 **导出 HTML** 中围栏代码统一加强 **长行换行**（`white-space: pre-wrap`、`word-break`、`overflow-wrap`）、**Tab 宽度**（`tab-size: 4`），PDF 增加 **`print-color-adjust: exact`** 以利打印背景色稳定；**HTML 打印**（`@media print`）将 `pre` 从「禁止拆页」改为 **允许跨页**，避免长代码块整段挤在一页；`blockquote` 仍保持尽量不拆页。`print-friendly` HTML 主题对 `pre` 追加相同换行规则。**学术** PDF 模板下的 `pre` 同步换行属性。单测：`pdfExport.test.ts`、`htmlExport.test.ts`。
+
+## [1.31.0] - 2026-05-05
+
+### Added
+
+- **M83（导出前检查）**：导出 **PDF / HTML** 前增加可配置预检（`markly.export.preflight.scope`：`off` | `images` | `full`，默认 `full`；`markly.export.preflight.blockOnIssues` 为 `true` 时须确认「仍要导出」）。`full` 覆盖 **本地图片缺失**、**可解析为本地 fs 路径的 Markdown 链接目标缺失**、**疑似未配对的 `$` / `$$`**（围栏代码块已剔除的启发式检查）。实现：`exportPreflight.ts`、`exportPreflightUi.ts`；`markdownLinkRefs` 与图片引用解析迁入 `src/core/markdown/` 供 core 与扩展共用。单测：`exportPreflight.test.ts`、`configuration.test.ts`、`messageContract.test.ts`。
+
+## [1.30.0] - 2026-05-05
+
+### Added
+
+- **M82（HTML 资源打包导出）**：可选 **`markly.export.html.copyLocalImages`**（默认 `false`）在导出 HTML 时把 Markdown 文档目录内的 **本地相对路径图片** 复制到输出 HTML 旁的 **`markly.export.html.assetsSubdirectory`**（默认 `markly-html-assets`，单层目录名，配置校验禁止 `..` 与路径分隔符），并重写 `<img src>`。实现：`htmlBundleImages.ts`、`exportToHtml` 选项 `documentBaseDir` / `assetsSubdirectory`；`MarkdownEditorProvider` 与 **`Export as HTML`** 命令传入文档目录。单测：`htmlBundleImages.test.ts`、`htmlExport.test.ts`、`configuration.test.ts`。
+
+## [1.29.0] - 2026-05-05
+
+### Added
+
+- **M81（PDF 模板扩充）**：新增 VS Code 设置 **`markly.export.pdf.template`**，可选 **`default`**（沿用原 GitHub 系浅色无衬线版式）与 **`academic`**（衬线字体、暖灰纸感代码块/表格、双线下划目录标题等）。页边距、目录开关、页眉页脚开关仍由既有 `markly.export.pdf.*` 控制；导出时 `body` 带 `markly-pdf--{template}` 类名，Puppeteer 页眉文案随模板区分。类型：`PdfExportTemplateId`。单测：`pdfExport.test.ts`、`configuration.test.ts`。
+
+## [1.28.0] - 2026-05-05
+
+### Added
+
+- **M80（AI Provider 插件化预留）**：写作辅助宿主侧拆分 — **`AssistFeatureSnapshot`**（与用户设置对齐、不含密钥）与 **`AssistModelOperations`**（`rewriteSelection` / `summarize` / `suggestTitles` / `convertTextToGfmTable`）由 **`createAssistModelOperations`** + **`AssistRuntimeDeps`**（`getBearerToken`、可注入 **`fetch`**）装配；HTTP 共用 **`openAiCompatibleChatCompletion`**。VS Code 绑定集中在 **`assistExtensionBridge.getAssistModelOperationsForExtension`**。GFM 本地工具迁至 **`gfmTableLocal.ts`**，`textToGfmTable.ts` re-export；`validateAiRewriteConfig` 使用 **`assistFeatureSnapshotFromExtensionConfig`**。行为与报错文案保持与拆分前一致。单测：`assistModelOperations.test.ts`、`openAiCompatibleTransport.test.ts`。
+
+## [1.27.0] - 2026-05-05
+
+### Added
+
+- **M79（AI 操作历史）**：侧栏在「摘要」下新增 **「AI 操作」** 面板，记录最近一次 **已成功落盘** 的 **选区润色** 与 **选区转 GFM 表**（最多 15 条）。支持 **回看**（与 M72/M76 同款双栏只读对照）及 **撤销**：IR/源码模式下按 UTF-16 偏移将仍与记录一致的段落还原为原文并调整后续条目偏移（与撤回区间相交的条目自动丢弃）；Rich 模式下若当前选区仍等于记录中的 AI 结果则尝试 `replacePlainSelection` 还原。实现：`webview/src/utils/aiApplyHistory.ts`、`AiApplyHistoryPanel.vue`。单测：`aiApplyHistory.test.ts`、`AiApplyHistoryPanel.test.ts`。
+
+## [1.26.0] - 2026-05-05
+
+### Added
+
+- **M78（AI 隐私说明成文）**：新增随扩展分发的 **`privacy/AI_PRIVACY.md`**（「三句话」可复述摘要 + 各 AI 能力出站数据范围表 + SecretStorage 说明）；命令 **AI: Open Privacy Notice**（`markly.ai.openPrivacyNotice`）在编辑器中打开该文档。`markly.ai.rewrite.enabled` / `markly.ai.rewrite.provider` 补充 **`markdownDescription`**；README 增加 AI 隐私小节；侧栏「摘要」面板增加固定出站提示。单测：`aiPrivacyNotice.test.ts`。
+
+## [1.25.0] - 2026-05-05
+
+### Added
+
+- **M77（长文结构建议）**：侧栏在大纲下新增「**结构建议**」面板，**纯本地**扫描 ATX 标题：**锚点与其它节重复**、**层级断层**（例如 H2 后直连 H4）、**文档以 H3+ 起头**；点击任一条与大纲相同方式滚至对应标题。实现：`analyzeMarkdownStructureHints`、`StructureHintsPanel`。单测：`markdownStructureHints.test.ts`、`StructureHintsPanel.test.ts`。
+
+## [1.24.0] - 2026-05-05
+
+### Added
+
+- **M76（AI 表格整理二期）**：新增命令 “Writing: Convert Selection to GFM Table (AI)”，将 **选区内非 Markdown 管道的表格文本**（含 mock 支持的 **TSV / 逗号分列且列数一致**）转为 **GFM**，并在 Webview **预览确认后才替换选区**（对齐 M72 安全模型）。扩展端：`textToGfmTableViaProvider` + `AI_CONVERT_TEXT_TO_TABLE_*` 消息；mock 仅用确定性分列规则，通用转换需 openai-compatible。单测：`textToGfmTable.test.ts`、`messageContract`。
+
+## [1.23.0] - 2026-05-05
+
+### Added
+
+- **M75（Markdown 结构修复二期）**：文档级本地「修复 Markdown」增强为结构修复：**标题层级**（避免从上一级一下跳到 H4+）；**列表**（`*`/`+`→`-`，task 勾选规范化）；**空行**（段落↔标题、标题↔正文之间补一空行）；` ``` ` / `~~~` 代码围栏内保持不变。合并入口 `fixMarkdownStructuralPhaseTwo`。命令面板条目更名为 “Writing: Fix Markdown Structure”。单测：`markdownStructureRepair.test.ts`。
+
+## [1.22.0] - 2026-05-05
+
+### Added
+
+- **M74（AI 标题建议二期）**：写作辅助「标题建议」升级为 AI 多候选：弹窗展示多条候选标题（含**风格**与可选理由），可一键应用到文档（替换第一条 `#` 标题或插入到顶部）。实现：`AI_SUGGEST_TITLES_REQUEST/RESULT` 协议；扩展端 `suggestTitlesViaProvider` 复用 openai-compatible 配置/SecretStorage key。单测：`titleSuggestions.test.ts`、`messageContract.test.ts`。
+
+## [1.21.0] - 2026-05-05
+
+### Added
+
+- **M73（AI 摘要侧栏）**：侧栏新增「摘要」面板，支持生成**全文**或**当前章节**摘要，并可复制/插入到文档。实现：`AI_SUMMARY_REQUEST/RESULT` 消息协议；扩展端 `summarizeViaProvider` 复用 openai-compatible 配置与 SecretStorage API key；Webview `AISummaryPanel` + `extractMarkdownSectionByHeadingId`。单测：`AISummaryPanel.test.ts`、`outline.test.ts`、`messageContract.test.ts`。
+
+## [1.20.0] - 2026-05-05
+
+### Added
+
+- **M72（润色 Diff 预览）**：选区润色不再直接替换内容；AI 返回后先弹出预览对话框（原文 / 润色后），用户点击「替换选区」后才真正写入。若选区内容已变化则提示重新选择，避免误替换。单测：`rewriteSelectionPreview.test.ts`。
+
+## [1.19.0] - 2026-05-05
+
+### Added
+
+- **M71（AI Provider 配置体验）**：新增命令 “AI: Validate Setup” 用于校验 openai-compatible 配置；当 AI 相关 settings 变更且启用时，自动提示 endpoint / model / API Key / timeout 等常见缺失或不合理项，并提供一键入口（设置 API Key / 打开设置）。配置项 description 增强提示 SecretStorage 与校验命令。单测：`validateAiRewriteConfig.test.ts`。
+
+## [1.18.0] - 2026-05-05
+
+### Added
+
+- **M70（长文档稳定门禁）**：新增 `docs/fixtures/m70` 的长文档 seed，并补充单测门禁 `largeDocStabilityGate.test.ts`：用 seed 生成跨越 `richPerfTier`（T1/T2）阈值的大文档，验证档位切换与降级 banner 文案稳定，防止回归。
+
+## [1.17.0] - 2026-05-05
+
+### Added
+
+- **M69（章节折叠编辑）**：Source/IR 模式支持按 Markdown ATX 标题折叠章节块（gutter 折叠三角）。折叠范围为「当前标题行之后」直到下一条同级或更高标题行。实现：`computeMarkdownHeadingFoldRange`（`webview/src/core/markdownFolding.ts`）+ CM6 `foldService`/`foldGutter`；单测 `markdownFolding.test.ts`。
+
+## [1.16.0] - 2026-05-05
+
+### Added
+
+- **M68（跨文件搜索入口）**：查找面板增加「工作区搜索」按钮（🔎），一键调起 VS Code 的「在文件中查找」（`workbench.action.findInFiles`）并自动填入当前查找词。实现：Webview `OPEN_WORKSPACE_SEARCH` 消息 + extension 执行命令；单测 `FindReplacePanel.test.ts`、`messageContract.test.ts`。
+
+## [1.15.0] - 2026-05-05
+
+### Added
+
+- **M67（查找命中列表）**：查找面板下方展示命中列表（上下文片段预览），点击某条可直接跳转到对应匹配；Rich/Source 统一复用 `activateFindMatch` 逻辑（Rich 会定位第 n 次出现的 plain text）。单测：`FindReplacePanel.test.ts`。
+
+## [1.14.0] - 2026-05-05
+
+### Added
+
+- **M66（大文档档位可见）**：工具栏增加「档位」提示（XS/S/M/L/XL），并在 tooltip 中汇总当前 Rich 性能档位与已生效的降级项（如 Shiki 语法高亮 / Mermaid 渲染 / Rich 表格列宽拖拽自动关闭等），让用户明确“为什么某些效果没了”。实现：`App.vue` 计算 `docBaselineTierLabel` + `perfDegradeTitle`，`Toolbar.vue` 展示；单测 `toolbarModes.test.ts`。
+
+## [1.13.0] - 2026-05-05
+
+### Added
+
+- **M65（内部链接悬停预览）**：在 Rich 模式中鼠标悬停到内部 Markdown 链接（`#锚点` 或相对 `.md#锚点`）时，显示浮层预览：目标标题 + 该标题下的摘要片段，并提供「打开」按钮在宿主侧预览打开目标文件。实现：`MARKDOWN_HOVER_PREVIEW_REQUEST/RESULT` 消息协议、扩展端 `computeMarkdownHoverPreview`（`src/extension/markdown/markdownHoverPreview.ts`）、`MilkdownEditor` hover 事件、`App.vue` 浮层 UI；契约单测更新。
+
+## [1.12.0] - 2026-05-05
+
+### Added
+
+- **M64（反向链接基础）**：打开「大纲」侧栏时在下方展示 **反向链接**：扫描当前工作区内其它 Markdown（最多约 650 个文件，超限标记截断）中是否包含指向本篇的 `[文字](路径)`、`[ref]: 路径` 或 `[[wiki]]`（无扩展名时按 `.md` 解析）；以工作区相对路径列出，点击在宿主中用预览模式打开对应文件（须落在工作区内）。↻ 可手动刷新。单测：`markdownLinkRefs.test.ts`、`BacklinksPanel.test.ts`。
+
+## [1.11.0] - 2026-05-05
+
+### Added
+
+- **M63（锚点 / 重复标题）**：按与大纲一致的 `generateHeadingId` 规则检测文档内重复 slug；侧栏重复标题行显示 ⚠ 与说明；点击大纲跳转或 Rich 内 `#` 锚点（含目录）时若存在冲突则 Toast 提示「可能总是跳到第一个同名标题」。实现：`getDuplicateHeadingSlugs`、`isHeadingSlugAmbiguous`（`webview/src/shared/outline.ts`）、`OutlinePanel.vue`、`App.vue`（`handleOutlineJump`、`handleRichTocAnchorClick`）；单测 `outline.test.ts`、`OutlinePanel.test.ts`。
+
+## [1.10.0] - 2026-05-05
+
+### Added
+
+- **M62（大纲拖拽调序）**：侧栏大纲在「最低标题级别」上显示 **⋮⋮** 拖动手柄（≥2 个同级章时）；将整块正文（该标题及其下所有更深层标题，直到下一同级章）拖到另一顶级标题行上释放以调整顺序。筛选开启时禁用拖放。实现：`partitionMarkdownByTopLevelHeadings`、`reorderMarkdownTopLevelSections`（`shared/outlineReorder.ts`）、`OutlinePanel` + `App.handleOutlineReorder`；单测 `outlineReorder.test.ts`。
+
+## [1.9.0] - 2026-05-05
+
+### Added
+
+- **M61（大纲搜索）**：侧栏大纲增加「筛选标题」输入框；不区分大小写子串匹配，显示匹配项及其**祖先标题**以便定位；无匹配时提示「无匹配标题」；<kbd>Esc</kbd> 清空筛选。实现：`collectOutlineFilterIndices`（`shared/outline.ts`）、`OutlinePanel.vue` 样式与行为；单测 `outline.test.ts`、`OutlinePanel.test.ts`。
+
+## [1.8.3] - 2026-05-05
+
+### Added
+
+- **M60（表格用户说明）**：新增 `docs/RICH_TABLE_USER_GUIDE.md`（插入、删表/行列、粘贴与上限、`markly.table.*`/`Insert Table`、`tidyTables`、性能相关设置）；`README` 与 `MARKDOWN_CAPABILITIES` 增补链接或边界说明；Rich 表格帮助弹层提示该文档路径。
+
+## [1.8.2] - 2026-05-05
+
+### Added
+
+- **M59（大表格性能二期）**：设置项 `markly.editor.richTableColumnResize`（`auto`|`on`|`off`）。`auto` 按 Markdown 中表格体量（阈值与粘贴软确认对齐：≥18 行、≥10 列或 ≥200 格）自动跳过 GFM `columnResizingPlugin`，减轻滚动与选区跟手延迟；`on`/`off` 强制开关。文档变更后约 480ms 防抖重算，设置变更立即生效。`MilkdownEditor` 开关变化时安全销毁并重载实例。表格容器增加 `contain` / `overscroll-behavior`。工具模块 `richTablePerf.ts` + 单测 `richTablePerf.test.ts`。
+
+## [1.8.1] - 2026-05-05
+
+### Added
+
+- **M58（表格 round-trip fixture）**：`docs/fixtures/m9` 新增 `11-tables-stacked.md`、`12-table-rich-cells.md`、`13-table-wide-grid.md`；`04-tables-gfm.md` 的 `MUST_CONTAIN` 扩充为对齐规范化子串与空单元格 `<br />` 等，锁住 Rich↔Source 序列化不丢格/不丢对齐信息。单测：`richFixtureRoundTrip.test.ts`。
+
+## [1.8.0] - 2026-05-05
+
+### Added
+
+- **M57（表格粘贴预览）**：Rich 中解析为矩阵粘贴前 `window.confirm` 展示节选预览与说明。触发条件：① 剪贴板 HTML 含 `<table>` 且 `body` 上仍有其它可见片段（「脏 HTML」，仅插入解析矩阵）；② 矩阵超过软阈值（`MARKLY_TABLE_PASTE_SOFT_CONFIRM_*`，仍低于硬上限）；③ 超限矩阵经 `recoverOversizedPasteGrid` **截断**到硬上限再粘贴（用户可选择确认）。取消时：仅脏 HTML + 矩阵不大则 **不拦截**（交给浏览器默认粘贴）；否则会拦截并可选 toast「已取消表格粘贴。」。导出：`buildHtmlTableGridUnchecked`、`truncatePasteGridToLimits`、`recoverOversizedPasteGrid`、`gridNeedsSoftPasteConfirm`、`summarizePasteGridPreview`。单测：`markly-table-rich.test.ts`。
+
+## [1.7.6] - 2026-05-05
+
+### Fixed
+
+- **M56（Rich 表格快捷键）**：表内普通 Enter 不再走 GFM 「整表退出」；GFM `table_cell` 仅允许单段 `paragraph`、`splitBlock` 无效时用 `hardbreak` 单元格内换行；Tab/Shift-Tab 在表内仍优先列表 `sinkListItem`/`liftListItem`（无列表时交由 GFM 切格）；`webview/src/__tests__/richTableKeyboard.test.ts`；导出 `richTableToggleListIndentInTable` 供单测。**说明**：当前 Milkdown 预设下单元格内无法合法嵌套 `bullet_list`，列表缩进项用精简 PM schema 单元测覆盖。
+
+## [1.7.5] - 2026-05-05
+
+### Added
+
+- **M55**：未引用 assets 扫描建议：比对保存目录一层图片与正文本地路径（`![]()`、`[](url)`、引用定义行）；资产面板新增「复制未引用清单」，无缺失时显示信息横幅；复制诊断前自动拉取目录列表；命令 `markly.image.copyUnreferencedList`、`markly.image.openAssetsPanel`。
+
+## [1.7.4] - 2026-05-05
+
+### Added
+
+- **M54**：缺失图片批量修复：宿主在选图替换或取消后下发 `IMAGE_REF_REPAIR_OUTCOME`；Webview 顺序等待并支持 `window.confirm` 确认；命令 `markly.image.repairMissingRefsBatch` 与提示条/资产面板入口。
+
+## [1.7.3] - 2026-05-05
+
+### Added
+
+- **M53**：图片资产面板二期：分区展示「已引用且存在」「已引用缺失」「保存目录一层内未检出引用」；协议 `LIST_ASSETS_IMAGE_FILES` / `ASSETS_IMAGE_FILES_RESULT`；路径规范化比对 `canonicalMarkdownLocalRefKey`。
+
+## [1.7.2] - 2026-05-05
+
+### Added
+
+- **M51**：工作区图片文件重命名/移动后，若当前活动编辑器为 Markdown，提示「修复当前文档」中的图片引用（经 Markly webview 执行 `documentReplace`）。
+- **M52**：设置项 `markly.image.sameNameHandling`（`overwrite` / `rename` / `prompt`）；粘贴/拖拽 `UPLOAD_IMAGE` 与 `SAVE_IMAGE` 在 assets 下同名时按策略处理；`IMAGE_SAVED` / `IMAGE_SAVE_FAILED` 可选 `requestId` 与上传请求对齐。
+- 文档：`docs/milestones-M51-M100.md`（执行矩阵与 backlog）。
+
 ## [1.7.1] - 2026-05-02
 
 ### Added

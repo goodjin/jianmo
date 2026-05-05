@@ -6,6 +6,7 @@ A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing 
 
 ## Features
 
+- **Outline**: side panel with **heading search** (filter with ancestor path, Esc to clear) and **drag top-level sections** to reorder chapter blocks; sidebar **AI 操作** lists confirmed **selection rewrite / table-to-GFM applies** for read-back and revert (M79, see `CHANGELOG.md`)
 - **Mode Switching**: Toggle between source and preview mode with one shortcut
 - **WYSIWYG Editing**: What-you-see-is-what-you-get Markdown editing
 - **Image Enhancements**:
@@ -14,13 +15,19 @@ A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing 
   - Image editing (crop, annotate, compress)
 - **Rich Syntax Support**:
   - GFM (GitHub Flavored Markdown)
-  - Rich table editing (Tab navigation, add/remove rows/cols, paste TSV/CSV with safety limits)
+  - Rich table editing (Tab navigation, add/remove rows/cols, paste TSV/CSV/HTML with limits; **[表格说明](docs/RICH_TABLE_USER_GUIDE.md)**)
   - Math formulas (KaTeX)
   - Code highlighting (Shiki)
   - Diagrams (Mermaid)
 - **Export**:
   - PDF export
   - HTML export
+  - Export failure: sanitized diagnostics package (copy from error notification or command **Export: Copy Last Failure Diagnostics**)
+  - Copy/paste: selection copy includes **HTML** for mail/IM (plain text still available)
+  - **Export HTML preview** (command **Preview: Export HTML**): read-only panel matching exported HTML layout
+  - **Document templates** (command **New Markdown from Template…**): built-in set + optional folder via **`markly.templates.userDirectory`**
+  - Fenced code: long-line wrap / tab width; printed HTML allows code blocks to split across pages (M84)
+  - Mermaid: exported HTML/PDF share the same fenced-block → inline `mermaid.min.js` + `initialize`/`run` pipeline (M85)
 
 ## Getting Started
 
@@ -71,20 +78,37 @@ Search `markly` in VSCode settings:
 | `markly.image.saveDirectory` | Image save directory (relative to document) | `./assets` |
 | `markly.image.compressThreshold` | Compression threshold in bytes | `512000` |
 | `markly.image.compressQuality` | Compression quality (0-1) | `0.8` |
+| `markly.image.sameNameHandling` | Paste/drop image filename already exists in assets: `overwrite` / `rename` / `prompt` | `rename` |
 | `markly.editor.theme` | Editor theme (`auto`, `light`, `dark`) | `auto` |
 | `markly.editor.fontSize` | Font size | `14` |
 | `markly.editor.defaultForMarkdown` | Use Markly as default Markdown editor | `true` |
 | `markly.editor.enableShiki` | 代码块 Shiki 高亮；大文档高档位不加载；Rich 创建失败会自动降级无 Shiki | `false` |
 | `markly.editor.enableMermaid` | Mermaid 图表（Rich） | `true` |
+| `markly.editor.richTableColumnResize` | Rich 表格列宽拖拽：`auto` 大表自动关 / `on` `off` 强制 | `auto` |
 | `markly.export.pdf.format` | PDF page format | `A4` |
 | `markly.export.pdf.margin` | PDF margins (mm) | 上/右/下/左各默认约 25/20/25/20 |
 | `markly.export.pdf.includeToc` | PDF 是否含目录 | `true` |
 | `markly.export.pdf.displayHeaderFooter` | PDF 页眉页脚 | `true` |
+| `markly.export.pdf.template` | PDF 版式：`default`（GitHub 系无衬线浅色）/ `academic`（衬线、偏印刷阅读色） | `default` |
 | `markly.export.html.theme` | HTML 导出主题 | `default` |
+| `markly.export.html.copyLocalImages` | 导出 HTML 时将文档目录内本地图片复制到输出旁并重写引用 | `false` |
+| `markly.export.html.assetsSubdirectory` | 上述复制目标子目录名（单层，不可含 `/`、`\`、`..`） | `markly-html-assets` |
+| `markly.export.preflight.scope` | 导出 PDF/HTML 前预检：`off` / `images`（仅本地图）/ `full`（图 + 本地链 + 公式 `$`/`$$` 粗检） | `full` |
+| `markly.export.preflight.blockOnIssues` | 有问题时是否弹窗确认后才允许导出 | `false` |
+| `markly.templates.userDirectory` | 自定义模板文件夹（绝对路径或 `~/…`）；该目录下一层的 `*.md` 会出现在「从模板新建」 | （空） |
 | `markly.ai.rewrite.enabled` | 是否允许选区润色（走宿主 provider） | `false` |
 | `markly.ai.rewrite.provider` | `none` / `mock` / `openai-compatible` | `mock` |
 
 选区润色使用 OpenAI 兼容端点时，用命令 **AI: Set API Key**（`markly.ai.setApiKey`）将密钥写入 SecretStorage（不会进 `settings.json`）。
+
+### AI 与隐私（默认不上传全文）
+
+用三句话概括：**默认关闭 AI 总开关**；**默认 `mock` 不向公网发写作内容**；只有你启用 **`openai-compatible`** 并**主动点击**某次 AI 能力时，才把当次对应的文本片段发往你配置的 Endpoint（例如侧栏「全文」摘要会带当前整篇 Markdown）。完整的数据范围表与可复述说明见：
+
+- 命令面板：**AI: Open Privacy Notice**（`markly.ai.openPrivacyNotice`），或  
+- 仓库内 [`privacy/AI_PRIVACY.md`](privacy/AI_PRIVACY.md)（与 VSIX 同路径附带）。
+
+宿主侧写作能力已拆分为 **快照配置 + `AssistModelOperations` + HTTP 传输**（详见 `CHANGELOG` M80）：后续若要接其它 SaaS Provider，主要在扩展宿主增加装配，而不必复制四套 `fetch` 逻辑。
 
 ## Testing
 

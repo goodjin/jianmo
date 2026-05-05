@@ -3,6 +3,8 @@
     <Toolbar
       v-if="editorReady"
       :mode="currentMode"
+      :doc-baseline-tier-label="docBaselineTierLabel"
+      :perf-degrade-title="perfDegradeTitle"
       :show-outline="showOutline"
       :show-line-numbers="editor.showLineNumbers"
       :find-panel-open="findReplaceVisible"
@@ -42,7 +44,10 @@
     >
       <div class="markly-table-help-panel">
         <h3 id="markly-table-help-title">Rich 表格快捷键</h3>
-        <p class="markly-table-help-hint">在表格单元格内生效；按钮在光标进入表格后可用。</p>
+        <p class="markly-table-help-hint">
+          在表格单元格内生效；按钮在光标进入表格后可用。插入 / 粘贴 / 命令面板 ID 等完整说明见扩展仓库
+          <code>docs/RICH_TABLE_USER_GUIDE.md</code>。
+        </p>
         <ul class="markly-table-help-list">
           <li><kbd>Mod</kbd> 在 macOS 为 ⌘，在 Windows / Linux 为 Ctrl。</li>
           <li><kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>↑</kbd>：上方插入行</li>
@@ -53,6 +58,7 @@
           <li><kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>Backspace</kbd>：删除当前列</li>
           <li>删除整张表：工具栏「表格：删除当前表格」按钮，或命令面板 “Table: Delete Table”</li>
           <li><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd>：在单元格间移动（由编辑器表格键位处理）</li>
+          <li>格内 <kbd>Enter</kbd>：优先在单元格内换行；<kbd>Mod</kbd> + <kbd>Enter</kbd>：退出表格（GFM ExitTable）</li>
         </ul>
         <button type="button" class="markly-table-help-close" @click="richTableHelpOpen = false">关闭</button>
       </div>
@@ -63,14 +69,165 @@
       :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
       :match-count-truncated="findMatchesTruncated"
       :current-match-index="findActiveIdx"
+      :matches-preview="findMatchesPreview"
       :pattern-warning="findPatternWarning"
       @close="onFindPanelClose"
       @query-change="onFindQueryChange"
       @find-next="handleFindNext"
       @find-prev="handleFindPrev"
+      @jump-to-match="handleFindJumpToMatch"
+      @workspace-search="handleWorkspaceSearch"
       @replace="handleFindReplaceOnce"
       @replace-all="handleReplaceAllFromPanel"
     />
+
+    <!-- M72：润色预览确认框 -->
+    <div
+      v-if="rewritePreviewVisible"
+      class="markly-table-help-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="润色预览"
+      @click.self="rewritePreviewVisible = false"
+    >
+      <div class="markly-table-help-panel" style="max-width: 860px;">
+        <h3>润色预览</h3>
+        <p class="markly-table-help-hint">
+          对比原文与润色结果；点击「替换选区」后才会真正改动文档。
+        </p>
+        <div class="markly-rewrite-preview-grid">
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">原文</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="rewritePreviewOriginal"></textarea>
+          </div>
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">润色后</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="rewritePreviewRewritten"></textarea>
+          </div>
+        </div>
+        <div class="markly-rewrite-preview-actions">
+          <button type="button" class="markly-table-help-close" :disabled="rewritePreviewLoading" @click="applyRewritePreview">
+            替换选区
+          </button>
+          <button type="button" class="markly-table-help-close" @click="rewritePreviewVisible = false">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M76：选区 → GFM 表格（预览确认后替换） -->
+    <div
+      v-if="tableConvertPreviewVisible"
+      class="markly-table-help-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="表格转换预览"
+      @click.self="tableConvertPreviewVisible = false"
+    >
+      <div class="markly-table-help-panel" style="max-width: 860px;">
+        <h3>GFM 表格预览</h3>
+        <p class="markly-table-help-hint">
+          对比原文与生成的 GFM 管道表；仅有在你点击「替换选区」后才会写入文档。
+        </p>
+        <div class="markly-rewrite-preview-grid">
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">原文</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="tableConvertPreviewOriginal"></textarea>
+          </div>
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">GFM 表格</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="tableConvertPreviewMarkdown"></textarea>
+          </div>
+        </div>
+        <div class="markly-rewrite-preview-actions">
+          <button
+            type="button"
+            class="markly-table-help-close"
+            :disabled="tableConvertPreviewLoading"
+            @click="applyTableConvertPreview"
+          >
+            替换选区
+          </button>
+          <button type="button" class="markly-table-help-close" @click="tableConvertPreviewVisible = false">
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M79：AI 操作历史 — 回看（只读对比） -->
+    <div
+      v-if="aiHistoryReviewVisible"
+      class="markly-table-help-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="AI 操作回看"
+      @click.self="aiHistoryReviewVisible = false"
+    >
+      <div class="markly-table-help-panel" style="max-width: 860px;">
+        <h3>{{ aiHistoryReviewTitle }}</h3>
+        <div class="markly-rewrite-preview-grid">
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">原文（落盘前）</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="aiHistoryReviewOriginal"></textarea>
+          </div>
+          <div class="markly-rewrite-preview-col">
+            <div class="markly-rewrite-preview-label">AI 写入后（记录）</div>
+            <textarea class="markly-rewrite-preview-text" readonly :value="aiHistoryReviewApplied"></textarea>
+          </div>
+        </div>
+        <div class="markly-rewrite-preview-actions">
+          <button type="button" class="markly-table-help-close" @click="aiHistoryReviewVisible = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- M74：AI 标题建议（多候选 + 风格说明） -->
+    <div
+      v-if="aiTitleSuggestVisible"
+      class="markly-table-help-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="标题建议"
+      @click.self="aiTitleSuggestVisible = false"
+    >
+      <div class="markly-table-help-panel" style="max-width: 860px;">
+        <h3>标题建议</h3>
+        <p class="markly-table-help-hint">
+          选择一个候选标题并应用到文档。若文档已有 <code>#</code> 一级标题，会替换第一条；否则会插入到顶部。
+        </p>
+        <div v-if="aiTitleSuggestLoading" class="markly-table-help-text">正在生成候选标题…</div>
+        <div v-else-if="aiTitleSuggestErrorText" class="markly-table-help-text">
+          生成失败：{{ aiTitleSuggestErrorText }}
+        </div>
+        <div v-else class="markly-title-suggest-list" role="listbox" aria-label="候选标题列表">
+          <label
+            v-for="(it, idx) in aiTitleSuggestItems"
+            :key="`${idx}-${it.title}`"
+            class="markly-title-suggest-row"
+          >
+            <input type="radio" name="markly-title-suggest" :value="idx" v-model="aiTitleSuggestSelected" />
+            <div class="markly-title-suggest-main">
+              <div class="markly-title-suggest-title">{{ it.title }}</div>
+              <div class="markly-title-suggest-meta">
+                <span class="markly-title-suggest-style">{{ it.style }}</span>
+                <span v-if="it.reason" class="markly-title-suggest-reason">— {{ it.reason }}</span>
+              </div>
+            </div>
+          </label>
+        </div>
+        <div class="markly-rewrite-preview-actions">
+          <button
+            type="button"
+            class="markly-table-help-close"
+            :disabled="aiTitleSuggestLoading || aiTitleSuggestItems.length === 0"
+            @click="applyAiSuggestedTitle()"
+          >
+            应用到文档
+          </button>
+          <button type="button" class="markly-table-help-close" @click="aiTitleSuggestVisible = false">关闭</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Rich 降级提示条：只在非 rich 且最近一次 Rich 启动失败/超时时显示 -->
     <div
@@ -139,7 +296,29 @@
       <button type="button" class="retry-btn" data-testid="repair-first-missing-image-btn" @click="repairFirstMissingImageRef">
         修复第一项
       </button>
+      <button type="button" class="retry-btn" data-testid="repair-missing-batch-btn" @click="repairMissingRefsBatch">
+        批量修复
+      </button>
       <button type="button" class="retry-btn" data-testid="open-image-assets-panel-btn" @click="imageAssetsPanelOpen = true">
+        查看列表
+      </button>
+    </div>
+
+    <!-- M55：无缺失但有保存目录孤儿文件 -->
+    <div
+      v-if="showUnreferencedAssetsBanner"
+      class="rich-fallback-banner markly-banner-info"
+      role="status"
+      aria-live="polite"
+      data-testid="unreferenced-assets-banner"
+    >
+      <span class="msg">
+        保存目录下有 {{ unreferencedAssetImages.length }} 个图片未见正文引用。
+      </span>
+      <button type="button" class="retry-btn" data-testid="copy-unreferenced-banner-btn" @click="copyUnreferencedAssetImagesList">
+        复制清单
+      </button>
+      <button type="button" class="retry-btn" data-testid="open-assets-panel-from-banner" @click="imageAssetsPanelOpen = true">
         查看列表
       </button>
     </div>
@@ -173,7 +352,7 @@
       </button>
     </div>
 
-    <!-- 图片资产列表面板 -->
+    <!-- 图片资产列表面板（M53：存在 / 缺失 / 保存目录一层内未引用） -->
     <div
       v-if="imageAssetsPanelOpen"
       class="markly-table-help-backdrop"
@@ -183,21 +362,57 @@
       data-testid="image-assets-panel"
       @click.self="imageAssetsPanelOpen = false"
     >
-      <div class="markly-table-help-panel">
+      <div class="markly-table-help-panel markly-image-assets-panel">
         <h3 id="markly-image-assets-title">图片资产</h3>
         <p class="markly-table-help-hint">
-          缺失 {{ imageMissingCount }} 个，已检测 {{ localImageRefCheckResults.length }} 个本地引用。
+          保存目录：<strong>{{ saveDirectoryDisplayed }}</strong>
+          · 打开面板时会刷新本地引用检测（{{ localImageRefCheckResults.length }} 条）并列出目录内的一层图片；
+          {{ assetListHint }}
         </p>
+        <p v-if="assetListLoading" class="markly-image-assets-muted" data-testid="image-assets-loading">正在读取保存目录…</p>
+        <p v-if="assetListError" class="markly-image-assets-warning" data-testid="image-assets-dir-error">
+          {{ assetListError }}
+        </p>
+
+        <h4 class="markly-image-assets-heading" data-testid="image-assets-section-existing">
+          已引用且文件存在（{{ imageExistingRefs.length }}）
+        </h4>
         <ul class="markly-table-help-list">
-          <li v-if="imageMissingRefs.length === 0">暂无缺失图片。</li>
-          <li v-for="item in imageMissingRefs" :key="item.ref">
+          <li v-if="imageExistingRefs.length === 0">暂无——若刚打开面板，可先等待几秒或粘贴内容后再试。</li>
+          <li v-for="item in imageExistingRefs" :key="'ok-' + item.ref">
+            <strong>{{ item.ref }}</strong><br /><small>{{ item.resolvedPath || '' }}</small>
+          </li>
+        </ul>
+
+        <h4 class="markly-image-assets-heading" data-testid="image-assets-section-missing">
+          已引用缺失（{{ imageMissingRefs.length }}）
+        </h4>
+        <ul class="markly-table-help-list">
+          <li v-if="imageMissingRefs.length === 0">暂无缺失。</li>
+          <li v-for="item in imageMissingRefs" :key="'miss-' + item.ref">
             <strong>{{ item.ref }}</strong>
             <br />
             <small>{{ item.resolvedPath || '未解析路径' }}</small>
+            <span v-if="item.error"><br /><span class="markly-image-assets-muted">{{ item.error }}</span></span>
           </li>
         </ul>
+
+        <h4 class="markly-image-assets-heading" data-testid="image-assets-section-unreferenced">
+          保存目录一层内、正文中未发现引用（{{ unreferencedAssetImages.length }}）
+        </h4>
+        <ul class="markly-table-help-list">
+          <li v-if="unreferencedAssetImages.length === 0">暂无或未扫描到符合条件的图片文件。</li>
+          <li v-for="p in unreferencedAssetImages" :key="'unref-' + p">{{ p }}</li>
+        </ul>
+
+        <button type="button" class="markly-table-help-close" data-testid="copy-unreferenced-panel-btn" @click="copyUnreferencedAssetImagesList">
+          复制未引用清单
+        </button>
         <button type="button" class="markly-table-help-close" @click="copyMissingImageRefs">复制缺失清单</button>
         <button type="button" class="markly-table-help-close" @click="repairFirstMissingImageRef">修复第一项</button>
+        <button type="button" class="markly-table-help-close" data-testid="repair-missing-batch-panel-btn" @click="repairMissingRefsBatch">
+          批量修复缺失
+        </button>
         <button type="button" class="markly-table-help-close" @click="imageAssetsPanelOpen = false">关闭</button>
       </div>
     </div>
@@ -219,6 +434,32 @@
         @drop.capture="handleImageDrop"
         @dragover.prevent
       >
+        <div
+          v-if="markdownHoverPreviewVisible"
+          class="markly-hover-preview"
+          :style="{ left: markdownHoverPreviewX + 12 + 'px', top: markdownHoverPreviewY + 14 + 'px' }"
+          role="dialog"
+          aria-label="内部链接预览"
+          @mouseenter="() => { if (hoverHideTimer) { clearTimeout(hoverHideTimer); hoverHideTimer = null; } }"
+          @mouseleave="() => hideMarkdownHoverPreview(120)"
+        >
+          <div class="markly-hover-preview-title">
+            <span v-if="markdownHoverPreviewLoading">加载中…</span>
+            <span v-else>{{ markdownHoverPreviewTitle || '（无标题）' }}</span>
+          </div>
+          <div v-if="!markdownHoverPreviewLoading && markdownHoverPreviewExcerpt" class="markly-hover-preview-excerpt">
+            {{ markdownHoverPreviewExcerpt }}
+          </div>
+          <button
+            v-if="!markdownHoverPreviewLoading && markdownHoverPreviewTargetUri"
+            type="button"
+            class="markly-hover-preview-open"
+            @click="openMarkdownFromBacklink(markdownHoverPreviewTargetUri)"
+          >
+            打开
+          </button>
+        </div>
+
         <!-- 编辑器容器 (IR/source 由 CM6；rich 由 Milkdown/PM) -->
         <div
           ref="editorContainerRef"
@@ -232,6 +473,7 @@
           :content="content"
           :config="config!"
           :rich-perf-effective-tier="richPerfEffectiveTier"
+          :enable-rich-table-column-resize="stableRichTableColumnResizeEnabled"
           @change="onRichContentChange"
           @ready="onRichReady"
           @startup-event="onRichStartupEvent"
@@ -240,6 +482,9 @@
           @open-external-link="onRichOpenExternalLink"
           @table-context="onRichTableContext"
           @table-context-menu="onRichTableContextMenu"
+          @toc-click="handleRichTocAnchorClick"
+          @internal-link-hover="handleInternalLinkHover"
+          @internal-link-leave="handleInternalLinkLeave"
           ref="milkdownRef"
         />
 
@@ -248,16 +493,42 @@
         </div>
       </div>
 
-      <!-- 大纲视图 -->
-      <OutlinePanel
-        v-if="editorReady && showOutline"
-        :content="content"
-        :current-mode="currentMode"
-        :active-heading-id="outlineHighlightHeadingId"
-        :collapsed-heading-ids="outlineCollapsedIds"
-        @update:collapsed-heading-ids="outlineCollapsedIds = $event"
-        @jump="handleOutlineJump"
-      />
+      <!-- 大纲 + 反向链接 -->
+      <div v-if="editorReady && showOutline" class="markly-side-column">
+        <OutlinePanel
+          :content="content"
+          :current-mode="currentMode"
+          :active-heading-id="outlineHighlightHeadingId"
+          :collapsed-heading-ids="outlineCollapsedIds"
+          @update:collapsed-heading-ids="outlineCollapsedIds = $event"
+          @jump="handleOutlineJump"
+          @reorder="handleOutlineReorder"
+        />
+        <StructureHintsPanel :content="content" @jump="handleOutlineJump" />
+        <BacklinksPanel
+          :items="markdownBacklinksItems"
+          :loading="markdownBacklinksLoading"
+          :error-msg="markdownBacklinksErrorText"
+          :truncated="markdownBacklinksTruncated"
+          @refresh="requestMarkdownBacklinks"
+          @open="openMarkdownFromBacklink"
+        />
+        <AISummaryPanel
+          :loading="aiSummaryLoading"
+          :text="aiSummaryText"
+          :error-msg="aiSummaryErrorText"
+          @summarize-document="requestAiSummaryDocument"
+          @summarize-section="requestAiSummarySection"
+          @copy="copyAiSummary"
+          @insert="insertAiSummary"
+        />
+        <AiApplyHistoryPanel
+          :entries="aiApplyHistory"
+          @review="openAiApplyHistoryReview"
+          @revert="revertAiApplyHistoryEntry"
+          @clear="clearAiApplyHistory"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -268,6 +539,11 @@ import { useEditor } from './composables/useEditor';
 import { useImageHandler } from './composables/useImageHandler';
 import Toolbar from './components/Toolbar.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
+import BacklinksPanel from './components/BacklinksPanel.vue';
+import type { BacklinkRow } from './components/BacklinksPanel.vue';
+import AISummaryPanel from './components/AISummaryPanel.vue';
+import StructureHintsPanel from './components/StructureHintsPanel.vue';
+import AiApplyHistoryPanel from './components/AiApplyHistoryPanel.vue';
 import FindReplacePanel from './components/FindReplacePanel.vue';
 import ImagePreview from './components/ImagePreview.vue';
 import MilkdownEditor from './components/MilkdownEditor.vue';
@@ -277,22 +553,35 @@ import { skipWindowUndoRedoWhenEditorFocused } from './utils/undoRedoKeys';
 import { isMilkdownProseMirrorFocused } from './utils/editorFocus';
 import {
   buildImageDiagnostics,
+  computeUnreferencedAssetImages,
   formatMissingImageRefsList,
+  formatUnreferencedAssetImagesList,
   normalizeLocalImageRefsToDirectory,
   parseMarkdownImageRefs,
   replaceMarkdownImageRef,
 } from './utils/imageDiagnostics';
 import { shouldAppHandleTabIndent } from './utils/richTabPolicy';
 import { getRichPerfTier, type RichPerfTier } from './utils/richPerfTier';
+import { extractMarkdownSectionByHeadingId } from './shared/outline';
+import {
+  computeRichTableColumnResizeEnabled,
+  type RichTableColumnResizeMode,
+} from './utils/richTablePerf';
 import {
   buildLocalSummary,
-  fixMarkdownWhitespace,
-  suggestMarkdownTitle,
+  fixMarkdownStructuralPhaseTwo,
   tidyMarkdownTables,
   type WritingAssistAction,
 } from './utils/writingAssistant';
 import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
 import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown } from './utils/diagnosticsPackage';
+import { applySuggestedTitleToMarkdown } from './utils/titleSuggestions';
+import {
+  adjustAiApplyHistoryAfterSourceRevert,
+  pushAiApplyHistory,
+  tryRevertSourceApply,
+  type AiApplyHistoryEntry,
+} from './utils/aiApplyHistory';
 import {
   patternToRegExp,
   findAllMatchesInText,
@@ -302,13 +591,44 @@ import {
   matchOrdinalInText,
   type FindPatternMode,
 } from './utils/findPattern';
-import { parseHeadings, generateHeadingId } from './shared/outline';
+import { parseHeadings, generateHeadingId, isHeadingSlugAmbiguous } from './shared/outline';
+import { reorderMarkdownTopLevelSections } from './shared/outlineReorder';
 import { mockRewriteSelection } from './utils/mockRewriteSelection';
 import type { ExtensionConfig, ExtensionMessage, EditorMode, LocalImageRefCheckResult } from '../../src/types';
 import { undoDepth, redoDepth } from '@codemirror/commands';
 
 import { useVSCode } from './composables/useVSCode';
 const { postMessage, getState, setState } = useVSCode();
+
+/** M54：等待宿主 `REPAIR_IMAGE_REF` 结束（替换或用户在文件框取消） */
+type RepairOutcomeWaiter = {
+  fromRef: string;
+  timer: ReturnType<typeof window.setTimeout>;
+  resolve: (v: 'replaced' | 'cancelled' | 'timeout') => void;
+};
+
+let activeRepairOutcomeWaiter: RepairOutcomeWaiter | null = null;
+
+function waitForRepairOutcome(fromRef: string, timeoutMs: number): Promise<'replaced' | 'cancelled' | 'timeout'> {
+  if (activeRepairOutcomeWaiter) {
+    window.clearTimeout(activeRepairOutcomeWaiter.timer);
+    activeRepairOutcomeWaiter.resolve('timeout');
+    activeRepairOutcomeWaiter = null;
+  }
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      if (!activeRepairOutcomeWaiter || activeRepairOutcomeWaiter.fromRef !== fromRef) return;
+      activeRepairOutcomeWaiter.resolve('timeout');
+      activeRepairOutcomeWaiter = null;
+    }, timeoutMs);
+
+    activeRepairOutcomeWaiter = {
+      fromRef,
+      timer,
+      resolve,
+    };
+  });
+}
 
 declare global {
   interface Window {
@@ -355,8 +675,33 @@ const localImageRefCheckResults = ref<LocalImageRefCheckResult[]>([]);
 const localImageRefLastCheckedAt = ref<string | null>(null);
 const pendingLocalImageChecks = new Map<string, (results: LocalImageRefCheckResult[]) => void>();
 const imageAssetsPanelOpen = ref(false);
+const assetImageRelativePaths = ref<string[]>([]);
+/** 最近一次完成 LIST_ASSETS_IMAGE_FILES（含失败）的时刻；用于区别于「从未扫描」 */
+const lastAssetImageScanAt = ref<number | null>(null);
+const assetListLoading = ref(false);
+const assetListError = ref<string | null>(null);
+const pendingAssetImageLists = new Map<string, { timer: number; finalize: () => void }>();
 const imageMissingRefs = computed(() => localImageRefCheckResults.value.filter((result) => !result.exists));
+const imageExistingRefs = computed(() => localImageRefCheckResults.value.filter((result) => result.exists));
 const imageMissingCount = computed(() => imageMissingRefs.value.length);
+const saveDirectoryDisplayed = computed(
+  () => String(config.value?.image?.saveDirectory ?? './assets').trim() || './assets'
+);
+const assetListHint = computed(
+  () => '对比范围：Markdown 图片、同形链接 [](url)、引用定义行；不含 HTML/raw URL。'
+);
+const unreferencedAssetImages = computed(() => {
+  if (lastAssetImageScanAt.value === null) return [];
+  return computeUnreferencedAssetImages(content.value ?? '', assetImageRelativePaths.value);
+});
+
+const showUnreferencedAssetsBanner = computed(
+  () =>
+    editorReady.value &&
+    imageMissingCount.value === 0 &&
+    lastAssetImageScanAt.value !== null &&
+    unreferencedAssetImages.value.length > 0
+);
 const editorReady = ref(false);
 const currentMode = ref<EditorMode>('rich');
 const editorContainerStyle = computed(() => ({
@@ -392,6 +737,51 @@ const richPerfEffectiveTier = computed((): RichPerfTier => {
   if (richPerfDegradeUserFull.value) return 0;
   return computedRichPerfTier.value;
 });
+
+const perfDegradeTitle = computed(() => {
+  const items: string[] = [];
+  const tier = richPerfEffectiveTier.value ?? 0;
+  const userFull = richPerfDegradeUserFull.value;
+  const shikiEnabled = config.value?.editor?.enableShiki === true;
+  const mermaidEnabled = config.value?.editor?.enableMermaid !== false;
+
+  if (shikiEnabled && tier !== 0) items.push('Shiki 语法高亮（已关闭）');
+  if (mermaidEnabled && tier >= 2) items.push('Mermaid 渲染（已关闭）');
+  if (stableRichTableColumnResizeEnabled.value === false) items.push('Rich 表格列宽拖拽（已关闭）');
+
+  const base = `文档档位：${docBaselineTierLabel.value}；Rich 性能档位：${tier}${userFull ? '（已手动完整渲染）' : ''}`;
+  if (!items.length) return base;
+  return `${base}\n降级项：\n- ${items.join('\n- ')}`;
+});
+
+/** M59：大表自动关列宽拖拽；稳定 ref 避免 content 每键都与 Milkdown 重建竞态 */
+const stableRichTableColumnResizeEnabled = ref(true);
+function recalcRichTableColumnResizeNow(): void {
+  const mode = config.value?.editor?.richTableColumnResize as RichTableColumnResizeMode | undefined;
+  stableRichTableColumnResizeEnabled.value = computeRichTableColumnResizeEnabled(mode, content.value ?? '');
+}
+let richTableColumnResizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRichTableColumnResizeAfterEdit(): void {
+  if (!config.value) return;
+  if (richTableColumnResizeDebounceTimer) clearTimeout(richTableColumnResizeDebounceTimer);
+  richTableColumnResizeDebounceTimer = setTimeout(() => {
+    richTableColumnResizeDebounceTimer = null;
+    recalcRichTableColumnResizeNow();
+  }, 480);
+}
+watch(
+  () => config.value?.editor?.richTableColumnResize,
+  () => {
+    recalcRichTableColumnResizeNow();
+  }
+);
+watch(
+  () => content.value,
+  () => {
+    scheduleRichTableColumnResizeAfterEdit();
+  }
+);
+
 const richTableInTable = ref(false);
 const richTableHelpOpen = ref(false);
 const richTableMenuOpen = ref(false);
@@ -405,7 +795,104 @@ const pendingRewriteSelection = ref<
   | { requestId: string; mode: 'rich' }
   | { requestId: string; mode: 'source'; from: number; to: number }
 >(null);
+// M72：润色结果预览（确认后才替换）
+const rewritePreviewVisible = ref(false);
+const rewritePreviewLoading = ref(false);
+const rewritePreviewOriginal = ref('');
+const rewritePreviewRewritten = ref('');
+const rewritePreviewMode = ref<'rich' | 'source'>('source');
+const rewritePreviewFrom = ref<number | null>(null);
+const rewritePreviewTo = ref<number | null>(null);
+// M76：非表格文本 → GFM（选区预览后替换）
+const pendingTableConvertSelection = ref<
+  | null
+  | { requestId: string; mode: 'rich' }
+  | { requestId: string; mode: 'source'; from: number; to: number }
+>(null);
+const tableConvertPreviewVisible = ref(false);
+const tableConvertPreviewLoading = ref(false);
+const tableConvertPreviewOriginal = ref('');
+const tableConvertPreviewMarkdown = ref('');
+const tableConvertMode = ref<'rich' | 'source'>('source');
+const tableConvertFrom = ref<number | null>(null);
+const tableConvertTo = ref<number | null>(null);
+/** M79：已确认落盘的选区润色 / 转表；IR 可用偏移撤销，Rich 需选中匹配结果 */
+const aiApplyHistory = ref<AiApplyHistoryEntry[]>([]);
+const aiHistoryReviewVisible = ref(false);
+const aiHistoryReviewTitle = ref('AI 操作回看');
+const aiHistoryReviewOriginal = ref('');
+const aiHistoryReviewApplied = ref('');
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function newAiHistoryId(): string {
+  return `ai-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function clearAiApplyHistory(): void {
+  aiApplyHistory.value = [];
+}
+
+function pushAppliedAiHistory(entry: AiApplyHistoryEntry): void {
+  aiApplyHistory.value = pushAiApplyHistory(aiApplyHistory.value, entry, 15);
+}
+
+function openAiApplyHistoryReview(entry: AiApplyHistoryEntry): void {
+  aiHistoryReviewTitle.value =
+    entry.kind === 'rewriteSelection' ? 'AI 润色 — 回看' : 'AI 转表 — 回看';
+  aiHistoryReviewOriginal.value = entry.originalText;
+  aiHistoryReviewApplied.value = entry.appliedText;
+  aiHistoryReviewVisible.value = true;
+}
+
+function revertAiApplyHistoryEntry(entry: AiApplyHistoryEntry): void {
+  if (entry.editorMode === 'source') {
+    const doc = editor.getContent();
+    const r = tryRevertSourceApply(doc, entry);
+    if (!r.ok) {
+      showToast(
+        r.reason === 'mismatch'
+          ? '该段与记录不一致（可能已改动文档）；请使用「回看」复制原文后手动恢复。'
+          : '无法在文中定位本次记录，撤销跳过。'
+      );
+      return;
+    }
+    replaceDocumentContent(r.nextDoc);
+    aiApplyHistory.value = adjustAiApplyHistoryAfterSourceRevert(aiApplyHistory.value, entry);
+    showToast('已撤销本条记录的替换。');
+    return;
+  }
+  const sel = String(milkdownRef.value?.getSelectedPlainText?.() ?? '');
+  const applied = entry.appliedText;
+  if (sel !== applied && sel.trim() !== applied.trim()) {
+    showToast('请先在 Rich 中选中仍为 AI 结果的文本，再点撤销；或用手动粘贴。');
+    return;
+  }
+  milkdownRef.value?.replacePlainSelection?.(entry.originalText);
+  queueRichFocus();
+  setTimeout(() => {
+    const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+    if (latest && latest !== content.value) {
+      content.value = latest;
+      sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+    }
+  }, 0);
+  aiApplyHistory.value = aiApplyHistory.value.filter((x) => x.id !== entry.id);
+  showToast('已在 Rich 中选区上尝试还原。');
+}
+
+// M73：AI 摘要侧栏
+const aiSummaryLoading = ref(false);
+const aiSummaryText = ref('');
+const aiSummaryErrorText = ref('');
+const pendingAiSummary = new Map<string, { timer: ReturnType<typeof setTimeout> }>();
+
+// M74：AI 标题建议（二期：多候选 + 风格说明）
+const aiTitleSuggestVisible = ref(false);
+const aiTitleSuggestLoading = ref(false);
+const aiTitleSuggestErrorText = ref('');
+const aiTitleSuggestItems = ref<Array<{ title: string; style: string; reason?: string }>>([]);
+const aiTitleSuggestSelected = ref(0);
+const pendingAiTitleSuggest = new Map<string, { timer: ReturnType<typeof setTimeout> }>();
 
 const RICH_STARTUP_WATCHDOG_MS = 2500;
 const RICH_STARTUP_WATCHDOG_DEFER_MS = 1500;
@@ -671,6 +1158,263 @@ const outlineHighlightHeadingId = ref('');
 /** M40：折叠的标题 id（随 webview state 持久化） */
 const outlineCollapsedIds = ref<string[]>([]);
 
+/** M64：工作区内链入当前文档的列表 */
+const markdownBacklinksItems = ref<BacklinkRow[]>([]);
+const markdownBacklinksLoading = ref(false);
+const markdownBacklinksErrorText = ref('');
+const markdownBacklinksTruncated = ref(false);
+const pendingMarkdownBacklinks = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; finalize: () => void }
+>();
+
+// M65: internal link hover preview
+const markdownHoverPreviewVisible = ref(false);
+const markdownHoverPreviewLoading = ref(false);
+const markdownHoverPreviewTitle = ref('');
+const markdownHoverPreviewExcerpt = ref('');
+const markdownHoverPreviewTargetUri = ref('');
+const markdownHoverPreviewX = ref(0);
+const markdownHoverPreviewY = ref(0);
+const pendingMarkdownHoverPreview = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; href: string; finalize: () => void }
+>();
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let hoverHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+function hideMarkdownHoverPreview(delayMs = 0) {
+  if (hoverHideTimer) {
+    clearTimeout(hoverHideTimer);
+    hoverHideTimer = null;
+  }
+  const run = () => {
+    markdownHoverPreviewVisible.value = false;
+    markdownHoverPreviewLoading.value = false;
+  };
+  if (delayMs > 0) {
+    hoverHideTimer = setTimeout(() => {
+      hoverHideTimer = null;
+      run();
+    }, delayMs);
+  } else {
+    run();
+  }
+}
+
+function finalizeMarkdownHoverPreviewRequest(requestId: string) {
+  const p = pendingMarkdownHoverPreview.get(requestId);
+  if (!p) return;
+  clearTimeout(p.timer);
+  pendingMarkdownHoverPreview.delete(requestId);
+  p.finalize();
+}
+
+function requestMarkdownHoverPreview(href: string, x: number, y: number) {
+  const h = String(href ?? '').trim();
+  if (!h) return;
+  if (currentMode.value !== 'rich') return;
+
+  const requestId = `hp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  markdownHoverPreviewLoading.value = true;
+  markdownHoverPreviewVisible.value = true;
+  markdownHoverPreviewTitle.value = '';
+  markdownHoverPreviewExcerpt.value = '';
+  markdownHoverPreviewTargetUri.value = '';
+  markdownHoverPreviewX.value = x;
+  markdownHoverPreviewY.value = y;
+
+  const timer = setTimeout(() => {
+    if (!pendingMarkdownHoverPreview.has(requestId)) return;
+    finalizeMarkdownHoverPreviewRequest(requestId);
+    markdownHoverPreviewLoading.value = false;
+    markdownHoverPreviewTitle.value = '预览超时';
+    markdownHoverPreviewExcerpt.value = '';
+  }, 3200);
+
+  pendingMarkdownHoverPreview.set(requestId, {
+    href: h,
+    timer,
+    finalize: () => {},
+  });
+
+  sendMessage({ type: 'MARKDOWN_HOVER_PREVIEW_REQUEST', payload: { requestId, href: h } });
+}
+
+function handleInternalLinkHover(payload: { href: string; x: number; y: number }) {
+  if (hoverDebounceTimer) {
+    clearTimeout(hoverDebounceTimer);
+    hoverDebounceTimer = null;
+  }
+  if (hoverHideTimer) {
+    clearTimeout(hoverHideTimer);
+    hoverHideTimer = null;
+  }
+  const { href, x, y } = payload;
+  hoverDebounceTimer = setTimeout(() => {
+    hoverDebounceTimer = null;
+    requestMarkdownHoverPreview(href, x, y);
+  }, 220);
+}
+
+function handleInternalLinkLeave() {
+  if (hoverDebounceTimer) {
+    clearTimeout(hoverDebounceTimer);
+    hoverDebounceTimer = null;
+  }
+  // 延迟隐藏，避免鼠标在链接内部轻微移动导致闪烁
+  hideMarkdownHoverPreview(160);
+}
+
+function finalizeMarkdownBacklinksRequest(requestId: string) {
+  const p = pendingMarkdownBacklinks.get(requestId);
+  if (!p) return;
+  window.clearTimeout(p.timer);
+  pendingMarkdownBacklinks.delete(requestId);
+  p.finalize();
+}
+
+function requestMarkdownBacklinks() {
+  if (!editorReady.value) return;
+  const requestId = `bl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  markdownBacklinksLoading.value = true;
+  markdownBacklinksErrorText.value = '';
+
+  const timer = window.setTimeout(() => {
+    if (!pendingMarkdownBacklinks.has(requestId)) return;
+    finalizeMarkdownBacklinksRequest(requestId);
+    markdownBacklinksErrorText.value = '扫描超时，请点 ↻ 重试。';
+    markdownBacklinksItems.value = [];
+  }, 28000);
+
+  pendingMarkdownBacklinks.set(requestId, {
+    timer,
+    finalize: () => {
+      markdownBacklinksLoading.value = false;
+    },
+  });
+
+  sendMessage({ type: 'FIND_MARKDOWN_BACKLINKS', payload: { requestId } });
+}
+
+function openMarkdownFromBacklink(uri: string) {
+  sendMessage({ type: 'OPEN_MARKDOWN_DOCUMENT', payload: { uri } });
+}
+
+function handleWorkspaceSearch(query: string) {
+  const q = String(query ?? '').trim();
+  if (!q) return;
+  sendMessage({ type: 'OPEN_WORKSPACE_SEARCH', payload: { query: q } });
+}
+
+function requestAiSummary(scope: 'document' | 'section'): void {
+  const md = content.value ?? '';
+  const text =
+    scope === 'document'
+      ? md
+      : extractMarkdownSectionByHeadingId(md, outlineHighlightHeadingId.value) ?? '';
+  if (!text.trim()) {
+    showToast(scope === 'document' ? '文档为空，无法生成摘要。' : '未定位到当前章节，无法生成摘要。');
+    return;
+  }
+  const requestId = `sum-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  aiSummaryLoading.value = true;
+  aiSummaryErrorText.value = '';
+  const timer = setTimeout(() => {
+    pendingAiSummary.delete(requestId);
+    aiSummaryLoading.value = false;
+    aiSummaryErrorText.value = '生成超时，请重试。';
+  }, 20000);
+  pendingAiSummary.set(requestId, { timer });
+  sendMessage({ type: 'AI_SUMMARY_REQUEST', payload: { requestId, text, scope } });
+}
+
+function finalizeAiTitleSuggestRequest(requestId: string): void {
+  const pending = pendingAiTitleSuggest.get(requestId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingAiTitleSuggest.delete(requestId);
+}
+
+function requestAiTitleSuggestions(markdown: string): void {
+  const requestId = `ai-title-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  aiTitleSuggestVisible.value = true;
+  aiTitleSuggestLoading.value = true;
+  aiTitleSuggestErrorText.value = '';
+  aiTitleSuggestItems.value = [];
+  aiTitleSuggestSelected.value = 0;
+
+  const timer = window.setTimeout(() => {
+    pendingAiTitleSuggest.delete(requestId);
+    aiTitleSuggestLoading.value = false;
+    aiTitleSuggestErrorText.value = '请求超时（请检查 AI 配置或网络）。';
+  }, 20000);
+  pendingAiTitleSuggest.set(requestId, { timer });
+
+  const text = String(markdown ?? '').slice(0, 8000);
+  sendMessage({ type: 'AI_SUGGEST_TITLES_REQUEST', payload: { requestId, text } });
+}
+
+function applyAiSuggestedTitle(): void {
+  const idx = Math.max(0, Math.min(aiTitleSuggestSelected.value, aiTitleSuggestItems.value.length - 1));
+  const picked = aiTitleSuggestItems.value[idx];
+  if (!picked?.title) return;
+  const current =
+    currentMode.value === 'rich'
+      ? String(milkdownRef.value?.getContent?.() || content.value || '')
+      : editor.getContent();
+  const next = applySuggestedTitleToMarkdown(current, picked.title);
+  replaceDocumentContent(next);
+  aiTitleSuggestVisible.value = false;
+  showToast('已应用标题建议。');
+}
+
+function requestAiSummaryDocument(): void {
+  requestAiSummary('document');
+}
+
+function requestAiSummarySection(): void {
+  requestAiSummary('section');
+}
+
+async function copyAiSummary(): Promise<void> {
+  const t = String(aiSummaryText.value ?? '');
+  if (!t.trim()) return;
+  try {
+    await navigator.clipboard.writeText(t);
+    showToast('摘要已复制。');
+  } catch {
+    showToast('复制失败：浏览器不支持剪贴板写入。');
+  }
+}
+
+function insertAiSummary(): void {
+  const t = String(aiSummaryText.value ?? '');
+  if (!t.trim()) return;
+  if (currentMode.value === 'rich') {
+    milkdownRef.value?.insertMarkdown?.(`\n\n${t}\n`);
+    setTimeout(() => {
+      const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+      if (latest && latest !== content.value) {
+        content.value = latest;
+        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+      }
+    }, 0);
+    showToast('已插入摘要。');
+    return;
+  }
+  const v = editor.view.value;
+  if (!v) return;
+  const pos = v.state.selection.main.head;
+  v.dispatch({
+    changes: { from: pos, to: pos, insert: `\n\n${t}\n` },
+    selection: { anchor: pos + t.length + 2 },
+  });
+  focusEditor();
+  sendMessage({ type: 'CONTENT_CHANGE', payload: { content: editor.getContent() } });
+  showToast('已插入摘要。');
+}
+
 // Zoom (editor view)
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 1.8;
@@ -753,6 +1497,30 @@ const findPatternWarning = computed(() => {
   return re ? '' : '正则表达式无效（请检查括号、反斜杠等）';
 });
 
+// M67：匹配列表（轻量预览，用于面板点击跳转）
+function buildFindPreviewSnippet(md: string, m: { from: number; to: number }, pad = 28): string {
+  const s = String(md ?? '');
+  const from = Math.max(0, Math.min(s.length, m.from));
+  const to = Math.max(from, Math.min(s.length, m.to));
+  const a = Math.max(0, from - pad);
+  const b = Math.min(s.length, to + pad);
+  const prefix = a > 0 ? '…' : '';
+  const suffix = b < s.length ? '…' : '';
+  const core = s.slice(a, b).replace(/\s+/g, ' ').trim();
+  return `${prefix}${core}${suffix}`;
+}
+
+const findMatchesPreview = computed(() => {
+  const md = content.value ?? '';
+  const out: Array<{ index: number; text: string }> = [];
+  const limit = Math.min(findMatches.value.length, 60);
+  for (let i = 0; i < limit; i++) {
+    const m = findMatches.value[i]!;
+    out.push({ index: i, text: buildFindPreviewSnippet(md, m) });
+  }
+  return out;
+});
+
 /** 查找面板 UI 侧最多保留的匹配区间数，避免超大文档 GC 抖动（全部替换仍整篇处理） */
 const FIND_UI_MAX_MATCHES = 5000;
 
@@ -801,6 +1569,16 @@ const wordCount = computed(() => {
 
 const charCount = computed(() => {
   return content.value?.length || 0;
+});
+
+// M66：大文档档位（可视化用，避免只在诊断包里可见）
+const docBaselineTierLabel = computed(() => {
+  const n = charCount.value;
+  if (n < 5000) return 'XS';
+  if (n < 50_000) return 'S';
+  if (n < 200_000) return 'M';
+  if (n < 500_000) return 'L';
+  return 'XL';
 });
 
 const lineCount = computed(() => {
@@ -1008,12 +1786,60 @@ function handleMessage(event: MessageEvent) {
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       content.value = message.payload.content;
       config.value = message.payload.config;
+      recalcRichTableColumnResizeNow();
+      assetImageRelativePaths.value = [];
+      lastAssetImageScanAt.value = null;
+      markdownBacklinksItems.value = [];
+      markdownBacklinksErrorText.value = '';
+      markdownBacklinksTruncated.value = false;
+      markdownBacklinksLoading.value = false;
+      for (const v of pendingMarkdownBacklinks.values()) {
+        window.clearTimeout(v.timer);
+      }
+      pendingMarkdownBacklinks.clear();
+      markdownHoverPreviewVisible.value = false;
+      markdownHoverPreviewLoading.value = false;
+      markdownHoverPreviewTitle.value = '';
+      markdownHoverPreviewExcerpt.value = '';
+      markdownHoverPreviewTargetUri.value = '';
+      for (const v of pendingMarkdownHoverPreview.values()) {
+        window.clearTimeout(v.timer);
+      }
+      pendingMarkdownHoverPreview.clear();
+      aiTitleSuggestVisible.value = false;
+      aiTitleSuggestLoading.value = false;
+      aiTitleSuggestErrorText.value = '';
+      aiTitleSuggestItems.value = [];
+      aiTitleSuggestSelected.value = 0;
+      for (const v of pendingAiTitleSuggest.values()) {
+        window.clearTimeout(v.timer);
+      }
+      pendingAiTitleSuggest.clear();
+      pendingTableConvertSelection.value = null;
+      tableConvertPreviewVisible.value = false;
+      tableConvertPreviewLoading.value = false;
+      tableConvertPreviewOriginal.value = '';
+      tableConvertPreviewMarkdown.value = '';
+      tableConvertMode.value = 'source';
+      tableConvertFrom.value = null;
+      tableConvertTo.value = null;
+      if (hoverDebounceTimer) {
+        clearTimeout(hoverDebounceTimer);
+        hoverDebounceTimer = null;
+      }
+      if (hoverHideTimer) {
+        clearTimeout(hoverHideTimer);
+        hoverHideTimer = null;
+      }
       hostDiagnostics.value = (message.payload as any)?.hostDiagnostics ?? null;
       recordRichStartupEvent('init:message', {
         chars: message.payload.content?.length ?? 0,
         hasHostDiagnostics: !!hostDiagnostics.value,
       });
       scheduleEnsureEditorFromInit();
+      if (showOutline.value) {
+        nextTick(() => requestMarkdownBacklinks());
+      }
       break;
 
     case 'CONTENT_UPDATE':
@@ -1031,6 +1857,7 @@ function handleMessage(event: MessageEvent) {
       } else {
         config.value = message.payload.config as ExtensionConfig;
       }
+      recalcRichTableColumnResizeNow();
       break;
 
     case 'SWITCH_MODE': {
@@ -1055,6 +1882,62 @@ function handleMessage(event: MessageEvent) {
       break;
     }
 
+    case 'ASSETS_IMAGE_FILES_RESULT': {
+      const p = message.payload;
+      const pending = pendingAssetImageLists.get(p.requestId);
+      if (pending) {
+        window.clearTimeout(pending.timer);
+        pendingAssetImageLists.delete(p.requestId);
+        pending.finalize();
+      }
+      assetImageRelativePaths.value = [...p.relativePaths];
+      lastAssetImageScanAt.value = Date.now();
+      assetListError.value =
+        typeof p.error === 'string' && p.error.trim().length > 0 ? p.error : null;
+      break;
+    }
+
+    case 'MARKDOWN_BACKLINKS_RESULT': {
+      const p = message.payload;
+      finalizeMarkdownBacklinksRequest(p.requestId);
+      markdownBacklinksTruncated.value = Boolean((p as { truncated?: boolean }).truncated);
+      markdownBacklinksItems.value = [...p.items];
+      if ((p as { error?: string }).error === 'no_workspace') {
+        markdownBacklinksErrorText.value = '请先打开工作区文件夹，才能扫描反向链接。';
+        markdownBacklinksItems.value = [];
+      } else {
+        markdownBacklinksErrorText.value = '';
+      }
+      break;
+    }
+
+    case 'MARKDOWN_HOVER_PREVIEW_RESULT': {
+      const p = message.payload as any;
+      finalizeMarkdownHoverPreviewRequest(p.requestId);
+      markdownHoverPreviewLoading.value = false;
+      if (!p.ok) {
+        markdownHoverPreviewTitle.value = '无法预览';
+        markdownHoverPreviewExcerpt.value = typeof p.error === 'string' ? p.error : '';
+        markdownHoverPreviewTargetUri.value = '';
+        break;
+      }
+      markdownHoverPreviewTitle.value = String(p.title ?? '');
+      markdownHoverPreviewExcerpt.value = String(p.excerpt ?? '');
+      markdownHoverPreviewTargetUri.value = String(p.targetUri ?? '');
+      break;
+    }
+
+    case 'IMAGE_REF_REPAIR_OUTCOME': {
+      const p = message.payload;
+      const w = activeRepairOutcomeWaiter;
+      if (w && w.fromRef === p.fromRef) {
+        window.clearTimeout(w.timer);
+        activeRepairOutcomeWaiter = null;
+        w.resolve(p.status === 'cancelled' ? 'cancelled' : 'replaced');
+      }
+      break;
+    }
+
     case 'IMAGE_REF_REPLACEMENT': {
       const next = replaceMarkdownImageRef(content.value, message.payload.fromRef, message.payload.toRef);
       if (next !== content.value) {
@@ -1074,32 +1957,78 @@ function handleMessage(event: MessageEvent) {
       pendingRewriteSelection.value = null;
 
       if (message.payload.ok !== true) {
+        rewritePreviewLoading.value = false;
         showToast(`润色失败：${message.payload.error}`);
         break;
       }
 
-      const out = message.payload.text;
-      if (pending.mode === 'rich') {
-        milkdownRef.value?.replacePlainSelection?.(out);
-        queueRichFocus();
-        setTimeout(() => {
-          const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
-          if (latest && latest !== content.value) {
-            content.value = latest;
-            sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
-          }
-        }, 0);
-      } else {
-        const view = editor.view.value;
-        if (!view) break;
-        view.dispatch({
-          changes: { from: pending.from, to: pending.to, insert: out },
-          selection: { anchor: pending.from + out.length },
-        });
-        focusEditor();
-        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: editor.getContent() } });
+      rewritePreviewLoading.value = false;
+      rewritePreviewRewritten.value = String(message.payload.text ?? '');
+      rewritePreviewVisible.value = true;
+      break;
+    }
+
+    case 'AI_CONVERT_TEXT_TO_TABLE_RESULT': {
+      const p = message.payload;
+      const pendingTc = pendingTableConvertSelection.value;
+      if (!pendingTc || pendingTc.requestId !== p.requestId) {
+        break;
       }
-      showToast('润色完成。');
+      pendingTableConvertSelection.value = null;
+
+      if (p.ok !== true) {
+        tableConvertPreviewLoading.value = false;
+        showToast(`表格转换失败：${p.error}`);
+        break;
+      }
+
+      tableConvertPreviewLoading.value = false;
+      tableConvertPreviewMarkdown.value = String(p.markdown ?? '');
+      tableConvertPreviewVisible.value = true;
+      break;
+    }
+
+    case 'AI_SUMMARY_RESULT': {
+      const p = message.payload as any;
+      const pending = pendingAiSummary.get(p.requestId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingAiSummary.delete(p.requestId);
+      }
+      aiSummaryLoading.value = false;
+      if (p.ok !== true) {
+        aiSummaryErrorText.value = String(p.error ?? '生成失败');
+        break;
+      }
+      aiSummaryText.value = String(p.text ?? '');
+      aiSummaryErrorText.value = '';
+      break;
+    }
+
+    case 'AI_SUGGEST_TITLES_RESULT': {
+      const p = message.payload as any;
+      finalizeAiTitleSuggestRequest(String(p.requestId ?? ''));
+      aiTitleSuggestLoading.value = false;
+      if (p.ok !== true) {
+        aiTitleSuggestErrorText.value = String(p.error ?? '生成失败');
+        aiTitleSuggestItems.value = [];
+        break;
+      }
+      const items = Array.isArray(p.items) ? p.items : [];
+      aiTitleSuggestItems.value = items
+        .map((x: any) => ({
+          title: String(x?.title ?? '').trim(),
+          style: String(x?.style ?? '').trim(),
+          reason: x?.reason != null ? String(x.reason).trim() : undefined,
+        }))
+        .filter((x: any) => x.title && x.style)
+        .slice(0, 7);
+      if (!aiTitleSuggestItems.value.length) {
+        aiTitleSuggestErrorText.value = 'AI 返回无有效候选。';
+      } else {
+        aiTitleSuggestErrorText.value = '';
+        aiTitleSuggestSelected.value = 0;
+      }
       break;
     }
       
@@ -1218,6 +2147,16 @@ async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage,
     return;
   }
 
+  if (action === 'copyUnreferencedAssetList') {
+    await copyUnreferencedAssetImagesList();
+    return;
+  }
+
+  if (action === 'openImageAssetsPanel') {
+    imageAssetsPanelOpen.value = true;
+    return;
+  }
+
   if (action === 'openAssetsDirectory') {
     openAssetsDirectory();
     return;
@@ -1225,6 +2164,11 @@ async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage,
 
   if (action === 'repairFirstMissingRef') {
     await repairFirstMissingImageRef();
+    return;
+  }
+
+  if (action === 'repairMissingRefsBatch') {
+    await repairMissingRefsBatch();
     return;
   }
 
@@ -1237,6 +2181,18 @@ async function handleImageAssetCommand(action: Extract<Extract<ExtensionMessage,
     }
     replaceDocumentContent(next);
     showToast('已规范化本地图片路径。');
+  }
+}
+
+async function copyUnreferencedAssetImagesList(): Promise<void> {
+  await requestAssetsImageFileList();
+  const list = computeUnreferencedAssetImages(content.value ?? '', assetImageRelativePaths.value);
+  const text = formatUnreferencedAssetImagesList(list);
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(list.length === 0 ? '未发现未引用图片。' : '未引用清单已复制。');
+  } catch {
+    showToast('复制失败：浏览器不支持剪贴板写入。');
   }
 }
 
@@ -1263,6 +2219,64 @@ async function repairFirstMissingImageRef(): Promise<void> {
     return;
   }
   sendMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: missing.ref } });
+}
+
+async function repairMissingRefsBatch(): Promise<void> {
+  await refreshLocalImageRefChecks(6000);
+  const seen = new Set<string>();
+  const missing = localImageRefCheckResults.value
+    .filter((r) => !r.exists)
+    .filter((r) => {
+      if (!r.ref || seen.has(r.ref)) return false;
+      seen.add(r.ref);
+      return true;
+    });
+
+  if (missing.length === 0) {
+    showToast('未发现缺失的本地图片。');
+    return;
+  }
+
+  const ok = window.confirm(
+    `检测到 ${missing.length} 条不同的缺失引用，将依次打开文件选择（每条选一张替换图）。\n` +
+      `在任一文件对话框中点「取消」将停止整个批量流程。\n\n确定开始？`
+  );
+  if (!ok) return;
+
+  for (let i = 0; i < missing.length; i++) {
+    const r = missing[i];
+    showToast(`批量修复 ${i + 1}/${missing.length}：${r.ref}`);
+
+    const outcomePromise = waitForRepairOutcome(r.ref, 180_000);
+    sendMessage({ type: 'REPAIR_IMAGE_REF', payload: { ref: r.ref } });
+    const result = await outcomePromise;
+
+    if (result === 'cancelled') {
+      showToast('已在文件框取消，批量修复已停止。');
+      return;
+    }
+    if (result === 'timeout') {
+      showToast('等待超时或流程被中断，已停止批量修复。');
+      return;
+    }
+
+    await refreshLocalImageRefChecks(4500);
+
+    const stillMissing = localImageRefCheckResults.value.some((row) => !row.exists && row.ref === r.ref);
+    if (stillMissing) {
+      showToast(`引用仍存在缺失：${r.ref}（已停止批量流程）。`);
+      return;
+    }
+  }
+
+  await refreshLocalImageRefChecks(4500).catch(() => {});
+  const leftRetry = localImageRefCheckResults.value.filter((row) => !row.exists).length;
+
+  showToast(
+    leftRetry === 0
+      ? `批量修复完成（共 ${missing.length} 条）。`
+      : `已处理顺序流程；仍有 ${leftRetry} 条缺失（可核对路径后再试）。`
+  );
 }
 
 // 编辑器准备好后的回调
@@ -1553,6 +2567,143 @@ function replaceDocumentContent(nextContent: string): void {
   });
 }
 
+function applyRewritePreview(): void {
+  const out = String(rewritePreviewRewritten.value ?? '');
+  if (!out.trim()) {
+    showToast('润色结果为空，未执行替换。');
+    rewritePreviewVisible.value = false;
+    return;
+  }
+  if (rewritePreviewMode.value === 'rich') {
+    const currentSel = String(milkdownRef.value?.getSelectedPlainText?.() ?? '');
+    if (currentSel.trim() && currentSel.trim() !== String(rewritePreviewOriginal.value ?? '').trim()) {
+      showToast('选区已变化，请重新选中要润色的文字。');
+      rewritePreviewVisible.value = false;
+      return;
+    }
+    milkdownRef.value?.replacePlainSelection?.(out);
+    queueRichFocus();
+    setTimeout(() => {
+      const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+      if (latest && latest !== content.value) {
+        content.value = latest;
+        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+      }
+    }, 0);
+    pushAppliedAiHistory({
+      id: newAiHistoryId(),
+      ts: Date.now(),
+      kind: 'rewriteSelection',
+      editorMode: 'rich',
+      appliedText: out,
+      originalText: String(rewritePreviewOriginal.value ?? ''),
+    });
+    rewritePreviewVisible.value = false;
+    showToast('已替换选区。');
+    return;
+  }
+
+  const from = rewritePreviewFrom.value;
+  const to = rewritePreviewTo.value;
+  const view = editor.view.value;
+  if (from == null || to == null || !view) {
+    rewritePreviewVisible.value = false;
+    return;
+  }
+  const cur = view.state.sliceDoc(from, to);
+  if (cur !== rewritePreviewOriginal.value) {
+    showToast('选区内容已变化，请重新选中要润色的文字。');
+    rewritePreviewVisible.value = false;
+    return;
+  }
+  view.dispatch({
+    changes: { from, to, insert: out },
+    selection: { anchor: from + out.length },
+  });
+  focusEditor();
+  sendMessage({ type: 'CONTENT_CHANGE', payload: { content: editor.getContent() } });
+  pushAppliedAiHistory({
+    id: newAiHistoryId(),
+    ts: Date.now(),
+    kind: 'rewriteSelection',
+    editorMode: 'source',
+    replaceFrom: from,
+    appliedText: out,
+    originalText: String(rewritePreviewOriginal.value ?? ''),
+  });
+  rewritePreviewVisible.value = false;
+  showToast('已替换选区。');
+}
+
+function applyTableConvertPreview(): void {
+  const rawMd = String(tableConvertPreviewMarkdown.value ?? '').trimEnd();
+  if (!rawMd.trim()) {
+    showToast('表格为空，未执行替换。');
+    tableConvertPreviewVisible.value = false;
+    return;
+  }
+  const insertPlain = rawMd.endsWith('\n') ? rawMd : `${rawMd}\n`;
+  if (tableConvertMode.value === 'rich') {
+    const currentSel = String(milkdownRef.value?.getSelectedPlainText?.() ?? '');
+    if (currentSel.trim() && currentSel.trim() !== String(tableConvertPreviewOriginal.value ?? '').trim()) {
+      showToast('选区已变化，请重新选中要转换的文本。');
+      tableConvertPreviewVisible.value = false;
+      return;
+    }
+    milkdownRef.value?.replacePlainSelection?.(insertPlain);
+    queueRichFocus();
+    setTimeout(() => {
+      const latest = String(milkdownRef.value?.getContent?.() || content.value || '');
+      if (latest && latest !== content.value) {
+        content.value = latest;
+        sendMessage({ type: 'CONTENT_CHANGE', payload: { content: latest } });
+      }
+    }, 0);
+    pushAppliedAiHistory({
+      id: newAiHistoryId(),
+      ts: Date.now(),
+      kind: 'convertTextToGfmTable',
+      editorMode: 'rich',
+      appliedText: insertPlain,
+      originalText: String(tableConvertPreviewOriginal.value ?? ''),
+    });
+    tableConvertPreviewVisible.value = false;
+    showToast('已替换为 GFM 表格。');
+    return;
+  }
+
+  const from = tableConvertFrom.value;
+  const to = tableConvertTo.value;
+  const view = editor.view.value;
+  if (from == null || to == null || !view) {
+    tableConvertPreviewVisible.value = false;
+    return;
+  }
+  const cur = view.state.sliceDoc(from, to);
+  if (cur !== tableConvertPreviewOriginal.value) {
+    showToast('选区内容已变化，请重新选中要转换的文本。');
+    tableConvertPreviewVisible.value = false;
+    return;
+  }
+  view.dispatch({
+    changes: { from, to, insert: insertPlain },
+    selection: { anchor: from + insertPlain.length },
+  });
+  focusEditor();
+  sendMessage({ type: 'CONTENT_CHANGE', payload: { content: editor.getContent() } });
+  pushAppliedAiHistory({
+    id: newAiHistoryId(),
+    ts: Date.now(),
+    kind: 'convertTextToGfmTable',
+    editorMode: 'source',
+    replaceFrom: from,
+    appliedText: insertPlain,
+    originalText: String(tableConvertPreviewOriginal.value ?? ''),
+  });
+  tableConvertPreviewVisible.value = false;
+  showToast('已替换为 GFM 表格。');
+}
+
 function handleWritingAssist(action: WritingAssistAction): void {
   if (action === 'rewriteSelection') {
     if (!config.value?.ai?.rewriteSelectionEnabled) {
@@ -1567,6 +2718,9 @@ function handleWritingAssist(action: WritingAssistAction): void {
         return;
       }
       pendingRewriteSelection.value = { requestId, mode: 'rich' };
+      rewritePreviewLoading.value = true;
+      rewritePreviewMode.value = 'rich';
+      rewritePreviewOriginal.value = t;
       sendMessage({ type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId, text: t } });
       showToast('正在请求润色…');
     } else {
@@ -1579,8 +2733,52 @@ function handleWritingAssist(action: WritingAssistAction): void {
         return;
       }
       pendingRewriteSelection.value = { requestId, mode: 'source', from: s.from, to: s.to };
+      rewritePreviewLoading.value = true;
+      rewritePreviewMode.value = 'source';
+      rewritePreviewFrom.value = s.from;
+      rewritePreviewTo.value = s.to;
+      rewritePreviewOriginal.value = t;
       sendMessage({ type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId, text: t } });
       showToast('正在请求润色…');
+    }
+    return;
+  }
+
+  if (action === 'convertTextToGfmTable') {
+    if (!config.value?.ai?.rewriteSelectionEnabled) {
+      showToast('未开启 AI：请在设置中启用 markly.ai.rewrite.enabled。');
+      return;
+    }
+    const requestId = `tbl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (currentMode.value === 'rich') {
+      const t = milkdownRef.value?.getSelectedPlainText?.() ?? '';
+      if (!t.trim()) {
+        showToast('请先选中要转成表格的文本。');
+        return;
+      }
+      pendingTableConvertSelection.value = { requestId, mode: 'rich' };
+      tableConvertPreviewLoading.value = true;
+      tableConvertMode.value = 'rich';
+      tableConvertPreviewOriginal.value = t;
+      sendMessage({ type: 'AI_CONVERT_TEXT_TO_TABLE_REQUEST', payload: { requestId, text: t } });
+      showToast('正在将选区转为 GFM 表格…');
+    } else {
+      const view = editor.view.value;
+      if (!view) return;
+      const s = view.state.selection.main;
+      const t = view.state.sliceDoc(s.from, s.to);
+      if (!t.trim()) {
+        showToast('请先选中要转成表格的文本。');
+        return;
+      }
+      pendingTableConvertSelection.value = { requestId, mode: 'source', from: s.from, to: s.to };
+      tableConvertPreviewLoading.value = true;
+      tableConvertMode.value = 'source';
+      tableConvertFrom.value = s.from;
+      tableConvertTo.value = s.to;
+      tableConvertPreviewOriginal.value = t;
+      sendMessage({ type: 'AI_CONVERT_TEXT_TO_TABLE_REQUEST', payload: { requestId, text: t } });
+      showToast('正在将选区转为 GFM 表格…');
     }
     return;
   }
@@ -1614,14 +2812,15 @@ function handleWritingAssist(action: WritingAssistAction): void {
     return;
   }
 
+  if (action === 'suggestTitle') {
+    requestAiTitleSuggestions(current);
+    return;
+  }
+
   const next =
-    action === 'suggestTitle'
-      ? suggestMarkdownTitle(current)
-      : action === 'fixMarkdown'
-        ? fixMarkdownWhitespace(current)
-        : tidyMarkdownTables(current);
+    action === 'fixMarkdown' ? fixMarkdownStructuralPhaseTwo(current) : tidyMarkdownTables(current);
   replaceDocumentContent(next);
-  showToast('已应用本地写作辅助。');
+  showToast(action === 'fixMarkdown' ? '已应用 Markdown 结构修复。' : '已应用本地写作辅助。');
 }
 
 function onRichTableContext(payload: { inTable: boolean }) {
@@ -1899,6 +3098,17 @@ function handleFindPrev(): void {
   updateFindHighlightClass();
 }
 
+function handleFindJumpToMatch(index: number): void {
+  cancelPendingFindRecompute();
+  recomputeFindMatches();
+  const i = Number(index);
+  if (!Number.isFinite(i)) return;
+  const m = findMatches.value[i];
+  if (!m) return;
+  activateFindMatch(m);
+  updateFindHighlightClass();
+}
+
 function handleFindReplaceOnce(): void {
   const m =
     findActiveIdx.value >= 0
@@ -2022,11 +3232,15 @@ watch(zoom, () => {
 });
 
 watch(showOutline, (on) => {
-  if (on) scheduleOutlineHeadingRefresh();
+  if (!on) return;
+  scheduleOutlineHeadingRefresh();
+  requestMarkdownBacklinks();
+  // 打开侧栏后不自动触发 AI，保持用户可控
 });
 
 watch(currentMode, () => {
   scheduleOutlineHeadingRefresh();
+  hideMarkdownHoverPreview(0);
 });
 
 watch(outlineCollapsedIds, () => {
@@ -2058,6 +3272,14 @@ watch(currentMode, () => {
     richTableHelpOpen.value = false;
     closeRichTableContextMenu();
   }
+});
+
+watch(imageAssetsPanelOpen, (open) => {
+  if (!open) return;
+  assetListLoading.value = true;
+  assetListError.value = null;
+  void refreshLocalImageRefChecks(4000).catch(() => {});
+  void requestAssetsImageFileList();
 });
 
 function handleUndo() {
@@ -2165,6 +3387,37 @@ function collectImageDiagnostics() {
     compressQuality: config.value?.image?.compressQuality ?? null,
     localCheckResults: localImageRefCheckResults.value,
     lastCheckedAt: localImageRefLastCheckedAt.value,
+    ...(lastAssetImageScanAt.value !== null
+      ? { assetRelativeDirectoryImagePaths: [...assetImageRelativePaths.value] }
+      : {}),
+  });
+}
+
+function requestAssetsImageFileList(): Promise<void> {
+  const requestId = `ast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  assetImageRelativePaths.value = [];
+  return new Promise<void>((resolve) => {
+    let finalized = false;
+    const finalize = () => {
+      if (finalized) return;
+      finalized = true;
+      assetListLoading.value = false;
+      resolve();
+    };
+
+    const timer = window.setTimeout(() => {
+      if (pendingAssetImageLists.delete(requestId) && !assetListError.value) {
+        assetListError.value = '读取保存目录超时。';
+      }
+      finalize();
+    }, 6500);
+
+    pendingAssetImageLists.set(requestId, {
+      timer,
+      finalize,
+    });
+
+    sendMessage({ type: 'LIST_ASSETS_IMAGE_FILES', payload: { requestId } });
   });
 }
 
@@ -2266,6 +3519,7 @@ function buildDiagnosticsPayload() {
 
 async function copyDiagnosticsToClipboard() {
   await refreshLocalImageRefChecks();
+  await requestAssetsImageFileList().catch(() => {});
   const pkg = buildDiagnosticsPayload() as any;
   const payloadText = String(pkg?.text ?? JSON.stringify(pkg ?? {}, null, 2));
   const text = buildIssueTemplateMarkdown({
@@ -2400,8 +3654,33 @@ function onDocumentScrollOutlineSpy(): void {
   }, 120);
 }
 
+function handleOutlineReorder(payload: { fromTopLevelIndex: number; toTopLevelIndex: number }) {
+  const md = content.value ?? '';
+  const headings = parseHeadings(md);
+  const next = reorderMarkdownTopLevelSections(md, headings, payload.fromTopLevelIndex, payload.toTopLevelIndex);
+  if (next === null || next === md) return;
+  outlineCollapsedIds.value = [];
+  content.value = next;
+  sendMessage({
+    type: 'CONTENT_CHANGE',
+    payload: { content: next },
+  });
+}
+
+function handleRichTocAnchorClick(headingId: string) {
+  outlineHighlightHeadingId.value = headingId;
+  const md = content.value ?? '';
+  if (isHeadingSlugAmbiguous(md, headingId)) {
+    showToast('与其它小节锚点 ID 重复：页面可能总是滚到第一个同名标题。', 3000);
+  }
+}
+
 function handleOutlineJump(pos: number, headingId: string) {
   outlineHighlightHeadingId.value = headingId;
+  const md = content.value ?? '';
+  if (isHeadingSlugAmbiguous(md, headingId)) {
+    showToast('与其它小节锚点 ID 重复：Rich 或 # 链接可能总是跳到第一个同名标题。', 3000);
+  }
   if (currentMode.value === 'rich') {
     // 与大纲点击同一帧内 ProseMirror 可能尚未稳定；延后一帧再滚动手风琴容器内的 scrollTop
     nextTick(() => {
@@ -2438,7 +3717,7 @@ function handleOutlineJump(pos: number, headingId: string) {
 }
 
 // 导出处理函数
-function handleExport(format: 'pdf' | 'html') {
+function handleExport(format: 'pdf' | 'html' | 'preview') {
   sendMessage({
     type: 'EXPORT',
     payload: { format },
@@ -2626,6 +3905,28 @@ onUnmounted(() => {
     clearTimeout(tableFormatTimeout);
     tableFormatTimeout = null;
   }
+
+  for (const v of pendingMarkdownBacklinks.values()) {
+    clearTimeout(v.timer);
+  }
+  pendingMarkdownBacklinks.clear();
+
+  for (const v of pendingMarkdownHoverPreview.values()) {
+    clearTimeout(v.timer);
+  }
+  pendingMarkdownHoverPreview.clear();
+  for (const v of pendingAiTitleSuggest.values()) {
+    clearTimeout(v.timer);
+  }
+  pendingAiTitleSuggest.clear();
+  if (hoverDebounceTimer) {
+    clearTimeout(hoverDebounceTimer);
+    hoverDebounceTimer = null;
+  }
+  if (hoverHideTimer) {
+    clearTimeout(hoverHideTimer);
+    hoverHideTimer = null;
+  }
 });
 </script>
 
@@ -2644,6 +3945,25 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   overflow: hidden;
+}
+
+.markly-side-column {
+  flex: 0 0 200px;
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+}
+
+.markly-side-column :deep(.outline-panel) {
+  flex: 1 1 58%;
+  min-height: 88px;
+  border-left: none;
 }
 
 .editor-container {
@@ -2734,6 +4054,96 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
+.markly-rewrite-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.markly-rewrite-preview-col {
+  min-width: 0;
+}
+
+.markly-rewrite-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--vscode-foreground);
+}
+
+.markly-rewrite-preview-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 180px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25)));
+  background: var(--vscode-input-background, var(--vscode-editor-background));
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.markly-rewrite-preview-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.markly-title-suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.markly-title-suggest-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background);
+}
+
+.markly-title-suggest-row input[type='radio'] {
+  margin-top: 4px;
+}
+
+.markly-title-suggest-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.markly-title-suggest-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.markly-title-suggest-meta {
+  font-size: 12px;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.markly-title-suggest-style {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  margin-right: 6px;
+}
+
 .markly-toast {
   position: fixed;
   left: 50%;
@@ -2750,6 +4160,52 @@ onUnmounted(() => {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
+.markly-hover-preview {
+  position: fixed;
+  z-index: 20040;
+  max-width: min(420px, calc(100vw - 32px));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorHoverWidget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  padding: 10px 12px;
+  pointer-events: auto;
+}
+
+.markly-hover-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.markly-hover-preview-excerpt {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--vscode-descriptionForeground);
+  max-height: 140px;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.markly-hover-preview-open {
+  margin-top: 8px;
+  border: 0;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.markly-hover-preview-open:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
 .rich-fallback-banner {
   display: flex;
   align-items: center;
@@ -2761,6 +4217,11 @@ onUnmounted(() => {
   border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
   background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.04));
   color: var(--vscode-foreground);
+}
+
+.markly-banner-info.rich-fallback-banner {
+  border-color: var(--vscode-inputValidation-infoBorder, rgba(72, 180, 255, 0.45));
+  background: var(--vscode-inputValidation-infoBackground, rgba(72, 180, 255, 0.12));
 }
 
 .rich-fallback-banner .msg {
@@ -2803,6 +4264,29 @@ onUnmounted(() => {
   margin: 0 0 10px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
+}
+
+.markly-image-assets-panel {
+  max-width: min(620px, 94vw);
+}
+
+.markly-image-assets-heading {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.markly-image-assets-muted {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.markly-image-assets-warning {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f14c4c);
 }
 
 .markly-table-help-list {

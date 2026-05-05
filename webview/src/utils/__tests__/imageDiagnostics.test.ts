@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildImageDiagnostics,
+  computeUnreferencedAssetImages,
   formatMissingImageRefsList,
+  formatUnreferencedAssetImagesList,
   isLocalImageRef,
   normalizeLocalImageRefsToDirectory,
   parseMarkdownImageRefs,
@@ -51,6 +53,35 @@ describe('imageDiagnostics', () => {
     expect(diagnostics.missingRefs).toEqual([{ ref: 'assets/c.png', resolvedPath: '/repo/assets/c.png', error: 'not found' }]);
     expect(diagnostics.lastCheckedAt).toBe('2026-04-29T00:00:00.000Z');
     expect(diagnostics.compression).toEqual({ threshold: 1024, quality: 0.82 });
+    expect(diagnostics.assetDirectoryListedCount).toBe(null);
+    expect(diagnostics.unreferencedAssetRelativePaths).toBe(null);
+  });
+
+  it('M55 adds unreferenced listing when asset paths are scanned', () => {
+    const diagnostics = buildImageDiagnostics({
+      markdown: '![x](./assets/used.png)\n[同上](./assets/link.png)',
+      renderedImages: [],
+      saveDirectory: './assets',
+      localCheckResults: [],
+      assetRelativeDirectoryImagePaths: ['./assets/link.png', './assets/orphan.png', './assets/used.png'],
+    });
+
+    expect(diagnostics.assetDirectoryListedCount).toBe(3);
+    expect(diagnostics.unreferencedAssetRelativePaths).toEqual(['./assets/orphan.png']);
+  });
+
+  it('computeUnreferencedAssetImages counts markdown links and reference definitions', () => {
+    const md = `
+![via image](./assets/by-img.png)
+[via link](./assets/by-link.png)
+[ref-def]: ./assets/by-def.png`;
+    const assets = ['./assets/by-img.png', './assets/by-link.png', './assets/by-def.png', './assets/no.png'];
+    expect(computeUnreferencedAssetImages(md, assets)).toEqual(['./assets/no.png']);
+  });
+
+  it('formats unreferenced asset paths as bullet list copy text', () => {
+    expect(formatUnreferencedAssetImagesList(['./assets/a.png'])).toContain('- ./assets/a.png');
+    expect(formatUnreferencedAssetImagesList([])).toContain('未发现未引用');
   });
 
   it('formats missing image refs as a copyable markdown table', () => {

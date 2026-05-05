@@ -2,12 +2,22 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ModeController } from '@core/modeController';
+import type { DocumentStore } from '@core/documentStore';
 import type { ExtensionMessage, PdfConfig, RichTableCommandValue } from '@types';
-import { formatExportFailure } from '@core/export/exportErrors';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
 import { toMarkdownImageRelativePath } from '@extension/provider/imagePaths';
+import { confirmContinueAfterExportPreflight } from '@extension/export/exportPreflightUi';
+import { runCopyLastExportFailureDiagnostics, showExportFailureWithDiagnostics } from '@extension/export/exportFailureUi';
+import { showExportHtmlPreviewPanel } from '@extension/preview/exportHtmlPreview';
 import { clearAiApiKey, setAiApiKey } from '@extension/ai/rewriteSelection';
+import { BUILTIN_DOCUMENT_TEMPLATES } from '@extension/templates/builtinTemplates';
+import { loadBuiltinTemplateMarkdown } from '@extension/templates/loadBuiltinTemplate';
+import { readUserTemplateMarkdownVerified } from '@extension/templates/loadUserTemplate';
+import {
+  expandUserTemplateDirectoryInput,
+  listMarkdownTemplatesInUserDirectory,
+} from '@extension/templates/userTemplateDirectory';
 
 // 存储所有 WebView 的引用
 const webviews = new Map<string, vscode.Webview>();
@@ -30,8 +40,11 @@ const richTableCommands: Array<{ id: string; op: RichTableCommandValue }> = [
 
 const imageAssetCommands = [
   { id: 'markly.image.copyMissingRefs', value: 'copyMissingRefs' },
+  { id: 'markly.image.copyUnreferencedList', value: 'copyUnreferencedAssetList' },
   { id: 'markly.image.openAssetsDirectory', value: 'openAssetsDirectory' },
+  { id: 'markly.image.openAssetsPanel', value: 'openImageAssetsPanel' },
   { id: 'markly.image.repairFirstMissingRef', value: 'repairFirstMissingRef' },
+  { id: 'markly.image.repairMissingRefsBatch', value: 'repairMissingRefsBatch' },
   { id: 'markly.image.normalizeRefs', value: 'normalizeImageRefs' },
 ] as const;
 
@@ -68,7 +81,8 @@ async function postEditorCommand(payload: Extract<ExtensionMessage, { type: 'EDI
 
 export function registerCommands(
   context: vscode.ExtensionContext,
-  modeController: ModeController
+  modeController: ModeController,
+  documentStore: DocumentStore
 ): void {
   // 切换模式 - 发送消息到 WebView
   const toggleModeCmd = vscode.commands.registerCommand(
@@ -148,6 +162,19 @@ export function registerCommands(
             console.log('[PDF Export] Starting export to:', saveUri.fsPath);
 
             const vs = vscode.workspace.getConfiguration('markly');
+            const pfScope = vs.get<'off' | 'images' | 'full'>('export.preflight.scope', 'full');
+            const pfBlock = vs.get<boolean>('export.preflight.blockOnIssues', false);
+            if (
+              !(await confirmContinueAfterExportPreflight({
+                markdown: content,
+                documentUri: editor.document.uri,
+                scope: pfScope,
+                blockOnIssues: pfBlock,
+                formatLabel: 'PDF',
+              }))
+            ) {
+              return;
+            }
             const margin = vs.get<PdfConfig['margin']>('export.pdf.margin', {
               top: 25,
               right: 20,
@@ -186,10 +213,9 @@ export function registerCommands(
             }
           } catch (error) {
             console.error('[PDF Export] Error:', error);
-            vscode.window.showErrorMessage(formatExportFailure('pdf', error), '查看日志').then((selection) => {
-              if (selection === '查看日志') {
-                vscode.commands.executeCommand('workbench.action.toggleDevTools');
-              }
+            await showExportFailureWithDiagnostics(context, 'pdf', error, {
+              documentPath: editor.document.fileName,
+              outputPath: saveUri.fsPath,
             });
           }
         }
@@ -231,22 +257,68 @@ export function registerCommands(
             const content = editor.document.getText();
             // 从文件名前提取标题
             const title = path.basename(editor.document.fileName, '.md');
+            const markly = vscode.workspace.getConfiguration('markly');
+            const pfScope = markly.get<'off' | 'images' | 'full'>('export.preflight.scope', 'full');
+            const pfBlock = markly.get<boolean>('export.preflight.blockOnIssues', false);
+            if (
+              !(await confirmContinueAfterExportPreflight({
+                markdown: content,
+                documentUri: editor.document.uri,
+                scope: pfScope,
+                blockOnIssues: pfBlock,
+                formatLabel: 'HTML',
+              }))
+            ) {
+              return;
+            }
             const htmlTheme =
-              vscode.workspace.getConfiguration('markly').get<'default' | 'print-friendly'>('export.html.theme', 'default') ??
-              'default';
+              markly.get<'default' | 'print-friendly'>('export.html.theme', 'default') ?? 'default';
+            const copyLocalImages = markly.get<boolean>('export.html.copyLocalImages', false);
+            const assetsSubdirectory =
+              markly.get<string>('export.html.assetsSubdirectory', 'markly-html-assets').trim() || 'markly-html-assets';
             await exportToHtml(content, saveUri.fsPath, {
               includeToc: true,
               title,
               htmlTheme,
+              copyLocalImages,
+              documentBaseDir: path.dirname(editor.document.fileName),
+              assetsSubdirectory,
             });
             vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
-            vscode.window.showErrorMessage(formatExportFailure('html', error));
+            await showExportFailureWithDiagnostics(context, 'html', error, {
+              documentPath: editor.document.fileName,
+              outputPath: saveUri.fsPath,
+            });
           }
         }
       );
     }
   );
+
+  /** M88：发布前预览（与导出 HTML 同源管线） */
+  const previewExportHtmlCmd = vscode.commands.registerCommand('markly.preview.exportHtml', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'markdown') {
+      vscode.window.showWarningMessage('请先打开一个 Markdown 文件。');
+      return;
+    }
+    if (editor.document.uri.scheme !== 'file') {
+      vscode.window.showWarningMessage('导出预览仅支持本地磁盘上的 Markdown 文件。');
+      return;
+    }
+    const uri = editor.document.uri;
+    const stored = documentStore.getDocument(uri.toString());
+    const markdown = stored?.content ?? editor.document.getText();
+    const markly = vscode.workspace.getConfiguration('markly');
+    const htmlTheme =
+      markly.get<'default' | 'print-friendly'>('export.html.theme', 'default') ?? 'default';
+    showExportHtmlPreviewPanel({
+      markdown,
+      documentUri: uri,
+      htmlTheme,
+    });
+  });
 
   // 导出图片
   const exportImageCmd = vscode.commands.registerCommand(
@@ -399,13 +471,123 @@ export function registerCommands(
     () => postEditorCommand({ command: 'writingAssist', value: 'rewriteSelection' })
   );
 
+  const assistConvertTextToTableCmd = vscode.commands.registerCommand(
+    'markly.assist.convertTextToGfmTable',
+    () => postEditorCommand({ command: 'writingAssist', value: 'convertTextToGfmTable' })
+  );
+
   const aiSetApiKeyCmd = vscode.commands.registerCommand('markly.ai.setApiKey', () => setAiApiKey(context));
   const aiClearApiKeyCmd = vscode.commands.registerCommand('markly.ai.clearApiKey', () => clearAiApiKey(context));
+
+  const aiOpenPrivacyNoticeCmd = vscode.commands.registerCommand('markly.ai.openPrivacyNotice', async () => {
+    const uri = vscode.Uri.joinPath(context.extensionUri, 'privacy', 'AI_PRIVACY.md');
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
+    } catch {
+      await vscode.window.showErrorMessage(
+        '无法打开 Markly AI 隐私说明（扩展包可能不完整）。若从源码阅读，请打开仓库 `privacy/AI_PRIVACY.md`。'
+      );
+    }
+  });
+
+  const copyExportFailureDiagnosticsCmd = vscode.commands.registerCommand(
+    'markly.export.copyFailureDiagnostics',
+    () => runCopyLastExportFailureDiagnostics()
+  );
+
+  /** M89/M90：内置 + 自定义模板目录 → 另存为 → Markly 打开 */
+  const newFromTemplateCmd = vscode.commands.registerCommand('markly.template.newFromLibrary', async () => {
+    const vsCfg = vscode.workspace.getConfiguration('markly');
+    const userDirRaw = String(vsCfg.get<string>('templates.userDirectory') ?? '').trim();
+    const expandedUserDir = expandUserTemplateDirectoryInput(userDirRaw);
+
+    if (userDirRaw && expandedUserDir) {
+      try {
+        const st = fs.statSync(expandedUserDir);
+        if (!st.isDirectory()) {
+          void vscode.window.showWarningMessage(`Markly：自定义模板路径不是文件夹：${expandedUserDir}`);
+        }
+      } catch {
+        void vscode.window.showWarningMessage(`Markly：找不到自定义模板目录：${expandedUserDir}`);
+      }
+    }
+
+    const userListed = expandedUserDir ? listMarkdownTemplatesInUserDirectory(expandedUserDir) : [];
+
+    interface TemplatePick extends vscode.QuickPickItem {
+      payload?:
+        | { type: 'builtin'; id: string; suggestedFileName: string }
+        | { type: 'user'; absolutePath: string; suggestedFileName: string };
+    }
+
+    const items: TemplatePick[] = [];
+    items.push({ label: '内置模板', kind: vscode.QuickPickItemKind.Separator });
+    for (const t of BUILTIN_DOCUMENT_TEMPLATES) {
+      items.push({
+        label: `$(book) ${t.label}`,
+        description: t.description,
+        detail: `建议保存为 ${t.suggestedFileName}`,
+        payload: { type: 'builtin', id: t.id, suggestedFileName: t.suggestedFileName },
+      });
+    }
+    if (userListed.length > 0 && expandedUserDir) {
+      items.push({ label: '自定义模板', kind: vscode.QuickPickItemKind.Separator });
+      for (const u of userListed) {
+        items.push({
+          label: `$(file-code) ${u.labelStem}`,
+          description: u.fileName,
+          detail: expandedUserDir,
+          payload: { type: 'user', absolutePath: u.absolutePath, suggestedFileName: u.fileName },
+        });
+      }
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: '选择模板后将弹出「另存为」，保存后用 Markly 打开',
+    });
+    if (!picked?.payload) return;
+
+    let content: string;
+    try {
+      if (picked.payload.type === 'builtin') {
+        content = await loadBuiltinTemplateMarkdown(context.extensionUri, picked.payload.id);
+      } else {
+        if (!expandedUserDir) {
+          void vscode.window.showErrorMessage('未配置有效的自定义模板目录。');
+          return;
+        }
+        content = await readUserTemplateMarkdownVerified(picked.payload.absolutePath, expandedUserDir);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`无法读取模板：${msg}`);
+      return;
+    }
+
+    const suggestedName = picked.payload.suggestedFileName;
+    const wf = vscode.workspace.workspaceFolders?.[0];
+    const defaultUri = wf ? vscode.Uri.joinPath(wf.uri, suggestedName) : vscode.Uri.file(suggestedName);
+    const saveUri = await vscode.window.showSaveDialog({
+      defaultUri,
+      filters: { Markdown: ['md', 'markdown'] },
+      saveLabel: '创建',
+    });
+    if (!saveUri) return;
+    try {
+      await vscode.workspace.fs.writeFile(saveUri, new TextEncoder().encode(content));
+      await vscode.commands.executeCommand('vscode.openWith', saveUri, 'markly.preview');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      void vscode.window.showErrorMessage(`创建文件失败：${msg}`);
+    }
+  });
 
   context.subscriptions.push(
     toggleModeCmd,
     exportPdfCmd,
     exportHtmlCmd,
+    previewExportHtmlCmd,
     exportImageCmd,
     toggleOutlineCmd,
     toggleFindReplaceCmd,
@@ -427,7 +609,11 @@ export function registerCommands(
     assistFixMarkdownCmd,
     assistTidyTablesCmd,
     assistRewriteSelectionCmd,
+    assistConvertTextToTableCmd,
     aiSetApiKeyCmd,
-    aiClearApiKeyCmd
+    aiClearApiKeyCmd,
+    aiOpenPrivacyNoticeCmd,
+    copyExportFailureDiagnosticsCmd,
+    newFromTemplateCmd
   );
 }

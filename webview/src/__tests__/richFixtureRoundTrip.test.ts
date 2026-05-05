@@ -35,7 +35,28 @@ const MUST_CONTAIN: Record<string, string[]> = {
   'm9/01-basic.md': ['# 标题 1', '## 标题 2', '**加粗**', '*斜体*', '~~删除线~~', '`inline code`', 'https://example.com/path?q=1#hash'],
   'm9/02-lists-and-tasks.md': ['[ ] 任务 1', '[x] 任务 2', '有序 1', '混合缩进子项'],
   'm9/03-blockquote-and-code.md': ['> 一级引用', '```ts', 'export function add', '一行很长'],
-  'm9/04-tables-gfm.md': ['| 名称 |', '左对齐', '右对齐'],
+  'm9/04-tables-gfm.md': [
+    '| 名称 |',
+    '左对齐',
+    '居中',
+    '右对齐',
+    // 序列化后对齐行会规范化（例：`:-----------------`、`:----:`、`----:`），用于锁住「对齐信息不丢」
+    ':-----------------',
+    ':----:',
+    '----:',
+    '很长很长很长很长很长很长很长很长很长',
+    '(empty)',
+    '<br />',
+  ],
+  'm9/11-tables-stacked.md': ['段落 A：表前文本。', '段落 B：两表之间。', '段落 C：表后文本。', '| x |', '| p |', '| a |'],
+  'm9/12-table-rich-cells.md': ['*斜体在格内*', '[示例](https://example.com/path)', '`const x = 1`', '**粗体**'],
+  'm9/13-table-wide-grid.md': [
+    '| c1 | c2',
+    '| c5 |',
+    '| 6  | <br />',
+    '| 7  |',
+    '| 12 |',
+  ],
   'm9/05-footnotes.md': ['[^1]:', '脚注内容'],
   'm9/06-math.md': ['$$', 'int'],
   'm9/07-mermaid.md': ['```mermaid', 'sequenceDiagram', 'flowchart TD'],
@@ -88,7 +109,7 @@ describe('M9 fixtures round-trip (parse→serialize)', () => {
   const fixtures = [...loadFixtures('m9'), ...loadFixtures('m26')];
 
   it('fixtures should exist', () => {
-    expect(fixtures.length).toBeGreaterThanOrEqual(11);
+    expect(fixtures.length).toBeGreaterThanOrEqual(14);
   });
 
   for (const fx of fixtures) {

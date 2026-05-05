@@ -14,6 +14,7 @@ import { deepMerge, validateConfig } from '../configuration';
 import type { ExtensionConfig } from '../../types';
 
 const validConfig: ExtensionConfig = {
+  templates: { userDirectory: '' },
   editor: {
     theme: 'auto',
     fontSize: 14 as any,
@@ -22,11 +23,13 @@ const validConfig: ExtensionConfig = {
     tableCellWrap: 'wrap',
     enableMermaid: true,
     enableShiki: false,
+    richTableColumnResize: 'auto',
   },
   image: {
     saveDirectory: './assets',
     compressThreshold: 512000 as any,
     compressQuality: 0.8 as any,
+    sameNameHandling: 'rename',
   },
   export: {
     pdf: {
@@ -34,8 +37,10 @@ const validConfig: ExtensionConfig = {
       margin: { top: 25 as any, right: 20 as any, bottom: 25 as any, left: 20 as any },
       includeToc: true,
       displayHeaderFooter: true,
+      template: 'default',
     },
-    html: { theme: 'default' },
+    html: { theme: 'default', copyLocalImages: false, assetsSubdirectory: 'markly-html-assets' },
+    preflight: { scope: 'full', blockOnIssues: false },
   },
   ai: { rewriteSelectionEnabled: false },
 };
@@ -141,6 +146,13 @@ describe('validateConfig', () => {
     expect(result.errors.some((e: string) => e.includes('saveDirectory'))).toBe(true);
   });
 
+  it('rejects invalid image.sameNameHandling', () => {
+    const cfg = deepMerge(validConfig, { image: { sameNameHandling: 'merge' as any } } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('sameNameHandling'))).toBe(true);
+  });
+
   it('rejects invalid pdf format', () => {
     const cfg = deepMerge(validConfig, {
       export: { pdf: { format: 'B5' } },
@@ -148,6 +160,58 @@ describe('validateConfig', () => {
     const result = validateConfig(cfg);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e: string) => e.includes('format'))).toBe(true);
+  });
+
+  it('rejects invalid pdf.template (M81)', () => {
+    const cfg = deepMerge(validConfig, {
+      export: { pdf: { template: 'nord' as any } },
+    } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('template'))).toBe(true);
+  });
+
+  it('rejects invalid export.html.copyLocalImages (M82)', () => {
+    const cfg = deepMerge(validConfig, {
+      export: { html: { copyLocalImages: 'yes' as any } },
+    } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('copyLocalImages'))).toBe(true);
+  });
+
+  it('rejects path-like export.html.assetsSubdirectory (M82)', () => {
+    const cfg = deepMerge(validConfig, {
+      export: { html: { assetsSubdirectory: 'a/b' } },
+    } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('assetsSubdirectory'))).toBe(true);
+  });
+
+  it('rejects invalid export.preflight.scope (M83)', () => {
+    const cfg = deepMerge(validConfig, {
+      export: { preflight: { scope: 'lite' as any, blockOnIssues: false } },
+    } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('preflight.scope'))).toBe(true);
+  });
+
+  it('rejects non-string templates.userDirectory (M90)', () => {
+    const cfg = deepMerge(validConfig, { templates: { userDirectory: 1 as any } } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('templates.userDirectory'))).toBe(true);
+  });
+
+  it('rejects non-boolean export.preflight.blockOnIssues (M83)', () => {
+    const cfg = deepMerge(validConfig, {
+      export: { preflight: { scope: 'full', blockOnIssues: 1 as any } },
+    } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('blockOnIssues'))).toBe(true);
   });
 
   it('rejects negative margin', () => {

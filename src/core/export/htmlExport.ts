@@ -2,6 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as katex from 'katex';
 import { marked } from 'marked';
+import { bundleHtmlLocalImages, sanitizeAssetsSubdirectory } from './htmlBundleImages';
+import {
+  buildMermaidExportBootstrapScript,
+  getMermaidExportDocumentCss,
+  transformMermaidFencesForExport,
+} from './mermaidExport';
 
 export interface HtmlExportOptions {
   includeToc?: boolean;
@@ -10,6 +16,12 @@ export interface HtmlExportOptions {
   darkMode?: boolean;
   /** default：屏读；print-friendly：版心更贴打印、含基础 @media print */
   htmlTheme?: 'default' | 'print-friendly';
+  /** M82：将文档目录内本地图片复制到 HTML 输出旁并重写 `<img src>`（默认关闭） */
+  copyLocalImages?: boolean;
+  /** Markdown 文档所在目录（用于解析相对图片路径）；开启 `copyLocalImages` 时必填 */
+  documentBaseDir?: string;
+  /** 输出目录下的资产子目录名（单层）；非法值会回退为 `markly-html-assets` */
+  assetsSubdirectory?: string;
 }
 
 const defaultOptions: HtmlExportOptions = {
@@ -32,6 +44,24 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => map[char]);
 }
 
+/**
+ * 生成与「导出 HTML」一致的完整文档字符串（不写盘；用于发布前预览等）。
+ */
+export async function buildExportHtmlString(
+  markdownContent: string,
+  options: HtmlExportOptions = {}
+): Promise<string> {
+  const opts = { ...defaultOptions, ...options };
+
+  let tocHtml = '';
+  if (opts.includeToc) {
+    tocHtml = generateToc(markdownContent);
+  }
+
+  const htmlContent = await markdownToHtml(markdownContent);
+  return buildHtmlDocument(htmlContent, tocHtml, opts);
+}
+
 export async function exportToHtml(
   markdownContent: string,
   outputPath: string,
@@ -39,17 +69,20 @@ export async function exportToHtml(
 ): Promise<void> {
   const opts = { ...defaultOptions, ...options };
 
-  // 生成 TOC
-  let tocHtml = '';
-  if (opts.includeToc) {
-    tocHtml = generateToc(markdownContent);
+  let fullHtml = await buildExportHtmlString(markdownContent, opts);
+
+  if (opts.copyLocalImages && opts.documentBaseDir) {
+    const docDir = path.resolve(opts.documentBaseDir);
+    if (fs.existsSync(docDir)) {
+      const sub = sanitizeAssetsSubdirectory(opts.assetsSubdirectory ?? 'markly-html-assets');
+      fullHtml = bundleHtmlLocalImages({
+        html: fullHtml,
+        documentDir: docDir,
+        outputHtmlPath: outputPath,
+        assetsSubdirectory: sub,
+      }).html;
+    }
   }
-
-  // 转换 Markdown 为 HTML
-  const htmlContent = await markdownToHtml(markdownContent);
-
-  // 构建完整 HTML
-  const fullHtml = buildHtmlDocument(htmlContent, tocHtml, opts);
 
   // 写入文件
   fs.writeFileSync(outputPath, fullHtml, 'utf-8');
@@ -91,7 +124,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
   });
 
   // 添加锚点到标题（修复：处理带属性的标题）
-  return String(html).replace(/<h([1-6])([^>]*)>(.+?)<\/h[1-6]>/g, (match, level, attrs, text) => {
+  const withAnchors = String(html).replace(/<h([1-6])([^>]*)>(.+?)<\/h[1-6]>/g, (match, level, attrs, text) => {
     // 如果已经有 id 属性，则保留
     if (/id=["']/.test(attrs)) {
       return match;
@@ -100,6 +133,8 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     // 使用 escapeHtml 防止 XSS
     return `<h${level} id="${anchor}"${attrs}>${escapeHtml(text)}</h${level}>`;
   });
+
+  return transformMermaidFencesForExport(withAnchors);
 }
 
 export function renderMarkdownMath(markdown: string): string {
@@ -195,6 +230,7 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
   <title>${escapeHtml(opts.title || '导出文档')}</title>
   <style>
     ${readKatexCss()}
+    ${getMermaidExportDocumentCss()}
     :root {
       --bg-color: ${bgColor};
       --text-color: ${textColor};
@@ -297,28 +333,38 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
       margin: 4px 0;
     }
 
-    /* 代码 */
+    /* 代码（M84：长行换行；打印时 pre 可跨页） */
     code {
       background-color: var(--code-bg);
       padding: 0.2em 0.4em;
       border-radius: 3px;
       font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
       font-size: 85%;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
 
     pre {
       background-color: var(--code-bg);
       padding: 16px;
-      overflow: auto;
+      overflow-x: auto;
+      overflow-y: hidden;
       border-radius: 6px;
       margin-bottom: 16px;
       border: 1px solid var(--border-color);
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      tab-size: 4;
     }
 
     pre code {
       background: transparent;
       padding: 0;
       font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     /* 引用 */
@@ -415,11 +461,17 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
       font-size: 11pt;
       padding: 24px 12px;
     }
+    body.markly-export-print-friendly pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      tab-size: 4;
+    }
     `
         : ''
     }
 
-    /* 打印样式 */
+    /* 打印样式（M84：围栏代码可跨页；blockquote 仍尽量整块） */
     @media print {
       body {
         max-width: 100%;
@@ -430,8 +482,24 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
         page-break-after: always;
       }
 
-      pre, blockquote {
+      pre {
+        page-break-inside: auto;
+        break-inside: auto;
+        white-space: pre-wrap;
+        overflow: visible;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      pre code {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      blockquote {
         page-break-inside: avoid;
+        break-inside: avoid;
       }
     }
   </style>
@@ -441,6 +509,7 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
   <div class="content">
     ${content}
   </div>
+${buildMermaidExportBootstrapScript(opts.darkMode ? 'dark' : 'default')}
 </body>
 </html>`;
 }

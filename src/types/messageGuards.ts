@@ -42,8 +42,11 @@ const richTableCommandValues: ReadonlySet<RichTableCommandValue> = new Set([
 
 const imageAssetCommandValues: ReadonlySet<ImageAssetCommandValue> = new Set([
   'copyMissingRefs',
+  'copyUnreferencedAssetList',
   'openAssetsDirectory',
+  'openImageAssetsPanel',
   'repairFirstMissingRef',
+  'repairMissingRefsBatch',
   'normalizeImageRefs',
 ]);
 
@@ -65,6 +68,8 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   if (!isString(image.saveDirectory)) return false;
   if (!isNumber(image.compressThreshold)) return false;
   if (!isNumber(image.compressQuality)) return false;
+  const sn = (image as { sameNameHandling?: unknown }).sameNameHandling;
+  if (sn !== 'overwrite' && sn !== 'rename' && sn !== 'prompt') return false;
   const pdf = exp.pdf;
   const fmt = pdf.format;
   if (fmt !== 'A4' && fmt !== 'A3' && fmt !== 'Letter' && fmt !== 'Legal') return false;
@@ -79,7 +84,25 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
     if (!isRecord(exp.html)) return false;
     const th = exp.html.theme;
     if (th !== 'default' && th !== 'print-friendly') return false;
+    const cli = (exp.html as { copyLocalImages?: unknown }).copyLocalImages;
+    if (cli !== undefined && typeof cli !== 'boolean') return false;
+    const asd = (exp.html as { assetsSubdirectory?: unknown }).assetsSubdirectory;
+    if (asd !== undefined && !isString(asd)) return false;
   }
+  const pf = (exp as { preflight?: unknown }).preflight;
+  if (pf !== undefined) {
+    if (!isRecord(pf)) return false;
+    const sc = (pf as { scope?: unknown }).scope;
+    if (sc !== 'off' && sc !== 'images' && sc !== 'full') return false;
+    if (typeof (pf as { blockOnIssues?: unknown }).blockOnIssues !== 'boolean') return false;
+  }
+  const tpl = (x as { templates?: unknown }).templates;
+  if (tpl !== undefined) {
+    if (!isRecord(tpl)) return false;
+    const ud = (tpl as { userDirectory?: unknown }).userDirectory;
+    if (ud !== undefined && typeof ud !== 'string') return false;
+  }
+
   if ((x as { ai?: unknown }).ai !== undefined) {
     const ai = (x as { ai?: Record<string, unknown> }).ai;
     if (!isRecord(ai)) return false;
@@ -156,11 +179,21 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
     }
     case 'IMAGE_SAVED': {
       const p = msg.payload;
-      return isRecord(p) && isString(p.path) && isString(p.filename);
+      return (
+        isRecord(p) &&
+        isString(p.path) &&
+        isString(p.filename) &&
+        (p.requestId === undefined || isString(p.requestId))
+      );
     }
     case 'IMAGE_SAVE_FAILED': {
       const p = msg.payload;
-      return isRecord(p) && isString(p.filename) && isString(p.error);
+      return (
+        isRecord(p) &&
+        isString(p.filename) &&
+        isString(p.error) &&
+        (p.requestId === undefined || isString(p.requestId))
+      );
     }
     case 'LOCAL_IMAGE_REFS_RESULT': {
       const p = msg.payload;
@@ -172,9 +205,75 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
         return true;
       });
     }
+    case 'ASSETS_IMAGE_FILES_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || !Array.isArray(p.relativePaths)) return false;
+      if (!p.relativePaths.every((x: unknown) => isString(x))) return false;
+      if (p.error !== undefined && !isString(p.error)) return false;
+      return true;
+    }
+    case 'AI_SUMMARY_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId)) return false;
+      if (typeof (p as { ok?: unknown }).ok !== 'boolean') return false;
+      if ((p as { ok: boolean }).ok === true) return isString((p as { text?: unknown }).text);
+      return isString((p as { error?: unknown }).error);
+    }
+    case 'AI_SUGGEST_TITLES_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || typeof (p as { ok?: unknown }).ok !== 'boolean') return false;
+      if ((p as { ok: boolean }).ok === false) return isString((p as { error?: unknown }).error);
+      const items = (p as { items?: unknown }).items;
+      if (!Array.isArray(items)) return false;
+      return items.every((x: unknown) => {
+        if (!isRecord(x)) return false;
+        const xr = x as Record<string, unknown>;
+        if (!isString(xr.title) || !isString(xr.style)) return false;
+        if (xr.reason !== undefined && !isString(xr.reason)) return false;
+        return true;
+      });
+    }
+    case 'AI_CONVERT_TEXT_TO_TABLE_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || typeof (p as { ok?: unknown }).ok !== 'boolean') return false;
+      if ((p as { ok: boolean }).ok === true) return isString((p as { markdown?: unknown }).markdown);
+      return isString((p as { error?: unknown }).error);
+    }
+    case 'MARKDOWN_BACKLINKS_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || !Array.isArray(p.items)) return false;
+      if (
+        !p.items.every((row: unknown) => {
+          if (!isRecord(row)) return false;
+          return isString(row.uri) && isString(row.workspaceRelativePath);
+        })
+      ) {
+        return false;
+      }
+      const err = (p as { error?: unknown }).error;
+      if (err !== undefined && err !== 'no_workspace') return false;
+      const trunc = (p as { truncated?: unknown }).truncated;
+      if (trunc !== undefined && typeof trunc !== 'boolean') return false;
+      return true;
+    }
+    case 'MARKDOWN_HOVER_PREVIEW_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || typeof (p as { ok?: unknown }).ok !== 'boolean') return false;
+      if ((p as { title?: unknown }).title !== undefined && !isString((p as { title?: unknown }).title)) return false;
+      if ((p as { excerpt?: unknown }).excerpt !== undefined && !isString((p as { excerpt?: unknown }).excerpt)) return false;
+      if ((p as { targetUri?: unknown }).targetUri !== undefined && !isString((p as { targetUri?: unknown }).targetUri))
+        return false;
+      if ((p as { error?: unknown }).error !== undefined && !isString((p as { error?: unknown }).error)) return false;
+      return true;
+    }
     case 'IMAGE_REF_REPLACEMENT': {
       const p = msg.payload;
       return isRecord(p) && isString(p.fromRef) && isString(p.toRef);
+    }
+    case 'IMAGE_REF_REPAIR_OUTCOME': {
+      const p = msg.payload;
+      const st = (p as { status?: unknown }).status;
+      return isRecord(p) && isString(p.fromRef) && (st === 'replaced' || st === 'cancelled');
     }
     case 'EDITOR_COMMAND': {
       const p = msg.payload;
@@ -226,7 +325,8 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
           p.value === 'suggestTitle' ||
           p.value === 'fixMarkdown' ||
           p.value === 'tidyTables' ||
-          p.value === 'rewriteSelection'
+          p.value === 'rewriteSelection' ||
+          p.value === 'convertTextToGfmTable'
         );
       }
       return false;
@@ -271,15 +371,52 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
     }
     case 'SAVE_IMAGE': {
       const p = msg.payload;
-      return isRecord(p) && isString(p.data) && isString(p.filename);
+      return (
+        isRecord(p) &&
+        isString(p.data) &&
+        isString(p.filename) &&
+        (p.requestId === undefined || isString(p.requestId))
+      );
     }
     case 'UPLOAD_IMAGE': {
       const p = msg.payload;
-      return isRecord(p) && isString(p.base64) && isString(p.filename);
+      return (
+        isRecord(p) &&
+        isString(p.base64) &&
+        isString(p.filename) &&
+        (p.requestId === undefined || isString(p.requestId))
+      );
     }
     case 'CHECK_LOCAL_IMAGE_REFS': {
       const p = msg.payload;
       return isRecord(p) && isString(p.requestId) && Array.isArray(p.refs) && p.refs.every((x) => isString(x));
+    }
+    case 'LIST_ASSETS_IMAGE_FILES': {
+      const p = msg.payload;
+      const ks = Object.keys(p);
+      return isRecord(p) && isString(p.requestId) && ks.length === 1 && ks[0] === 'requestId';
+    }
+    case 'FIND_MARKDOWN_BACKLINKS': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.requestId) && Object.keys(p).length === 1;
+    }
+    case 'OPEN_MARKDOWN_DOCUMENT': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.uri) && p.uri.trim().length > 0;
+    }
+    case 'MARKDOWN_HOVER_PREVIEW_REQUEST': {
+      const p = msg.payload;
+      return (
+        isRecord(p) &&
+        isString(p.requestId) &&
+        p.requestId.trim().length > 0 &&
+        isString(p.href) &&
+        p.href.trim().length > 0
+      );
+    }
+    case 'OPEN_WORKSPACE_SEARCH': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.query) && p.query.trim().length > 0;
     }
     case 'OPEN_IMAGE_DIRECTORY': {
       const p = msg.payload;
@@ -300,6 +437,37 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
         isString(p.text)
       );
     }
+    case 'AI_SUMMARY_REQUEST': {
+      const p = msg.payload;
+      const sc = (p as { scope?: unknown }).scope;
+      return (
+        isRecord(p) &&
+        isString(p.requestId) &&
+        p.requestId.trim().length > 0 &&
+        isString(p.text) &&
+        (sc === 'document' || sc === 'section')
+      );
+    }
+    case 'AI_SUGGEST_TITLES_REQUEST': {
+      const p = msg.payload;
+      return (
+        isRecord(p) &&
+        isString(p.requestId) &&
+        p.requestId.trim().length > 0 &&
+        isString(p.text) &&
+        p.text.trim().length > 0
+      );
+    }
+    case 'AI_CONVERT_TEXT_TO_TABLE_REQUEST': {
+      const p = msg.payload;
+      return (
+        isRecord(p) &&
+        isString(p.requestId) &&
+        p.requestId.trim().length > 0 &&
+        isString(p.text) &&
+        p.text.trim().length > 0
+      );
+    }
     case 'OPEN_IMAGE_PREVIEW': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.src) || !Array.isArray(p.images) || !isNumber(p.index)) {
@@ -318,7 +486,7 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
     case 'EXPORT': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.format)) return false;
-      return p.format === 'pdf' || p.format === 'html' || p.format === 'image';
+      return p.format === 'pdf' || p.format === 'html' || p.format === 'image' || p.format === 'preview';
     }
     case 'READY':
       return msg.payload === undefined || msg.payload === null;

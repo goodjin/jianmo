@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   escapeHtml,
@@ -5,6 +8,8 @@ import {
   buildHtmlDocument,
   markdownToHtml,
   renderMarkdownMath,
+  exportToHtml,
+  buildExportHtmlString,
   type HtmlExportOptions,
 } from '../htmlExport';
 
@@ -132,9 +137,40 @@ describe('buildHtmlDocument', () => {
     expect(html).toContain('class="markly-export-print-friendly"');
     expect(html).toContain('body.markly-export-print-friendly');
   });
+
+  it('M84: fenced code CSS wraps long lines and print allows pre inside page breaks', () => {
+    const html = buildHtmlDocument('<pre><code>x</code></pre>', '', defaultOpts);
+    expect(html).toContain('tab-size: 4');
+    expect(html).toContain('overflow-wrap: anywhere');
+    const printIdx = html.indexOf('@media print');
+    expect(printIdx).toBeGreaterThan(-1);
+    const printBlock = html.slice(printIdx, printIdx + 1200).replace(/\s+/g, ' ');
+    expect(printBlock).toMatch(/pre \{[^}]*page-break-inside: auto/);
+    expect(printBlock).toMatch(/blockquote \{[^}]*page-break-inside: avoid/);
+  });
+
+  it('M84: print-friendly theme repeats wrap hints on pre', () => {
+    const html = buildHtmlDocument('', '', { ...defaultOpts, htmlTheme: 'print-friendly' });
+    expect(html).toContain('body.markly-export-print-friendly pre');
+    expect(html).toMatch(/body\.markly-export-print-friendly pre[\s\S]*?tab-size: 4/);
+  });
+
+  it('M85: HTML document embeds mermaid CSS and bootstrap', () => {
+    const html = buildHtmlDocument('<div class="mermaid markly-mermaid-await">x</div>', '', defaultOpts);
+    expect(html).toContain('.markly-mermaid-await');
+    expect(html).toContain('max-width: 100%');
+    expect(html).toContain('mermaid.initialize');
+    expect(html).toContain('DOMContentLoaded');
+  });
 });
 
 describe('markdownToHtml export rendering', () => {
+  it('M85: markdownToHtml turns mermaid fence into browser-render target div', async () => {
+    const html = await markdownToHtml('```mermaid\nflowchart LR\n  A-->B\n```\n');
+    expect(html).toContain('class="mermaid markly-mermaid-await"');
+    expect(html).toContain('A-->B');
+  });
+
   it('renders GFM table, fenced code, task list and relative image', async () => {
     const markdown = [
       '| A | B |',
@@ -179,5 +215,38 @@ describe('markdownToHtml export rendering', () => {
 
     expect(html).toContain('<code class="language-txt">$E=mc^2$');
     expect(html).toContain('class="katex"');
+  });
+
+  it('M82: copyLocalImages bundles file and rewrites img src in exported HTML', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'markly-htmlout-'));
+    const docDir = path.join(root, 'doc');
+    fs.mkdirSync(docDir, { recursive: true });
+    const imgDir = path.join(docDir, 'img');
+    fs.mkdirSync(imgDir, { recursive: true });
+    fs.writeFileSync(path.join(imgDir, 'x.png'), 'fake');
+    const outHtml = path.join(root, 'published', 'page.html');
+    fs.mkdirSync(path.dirname(outHtml), { recursive: true });
+
+    await exportToHtml('![x](./img/x.png)\n', outHtml, {
+      includeToc: false,
+      title: 't',
+      copyLocalImages: true,
+      documentBaseDir: docDir,
+      assetsSubdirectory: 'html-assets',
+    });
+
+    const written = fs.readFileSync(outHtml, 'utf-8');
+    expect(written).toMatch(/src="\.\/html-assets\/img\/x\.png"/);
+    expect(fs.existsSync(path.join(root, 'published', 'html-assets', 'img', 'x.png'))).toBe(true);
+  });
+
+  it('M88: buildExportHtmlString matches export file when copyLocalImages is off', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'markly-htmlout-'));
+    const outHtml = path.join(root, 'page.html');
+    const md = '# Hello\n\nParagraph.';
+    await exportToHtml(md, outHtml, { includeToc: true, title: 't' });
+    const written = fs.readFileSync(outHtml, 'utf-8');
+    const built = await buildExportHtmlString(md, { includeToc: true, title: 't' });
+    expect(built).toBe(written);
   });
 });

@@ -1,6 +1,6 @@
 # Markly Product Roadmap 2026
 
-> **依赖有序的 50 项总览**（M₁–M₅₀：前序不依赖后序）：见 [`docs/milestones-M01-M50.md`](./milestones-M01-M50.md)。发版记录见根目录 [`CHANGELOG.md`](../CHANGELOG.md)。
+> **依赖有序的 50 项总览**（M₁–M₅₀：前序不依赖后序）：见 `[docs/milestones-M01-M50.md](./milestones-M01-M50.md)`。**接续里程碑 M₅₁–M₁₀₀**见 `[docs/milestones-M51-M100.md](./milestones-M51-M100.md)`。发版记录见根目录 `[CHANGELOG.md](../CHANGELOG.md)`。
 
 ## 结论
 
@@ -474,7 +474,7 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 规划任务：
 
 - M45-0 计划：新增 `docs/m45-commands-keybindings-policy.md`
-- M45-1 清单：全量 `markly.*` contributes 命令表 + 默认键位（若有）+ `when` 子句
+- M45-1 清单：全量 `markly.`* contributes 命令表 + 默认键位（若有）+ `when` 子句
 - M45-2 Rich vs Source：同一键在两种模式下的语义对照表
 - M45-3 与 VS Code：保留键冲突说明（如 `Ctrl+F` 以 webview 为准时的前提）
 - M45-4 实现缺口：对照清单补注册/补 `EDITOR_COMMAND`（只补缺，不大改）
@@ -539,3 +539,4 @@ AI 能成为差异化，但不应该早于基础编辑体验。
 - M36 已补齐查找面板命令桥与 Rich 链接选区插入、`Mod+K` 一致性
 - M37 已补齐 Rich 纯文本粘贴快捷键与命令、代码块内纯文本粘贴、表格 HTML 清理与剪贴板诊断字段
 - M38–M47：`1.7.0` 起——M44-2～M44-5（PDF 分页样式、导出前本地图提示、工作区 PDF 选项贯通、导出单测）、M46 门禁文档与 `gates:stable`、M47 选区润色（SecretStorage、`openai-compatible` fetch、超时、错误脱敏、单测）已收口；表格粘贴策略等见 M43 未闭合项
+

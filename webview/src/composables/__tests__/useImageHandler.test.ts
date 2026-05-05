@@ -97,18 +97,65 @@ describe('useImageHandler', () => {
       const pending = handlePaste(event);
       await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
       expect(event.preventDefault).toHaveBeenCalled();
-      expect(vscodeMock.postMessage).toHaveBeenCalledWith({
-        type: 'UPLOAD_IMAGE',
-        payload: { base64: 'data:image/png;base64,abc', filename: 'image-123.png' },
-      });
+      const sent = vscodeMock.postMessage.mock.calls[0][0] as {
+        type: string;
+        payload: { base64: string; filename: string; requestId: string };
+      };
+      expect(sent.type).toBe('UPLOAD_IMAGE');
+      expect(sent.payload.base64).toBe('data:image/png;base64,abc');
+      expect(sent.payload.filename).toBe('image-123.png');
+      expect(sent.payload.requestId).toMatch(/./);
 
       vscodeMock.listeners[0]?.({
         type: 'IMAGE_SAVED',
-        payload: { filename: 'image-123.png', path: 'assets/image-123.png' },
+        payload: { filename: 'image-123.png', path: 'assets/image-123.png', requestId: sent.payload.requestId },
       });
       await pending;
 
       expect(insertMarkdown).toHaveBeenCalledWith('![image-123](assets/image-123.png)');
+    });
+
+    it('同名策略重命名保存时插入实际落盘文件名', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(777);
+      vi.stubGlobal(
+        'FileReader',
+        class {
+          result = 'data:image/png;base64,abc';
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            this.onload?.();
+          }
+        }
+      );
+
+      const insertMarkdown = vi.fn();
+      const { handlePaste } = useImageHandler({
+        editorView: ref(null),
+        insertMarkdown,
+      });
+      const file = new File([new Uint8Array([1])], 'clip.png', { type: 'image/png' });
+      const event = {
+        clipboardData: {
+          items: [{ type: 'image/png', getAsFile: () => file }],
+        },
+        preventDefault: vi.fn(),
+      } as unknown as ClipboardEvent;
+
+      const pending = handlePaste(event);
+      await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+      const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string } };
+      vscodeMock.listeners[0]?.({
+        type: 'IMAGE_SAVED',
+        payload: {
+          filename: 'image-777-2.png',
+          path: 'assets/image-777-2.png',
+          requestId: sent.payload.requestId,
+        },
+      });
+      await pending;
+
+      expect(insertMarkdown).toHaveBeenCalledWith('![image-777-2](assets/image-777-2.png)');
     });
 
     it('图片保存失败时记录错误且不会插入 Markdown', async () => {
@@ -142,9 +189,10 @@ describe('useImageHandler', () => {
 
       const pending = handlePaste(event);
       await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+      const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string; filename: string } };
       vscodeMock.listeners[0]?.({
         type: 'IMAGE_SAVE_FAILED',
-        payload: { filename: 'image-456.png', error: 'disk full' },
+        payload: { filename: sent.payload.filename, error: 'disk full', requestId: sent.payload.requestId },
       });
       await pending;
 
@@ -232,9 +280,10 @@ describe('useImageHandler', () => {
     const pending = handlePaste(event);
     await vi.waitFor(() => expect(onCompressingStart).toHaveBeenCalled());
     await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
+    const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string } };
     vscodeMock.listeners[0]?.({
       type: 'IMAGE_SAVED',
-      payload: { filename: 'image-999.png', path: 'assets/image-999.png' },
+      payload: { filename: 'image-999.png', path: 'assets/image-999.png', requestId: sent.payload.requestId },
     });
     await pending;
     expect(insertMarkdown).toHaveBeenCalled();

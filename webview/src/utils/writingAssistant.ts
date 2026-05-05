@@ -1,9 +1,12 @@
+import { repairMarkdownStructureM75 } from './markdownStructureRepair';
+
 export type WritingAssistAction =
   | 'summarize'
   | 'suggestTitle'
   | 'fixMarkdown'
   | 'tidyTables'
-  | 'rewriteSelection';
+  | 'rewriteSelection'
+  | 'convertTextToGfmTable';
 
 function stripMarkdownSyntax(markdown: string): string {
   return markdown
@@ -41,6 +44,11 @@ export function fixMarkdownWhitespace(markdown: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return `${normalized}\n`;
+}
+
+/** M₇₅：文档级结构修复（标题层级 / 列表 / 空行）+ 首尾空白规整 */
+export function fixMarkdownStructuralPhaseTwo(markdown: string): string {
+  return fixMarkdownWhitespace(repairMarkdownStructureM75(markdown));
 }
 
 function isTableSeparator(line: string): boolean {

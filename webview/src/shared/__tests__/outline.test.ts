@@ -4,7 +4,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { cleanHeadingText, generateHeadingId, parseHeadings, buildTree } from '../outline';
+import {
+  cleanHeadingText,
+  generateHeadingId,
+  parseHeadings,
+  buildTree,
+  collectOutlineFilterIndices,
+  getDuplicateHeadingSlugs,
+  isHeadingSlugAmbiguous,
+  extractMarkdownSectionByHeadingId,
+} from '../outline';
 
 describe('parseHeadings', () => {
   it('应该解析 ATX 标题', () => {
@@ -55,6 +64,78 @@ describe('parseHeadings', () => {
     expect(headings[0]).toMatchObject({ text: '长标题 Example', from: 0 });
     expect(cleanHeadingText('Title {#id}')).toBe('Title');
     expect(generateHeadingId(headings[0].text)).toBe('长标题-example');
+  });
+});
+
+describe('getDuplicateHeadingSlugs / isHeadingSlugAmbiguous (M63)', () => {
+  it('无重复时返回空集且 slug 不视为歧义', () => {
+    const hs = parseHeadings('# A\n## B');
+    expect([...getDuplicateHeadingSlugs(hs)].sort()).toEqual([]);
+    expect(isHeadingSlugAmbiguous('# A\n## B', 'a')).toBe(false);
+    expect(isHeadingSlugAmbiguous('# A\n## B', 'b')).toBe(false);
+  });
+
+  it('相同可见标题（因而相同 slug）全部计入重复集', () => {
+    const md = '# Hello\n## X\n# Hello\n';
+    const dups = getDuplicateHeadingSlugs(parseHeadings(md));
+    expect(dups.has('hello')).toBe(true);
+    expect(isHeadingSlugAmbiguous(md, 'hello')).toBe(true);
+  });
+
+  it('大小写不同但 slug 相同视为冲突', () => {
+    const md = '# Hello\n# HELLO\n';
+    expect(isHeadingSlugAmbiguous(md, 'hello')).toBe(true);
+  });
+});
+
+describe('extractMarkdownSectionByHeadingId (M73)', () => {
+  it('extracts a heading section until next same-or-higher heading', () => {
+    const md = ['# A', 'a1', '## A.1', 'x', '# B', 'b1'].join('\n');
+    const sec = extractMarkdownSectionByHeadingId(md, 'a');
+    expect(sec).toContain('# A');
+    expect(sec).toContain('## A.1');
+    expect(sec).not.toContain('# B');
+  });
+});
+
+describe('collectOutlineFilterIndices (M61)', () => {
+  it('空查询返回 null', () => {
+    expect(collectOutlineFilterIndices([{ level: 1, text: 'A' }], '   ')).toBe(null);
+    expect(collectOutlineFilterIndices([{ level: 1, text: 'A' }], '')).toBe(null);
+  });
+
+  it('匹配项含祖先路径', () => {
+    const items = [
+      { level: 1, text: '第一章' },
+      { level: 2, text: '小节' },
+      { level: 3, text: '细节 Alpha' },
+    ];
+    const ix = collectOutlineFilterIndices(items, 'Alpha');
+    expect(ix).not.toBe(null);
+    expect([...(ix as Set<number>)].sort((a, b) => a - b)).toEqual([0, 1, 2]);
+  });
+
+  it('多个顶级仅匹配相关枝', () => {
+    const items = [
+      { level: 1, text: 'A' },
+      { level: 1, text: 'B' },
+      { level: 2, text: 'B-child' },
+    ];
+    const ix = collectOutlineFilterIndices(items, 'B-ch');
+    expect([...(ix as Set<number>)].sort((a, b) => a - b)).toEqual([1, 2]);
+  });
+
+  it('无匹配返回空 Set', () => {
+    const items = [{ level: 1, text: 'Only' }];
+    const ix = collectOutlineFilterIndices(items, 'zzz');
+    expect(ix).not.toBe(null);
+    expect((ix as Set<number>).size).toBe(0);
+  });
+
+  it('英文大小写不敏感', () => {
+    const items = [{ level: 1, text: 'Hello World' }];
+    const ix = collectOutlineFilterIndices(items, 'WORLD');
+    expect([...(ix as Set<number>)]).toEqual([0]);
   });
 });
 

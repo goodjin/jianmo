@@ -16,6 +16,8 @@ describe('Toolbar mode switch', () => {
         showOutline: false,
         showLineNumbers: false,
         findPanelOpen: false,
+        docBaselineTierLabel: 'S',
+        perfDegradeTitle: '文档档位：S',
       },
     });
 
@@ -36,12 +38,32 @@ describe('Toolbar mode switch', () => {
         showOutline: false,
         showLineNumbers: false,
         findPanelOpen: false,
+        docBaselineTierLabel: 'M',
       },
     });
     const labels = w
       .findAll('.toolbar-group[aria-label="Table structure"] .toolbar-btn')
       .map((b) => String(b.attributes('title') || ''));
     expect(labels.some((t) => t.includes('删除当前表格'))).toBe(true);
+  });
+
+  it('M66: shows doc tier indicator when provided', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'source',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+        docBaselineTierLabel: 'XL',
+        perfDegradeTitle: '文档档位：XL；Rich 性能档位：2\n降级项：\n- Mermaid（已关闭）',
+      },
+    });
+    const btn = w.find('.perf-tier-btn');
+    expect(btn.exists()).toBe(true);
+    expect(String(btn.attributes('title'))).toContain('文档档位');
+    expect(btn.text()).toContain('XL');
   });
 });
 

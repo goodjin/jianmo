@@ -35,8 +35,13 @@ describe('redactAssistErrorSnippet', () => {
 describe('rewriteSelectionViaProvider', () => {
   it('returns error when feature disabled', async () => {
     const cfg: ExtensionConfig = {
-      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false },
-      image: { saveDirectory: './assets', compressThreshold: 1 as any, compressQuality: 0.8 as any },
+      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
+      image: {
+        saveDirectory: './assets',
+        compressThreshold: 1 as any,
+        compressQuality: 0.8 as any,
+        sameNameHandling: 'rename',
+      },
       export: { pdf: { format: 'A4', margin: { top: 1 as any, right: 1 as any, bottom: 1 as any, left: 1 as any }, includeToc: true, displayHeaderFooter: true } },
       ai: { rewriteSelectionEnabled: false, rewriteProvider: 'mock' },
     };
@@ -46,8 +51,13 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('mock provider rewrites deterministically', async () => {
     const cfg: ExtensionConfig = {
-      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false },
-      image: { saveDirectory: './assets', compressThreshold: 1 as any, compressQuality: 0.8 as any },
+      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
+      image: {
+        saveDirectory: './assets',
+        compressThreshold: 1 as any,
+        compressQuality: 0.8 as any,
+        sameNameHandling: 'rename',
+      },
       export: { pdf: { format: 'A4', margin: { top: 1 as any, right: 1 as any, bottom: 1 as any, left: 1 as any }, includeToc: true, displayHeaderFooter: true } },
       ai: { rewriteSelectionEnabled: true, rewriteProvider: 'mock' },
     };
@@ -58,8 +68,13 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('provider none returns error', async () => {
     const cfg: ExtensionConfig = {
-      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false },
-      image: { saveDirectory: './assets', compressThreshold: 1 as any, compressQuality: 0.8 as any },
+      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
+      image: {
+        saveDirectory: './assets',
+        compressThreshold: 1 as any,
+        compressQuality: 0.8 as any,
+        sameNameHandling: 'rename',
+      },
       export: { pdf: { format: 'A4', margin: { top: 1 as any, right: 1 as any, bottom: 1 as any, left: 1 as any }, includeToc: true, displayHeaderFooter: true } },
       ai: { rewriteSelectionEnabled: true, rewriteProvider: 'none' },
     };
@@ -70,8 +85,13 @@ describe('rewriteSelectionViaProvider', () => {
 
   it('openai-compatible errors when api key missing', async () => {
     const cfg: ExtensionConfig = {
-      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false },
-      image: { saveDirectory: './assets', compressThreshold: 1 as any, compressQuality: 0.8 as any },
+      editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
+      image: {
+        saveDirectory: './assets',
+        compressThreshold: 1 as any,
+        compressQuality: 0.8 as any,
+        sameNameHandling: 'rename',
+      },
       export: { pdf: { format: 'A4', margin: { top: 1 as any, right: 1 as any, bottom: 1 as any, left: 1 as any }, includeToc: true, displayHeaderFooter: true } },
       ai: {
         rewriteSelectionEnabled: true,
@@ -97,8 +117,13 @@ describe('rewriteSelectionViaProvider', () => {
     vi.stubGlobal('fetch', fetchMock as any);
     try {
       const cfg: ExtensionConfig = {
-        editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false },
-        image: { saveDirectory: './assets', compressThreshold: 1 as any, compressQuality: 0.8 as any },
+        editor: { theme: 'auto', fontSize: 14 as any, fontFamily: 'system', wrapPolicy: 'autoWrap', tableCellWrap: 'wrap', enableMermaid: true, enableShiki: false, richTableColumnResize: 'auto' },
+        image: {
+        saveDirectory: './assets',
+        compressThreshold: 1 as any,
+        compressQuality: 0.8 as any,
+        sameNameHandling: 'rename',
+      },
         export: { pdf: { format: 'A4', margin: { top: 1 as any, right: 1 as any, bottom: 1 as any, left: 1 as any }, includeToc: true, displayHeaderFooter: true } },
         ai: {
           rewriteSelectionEnabled: true,

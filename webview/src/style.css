@@ -49,13 +49,16 @@ body {
   word-break: break-word;
 }
 
-/* M₂₂：大表格在编辑区内滚动，减轻整页被宽表/长表拖死 */
+/* M₂₂/M₅₉：大表格在编辑区内滚动；隔离布局与滚动链，减轻选区与高亮跟手延迟 */
 .milkdown-editor table {
   display: block;
   max-height: min(70vh, 560px);
   overflow: auto;
   width: max-content;
   max-width: 100%;
+  contain: content;
+  overscroll-behavior: contain;
+  isolation: isolate;
 }
 
 /* VSCode CSS Variables */

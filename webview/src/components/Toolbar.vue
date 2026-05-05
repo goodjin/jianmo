@@ -223,6 +223,16 @@
 
     <div class="toolbar-group">
       <button
+        v-if="docBaselineTierLabel"
+        class="toolbar-btn perf-tier-btn"
+        type="button"
+        :title="perfDegradeTitle || `文档档位：${docBaselineTierLabel}`"
+        :aria-label="perfDegradeTitle || `文档档位：${docBaselineTierLabel}`"
+        @mousedown.prevent
+      >
+        <span class="btn-icon">档 {{ docBaselineTierLabel }}</span>
+      </button>
+      <button
         class="toolbar-btn"
         :class="{ active: showOutline }"
         title="Toggle Outline"
@@ -251,6 +261,14 @@
       <button class="toolbar-btn export-btn" title="Export HTML" aria-label="Export HTML" @click="$emit('export', 'html')">
         <span class="btn-icon">&#x1F310;</span>
       </button>
+      <button
+        class="toolbar-btn export-btn"
+        title="Preview export (HTML)"
+        aria-label="Preview export (HTML)"
+        @click="$emit('export', 'preview')"
+      >
+        <span class="btn-icon">&#x1F441;&#xFE0F;</span>
+      </button>
     </div>
   </div>
 </template>
@@ -269,6 +287,10 @@ const props = defineProps<{
   zoomPercent?: number;
   /** Rich 下光标是否在表格内 */
   richTableActive?: boolean;
+  /** M66：大文档档位可见（简要标签，例如 XS/S/M/L/XL） */
+  docBaselineTierLabel?: string;
+  /** M66：当前降级项说明（用于 title 提示） */
+  perfDegradeTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -284,7 +306,7 @@ const emit = defineEmits<{
   (e: 'zoom-set', zoom: number): void;
   (e: 'toggle-outline'): void;
   (e: 'toggle-line-numbers'): void;
-  (e: 'export', format: 'pdf' | 'html'): void;
+  (e: 'export', format: 'pdf' | 'html' | 'preview'): void;
   (e: 'rich-table-op', op: string): void;
   (e: 'rich-table-help'): void;
 }>();
@@ -621,6 +643,17 @@ onUnmounted(() => {
 
 .toolbar-btn:active {
   background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+.perf-tier-btn {
+  width: auto;
+  padding: 0 8px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.perf-tier-btn:hover {
+  color: var(--vscode-foreground);
 }
 
 .toolbar-btn.active {

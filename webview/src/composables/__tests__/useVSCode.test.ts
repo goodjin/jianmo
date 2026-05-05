@@ -14,18 +14,28 @@ const minimalConfig: ExtensionConfig = {
     theme: 'auto',
     fontSize: 14,
     fontFamily: 'system-ui',
+    wrapPolicy: 'autoWrap',
+    tableCellWrap: 'wrap',
+    enableMermaid: true,
+    enableShiki: false,
+    richTableColumnResize: 'auto',
   },
   image: {
     saveDirectory: './assets',
     compressThreshold: 512000,
     compressQuality: 0.8,
+    sameNameHandling: 'rename',
   },
   export: {
     pdf: {
       format: 'A4',
       margin: { top: 25, right: 20, bottom: 25, left: 20 },
+      includeToc: true,
+      displayHeaderFooter: true,
     },
+    html: { theme: 'default' },
   },
+  ai: { rewriteSelectionEnabled: false },
 };
 
 // Mock VS Code API

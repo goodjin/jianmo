@@ -95,6 +95,15 @@ export class ModeController implements vscode.Disposable {
       case 'OPEN_IMAGE_EDITOR':
       case 'EXPORT':
       case 'UPLOAD_IMAGE':
+      case 'CHECK_LOCAL_IMAGE_REFS':
+      case 'LIST_ASSETS_IMAGE_FILES':
+      case 'FIND_MARKDOWN_BACKLINKS':
+      case 'OPEN_MARKDOWN_DOCUMENT':
+      case 'MARKDOWN_HOVER_PREVIEW_REQUEST':
+      case 'OPEN_WORKSPACE_SEARCH':
+      case 'AI_SUMMARY_REQUEST':
+      case 'AI_SUGGEST_TITLES_REQUEST':
+      case 'AI_CONVERT_TEXT_TO_TABLE_REQUEST':
       case 'getScrollPosition':
         break;
       default:

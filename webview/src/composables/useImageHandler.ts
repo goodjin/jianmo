@@ -136,6 +136,12 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     });
   };
 
+  function newUploadRequestId(): string {
+    const cryptoObj = typeof globalThis !== 'undefined' ? (globalThis as { crypto?: Crypto }).crypto : undefined;
+    if (cryptoObj?.randomUUID) return cryptoObj.randomUUID();
+    return `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
   /**
    * 处理图片文件（压缩 + 保存 + 插入 Markdown）
    */
@@ -168,30 +174,47 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
       progress.value = 60;
 
       const ext = file.name.split('.').pop() ?? 'jpg';
-      const filename = `image-${Date.now()}.${ext}`;
+      const requestedFilename = `image-${Date.now()}.${ext}`;
+      const requestId = newUploadRequestId();
 
-      const imagePath = await new Promise<string>((resolve, reject) => {
+      const payload = await new Promise<{ path: string; savedFilename: string }>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('图片保存超时')), 30000);
         const unsubscribe = onMessage((message) => {
-          if (message.type === 'IMAGE_SAVED' && message.payload.filename === filename) {
-            clearTimeout(timeout);
-            unsubscribe();
-            onSaved?.(message.payload);
-            resolve(message.payload.path);
+          if (message.type === 'IMAGE_SAVED') {
+            const p = message.payload;
+            const matchByReq = p.requestId !== undefined && p.requestId === requestId;
+            const matchLegacy =
+              p.requestId === undefined && typeof p.filename === 'string' && p.filename === requestedFilename;
+            if (matchByReq || matchLegacy) {
+              clearTimeout(timeout);
+              unsubscribe();
+              const savedFilename = typeof p.filename === 'string' ? p.filename : requestedFilename;
+              onSaved?.({ path: p.path, filename: savedFilename });
+              resolve({ path: p.path, savedFilename });
+            }
           }
-          if (message.type === 'IMAGE_SAVE_FAILED' && message.payload.filename === filename) {
-            clearTimeout(timeout);
-            unsubscribe();
-            reject(new Error(message.payload.error || '图片保存失败'));
+          if (message.type === 'IMAGE_SAVE_FAILED') {
+            const p = message.payload;
+            const matchByReq = p.requestId !== undefined && p.requestId === requestId;
+            const matchLegacy =
+              p.requestId === undefined && typeof p.filename === 'string' && p.filename === requestedFilename;
+            if (matchByReq || matchLegacy) {
+              clearTimeout(timeout);
+              unsubscribe();
+              reject(new Error(p.error || '图片保存失败'));
+            }
           }
         });
-        postMessage({ type: 'UPLOAD_IMAGE', payload: { base64: dataUrl, filename } });
+        postMessage({
+          type: 'UPLOAD_IMAGE',
+          payload: { base64: dataUrl, filename: requestedFilename, requestId },
+        });
       });
 
       progress.value = 90;
 
-      const altText = filename.replace(/\.[^/.]+$/, '');
-      const markdown = `![${altText}](${imagePath})`;
+      const altText = payload.savedFilename.replace(/\.[^/.]+$/, '');
+      const markdown = `![${altText}](${payload.path})`;
       if (insertMarkdown) {
         insertMarkdown(markdown);
       } else if (editorView?.value) {

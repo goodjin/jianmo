@@ -77,6 +77,11 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     errors.push(`editor.enableShiki 必须是 boolean，当前值: ${(config.editor as any).enableShiki}`);
   }
 
+  const rtc = (config.editor as ExtensionConfig['editor']).richTableColumnResize;
+  if (rtc !== 'auto' && rtc !== 'on' && rtc !== 'off') {
+    errors.push(`editor.richTableColumnResize 必须是 auto|on|off，当前值: ${String(rtc)}`);
+  }
+
   // 验证 image.compressThreshold (支持字节或百分比，> 0 即可)
   if (typeof config.image.compressThreshold !== 'number' || config.image.compressThreshold <= 0) {
     errors.push(`image.compressThreshold 必须大于 0，当前值: ${config.image.compressThreshold}`);
@@ -92,9 +97,19 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     errors.push(`image.saveDirectory 必须是非空字符串`);
   }
 
+  const sn = (config.image as ExtensionConfig['image']).sameNameHandling;
+  if (sn !== 'overwrite' && sn !== 'rename' && sn !== 'prompt') {
+    errors.push(`image.sameNameHandling 必须是 overwrite|rename|prompt，当前值: ${String(sn)}`);
+  }
+
   // 验证 export.pdf.format
   if (!['A4', 'A3', 'Letter', 'Legal'].includes(config.export.pdf.format)) {
     errors.push(`export.pdf.format 必须是 "A4", "A3", "Letter" 或 "Legal"，当前值: ${config.export.pdf.format}`);
+  }
+
+  const pdfTpl = config.export.pdf.template ?? 'default';
+  if (pdfTpl !== 'default' && pdfTpl !== 'academic') {
+    errors.push(`export.pdf.template 必须是 "default" 或 "academic"，当前值: ${String(pdfTpl)}`);
   }
 
   // 验证 export.pdf.margin (0-100)
@@ -110,6 +125,38 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     const th = config.export.html.theme;
     if (th !== 'default' && th !== 'print-friendly') {
       errors.push(`export.html.theme 必须是 "default" 或 "print-friendly"，当前值: ${String(th)}`);
+    }
+    const cli = config.export.html.copyLocalImages;
+    if (cli !== undefined && typeof cli !== 'boolean') {
+      errors.push(`export.html.copyLocalImages 必须是 boolean，当前值: ${String(cli)}`);
+    }
+    const sub = config.export.html.assetsSubdirectory ?? 'markly-html-assets';
+    if (typeof sub !== 'string' || !sub.trim()) {
+      errors.push('export.html.assetsSubdirectory 必须为非空字符串');
+    } else if (sub.includes('..') || sub.includes('/') || sub.includes('\\')) {
+      errors.push('export.html.assetsSubdirectory 必须为单层目录名，不能含 .. 或路径分隔符');
+    }
+  }
+
+  const pre = config.export.preflight;
+  if (pre) {
+    const sc = pre.scope;
+    if (sc !== 'off' && sc !== 'images' && sc !== 'full') {
+      errors.push(`export.preflight.scope 必须是 off、images 或 full，当前值: ${String(sc)}`);
+    }
+    if (typeof pre.blockOnIssues !== 'boolean') {
+      errors.push(`export.preflight.blockOnIssues 必须是 boolean，当前值: ${String(pre.blockOnIssues)}`);
+    }
+  }
+
+  if (config.templates !== undefined) {
+    if (typeof config.templates !== 'object' || config.templates === null || Array.isArray(config.templates)) {
+      errors.push(`templates 必须是对象，当前值: ${String(config.templates)}`);
+    } else {
+      const ud = config.templates.userDirectory;
+      if (ud !== undefined && typeof ud !== 'string') {
+        errors.push(`templates.userDirectory 必须是 string，当前值: ${String(ud)}`);
+      }
     }
   }
 
@@ -150,11 +197,13 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     tableCellWrap: 'wrap',
     enableMermaid: true,
     enableShiki: false,
+    richTableColumnResize: 'auto',
   },
   image: {
     saveDirectory: './assets',
     compressThreshold: 512000,
     compressQuality: 0.8,
+    sameNameHandling: 'rename',
   },
   export: {
     pdf: {
@@ -167,9 +216,16 @@ const DEFAULT_CONFIG: ExtensionConfig = {
       },
       includeToc: true,
       displayHeaderFooter: true,
+      template: 'default',
     },
     html: {
       theme: 'default',
+      copyLocalImages: false,
+      assetsSubdirectory: 'markly-html-assets',
+    },
+    preflight: {
+      scope: 'full',
+      blockOnIssues: false,
     },
   },
   ai: {
@@ -209,23 +265,37 @@ export class ConfigurationStore implements vscode.Disposable {
     // 获取用户配置，展开到第一层
     const userEditor = vsConfig.get<Partial<ExtensionConfig['editor']>>('editor', {});
     const userImage = vsConfig.get<Partial<ExtensionConfig['image']>>('image', {});
+    const imageSameNameHandling =
+      vsConfig.get<ExtensionConfig['image']['sameNameHandling']>('image.sameNameHandling', DEFAULT_CONFIG.image.sameNameHandling);
     const userExport = vsConfig.get<Partial<ExtensionConfig['export']>>('export', {});
 
     // 获取用户配置中可能存在的更深层的嵌套
     const userExportPdf = vsConfig.get<Partial<ExtensionConfig['export']['pdf']>>('export.pdf', {});
     const userExportPdfMargin = vsConfig.get<Partial<ExtensionConfig['export']['pdf']['margin']>>('export.pdf.margin', {});
     const htmlTheme = vsConfig.get<'default' | 'print-friendly'>('export.html.theme', 'default');
+    const htmlCopyLocalImages = vsConfig.get<boolean>('export.html.copyLocalImages', false);
+    const htmlAssetsSubdirectory =
+      vsConfig.get<string>('export.html.assetsSubdirectory', 'markly-html-assets').trim() || 'markly-html-assets';
+    const pfScopeRaw = vsConfig.get<string>('export.preflight.scope', 'full');
+    const pfScope: 'off' | 'images' | 'full' =
+      pfScopeRaw === 'off' || pfScopeRaw === 'images' || pfScopeRaw === 'full' ? pfScopeRaw : 'full';
+    const pfBlock = vsConfig.get<boolean>('export.preflight.blockOnIssues', false);
     const pdfIncludeToc = vsConfig.get<boolean>('export.pdf.includeToc', true);
     const pdfDisplayHeaderFooter = vsConfig.get<boolean>('export.pdf.displayHeaderFooter', true);
+    const pdfTemplate = vsConfig.get<'default' | 'academic'>('export.pdf.template', 'default');
     const aiRewriteProvider = vsConfig.get<'none' | 'mock' | 'openai-compatible'>('ai.rewrite.provider', 'mock');
     const aiRewriteEndpoint = vsConfig.get<string>('ai.rewrite.endpoint', DEFAULT_CONFIG.ai?.rewriteEndpoint ?? '');
     const aiRewriteModel = vsConfig.get<string>('ai.rewrite.model', DEFAULT_CONFIG.ai?.rewriteModel ?? '');
     const aiRewriteTimeoutMs = vsConfig.get<number>('ai.rewrite.timeoutMs', DEFAULT_CONFIG.ai?.rewriteTimeoutMs ?? 15000);
+    const templatesUserDirectory = String(vsConfig.get<string>('templates.userDirectory', '') ?? '').trim();
 
     // 构建用户配置对象（处理更深层的嵌套）
     const userConfig: Partial<ExtensionConfig> = {
+      templates: {
+        userDirectory: templatesUserDirectory,
+      },
       editor: userEditor || {},
-      image: userImage || {},
+      image: { ...(userImage || {}), sameNameHandling: imageSameNameHandling },
       export: {
         ...userExport,
         pdf: {
@@ -233,9 +303,16 @@ export class ConfigurationStore implements vscode.Disposable {
           margin: userExportPdfMargin || {},
           includeToc: pdfIncludeToc,
           displayHeaderFooter: pdfDisplayHeaderFooter,
+          template: pdfTemplate === 'academic' ? 'academic' : 'default',
         },
         html: {
           theme: htmlTheme === 'print-friendly' ? 'print-friendly' : 'default',
+          copyLocalImages: htmlCopyLocalImages,
+          assetsSubdirectory: htmlAssetsSubdirectory,
+        },
+        preflight: {
+          scope: pfScope,
+          blockOnIssues: pfBlock,
         },
       },
       ai: {

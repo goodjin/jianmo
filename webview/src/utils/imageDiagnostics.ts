@@ -1,3 +1,5 @@
+import { canonicalMarkdownLocalRefKey } from './markdownLocalRefCanonical';
+
 export interface MarkdownImageRef {
   alt: string;
   src: string;
@@ -20,6 +22,10 @@ export interface ImageDiagnostics {
     threshold: number | null;
     quality: number | null;
   };
+  /** M55：最近一次列出保存目录一层图片后的条目数；未列出过则为 null */
+  assetDirectoryListedCount: number | null;
+  /** M55：保存目录一层内相对文档的路径，在正文（图片 + 常用 Markdown 路径形态）未见引用 */
+  unreferencedAssetRelativePaths: string[] | null;
 }
 
 export function isLocalImageRef(src: string): boolean {
@@ -38,6 +44,37 @@ export function parseMarkdownImageRefs(markdown: string): MarkdownImageRef[] {
   });
 }
 
+function collectReferencedLocalRefKeys(markdown: string): Set<string> {
+  const keys = new Set<string>();
+  const md = String(markdown ?? '');
+  for (const row of parseMarkdownImageRefs(md)) {
+    if (!row.isLocal) continue;
+    keys.add(canonicalMarkdownLocalRefKey(row.src));
+  }
+  const linkRe = /(^|[^!])\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/gm;
+  let m: RegExpExecArray | null;
+  while ((m = linkRe.exec(md)) !== null) {
+    const url = m[3] ?? '';
+    if (!url || !isLocalImageRef(url)) continue;
+    keys.add(canonicalMarkdownLocalRefKey(url));
+  }
+  const refDefRe = /^\[[^\]]+\]:\s*<?([^>\s]+)>?/gm;
+  while ((m = refDefRe.exec(md)) !== null) {
+    const url = m[1] ?? '';
+    if (!url || !isLocalImageRef(url)) continue;
+    keys.add(canonicalMarkdownLocalRefKey(url));
+  }
+  return keys;
+}
+
+/** M55：保存目录列出的 posix 路径中，在当前 Markdown 正文中未发现引用的条目（已去重排序） */
+export function computeUnreferencedAssetImages(markdown: string, assetRelativePaths: readonly string[]): string[] {
+  const keys = collectReferencedLocalRefKeys(markdown);
+  const uniq = Array.from(new Set(assetRelativePaths));
+  uniq.sort((a, b) => a.localeCompare(b));
+  return uniq.filter((p) => !keys.has(canonicalMarkdownLocalRefKey(p)));
+}
+
 export function buildImageDiagnostics(args: {
   markdown: string;
   renderedImages: string[];
@@ -46,10 +83,15 @@ export function buildImageDiagnostics(args: {
   compressQuality?: number | null;
   localCheckResults?: Array<{ ref: string; exists: boolean; resolvedPath?: string; error?: string }>;
   lastCheckedAt?: string | null;
+  /** M55：已列出的文档相对路径；省略则表示尚未列出保存目录，诊断中不出现未引用字段 */
+  assetRelativeDirectoryImagePaths?: string[];
 }): ImageDiagnostics {
   const refs = parseMarkdownImageRefs(args.markdown);
   const localRefs = refs.filter((ref) => ref.isLocal);
   const localCheckResults = args.localCheckResults ?? [];
+  const assetPathsArg = args.assetRelativeDirectoryImagePaths;
+  const hasAssetScan = assetPathsArg !== undefined;
+
   return {
     totalRefs: refs.length,
     localRefs: localRefs.length,
@@ -72,6 +114,8 @@ export function buildImageDiagnostics(args: {
       threshold: args.compressThreshold ?? null,
       quality: args.compressQuality ?? null,
     },
+    assetDirectoryListedCount: hasAssetScan ? assetPathsArg.length : null,
+    unreferencedAssetRelativePaths: hasAssetScan ? computeUnreferencedAssetImages(args.markdown, assetPathsArg) : null,
   };
 }
 
@@ -84,6 +128,11 @@ export function formatMissingImageRefsList(
     lines.push(`| ${escapeTableCell(item.ref)} | ${escapeTableCell(item.resolvedPath ?? '')} | ${escapeTableCell(item.error ?? '')} |`);
   }
   return lines.join('\n');
+}
+
+export function formatUnreferencedAssetImagesList(paths: string[]): string {
+  if (!paths.length) return '未发现未引用图片（请先确认保存目录可访问并已列出）。';
+  return ['保存目录一层内 · 正文未引用图片清单（相对文档路径）', '', ...paths.map((p) => `- ${p}`)].join('\n');
 }
 
 export function replaceMarkdownImageRef(markdown: string, fromRef: string, toRef: string): string {

@@ -35,6 +35,15 @@
           <button class="icon-btn" type="button" title="查找下一个" aria-label="查找下一个" @click="emitFindNext">
             ↓
           </button>
+          <button
+            class="icon-btn"
+            type="button"
+            title="在工作区中搜索"
+            aria-label="在工作区中搜索"
+            @click="emitWorkspaceSearch"
+          >
+            🔎
+          </button>
         </div>
       </div>
 
@@ -112,6 +121,21 @@
           .*
         </button>
       </div>
+
+      <div v-if="matchesPreview && matchesPreview.length" class="match-list" role="list" aria-label="匹配列表">
+        <button
+          v-for="row in matchesPreview"
+          :key="row.index"
+          type="button"
+          class="match-row"
+          :class="{ active: row.index === currentMatchIndex }"
+          :title="row.text"
+          @click="emit('jump-to-match', row.index)"
+        >
+          <span class="match-row-index">{{ row.index + 1 }}</span>
+          <span class="match-row-text">{{ row.text }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -130,8 +154,10 @@ const props = withDefaults(
     currentMatchIndex: number;
     /** 正则无效等提示（M38） */
     patternWarning?: string;
+    /** M67：用于渲染匹配列表的轻量预览（index 指向全量 matches 的下标） */
+    matchesPreview?: Array<{ index: number; text: string }>;
   }>(),
-  { patternWarning: '', matchCountTruncated: false }
+  { patternWarning: '', matchCountTruncated: false, matchesPreview: () => [] }
 );
 
 const emit = defineEmits<{
@@ -140,6 +166,8 @@ const emit = defineEmits<{
   (e: 'find-prev'): void;
   (e: 'replace'): void;
   (e: 'replace-all'): void;
+  (e: 'jump-to-match', index: number): void;
+  (e: 'workspace-search', query: string): void;
   (
     e: 'query-change',
     payload: {
@@ -206,6 +234,10 @@ function emitReplace() {
 
 function emitReplaceAll() {
   emit('replace-all');
+}
+
+function emitWorkspaceSearch() {
+  emit('workspace-search', findText.value);
 }
 </script>
 
@@ -299,6 +331,54 @@ function emitReplaceAll() {
 
 .match-info.no-match {
   color: var(--vscode-errorForeground);
+}
+
+.match-list {
+  margin-top: 8px;
+  border-top: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  padding-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.match-row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--markly-radius-sm);
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.match-row:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.match-row.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.match-row-index {
+  flex: 0 0 auto;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .icon-actions {

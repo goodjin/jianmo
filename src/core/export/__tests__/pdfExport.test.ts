@@ -7,6 +7,8 @@ import {
   markdownToPdfHtml,
   buildPdfHtmlDocument,
   pdfExportOptionsFromPdfConfig,
+  getPdfTemplateExtraCss,
+  getPdfHeaderTemplate,
 } from '../pdfExport';
 
 describe('escapeHtmlPdf', () => {
@@ -132,6 +134,47 @@ describe('buildPdfHtmlDocument', () => {
     expect(html).toContain('break-inside: auto');
     expect(html).toContain('white-space: pre-wrap');
   });
+
+  it('M84: PDF pre/code include long-line wrap, tab-size and print color adjust', () => {
+    const html = buildPdfHtmlDocument('<p>x</p>', '');
+    expect(html).toContain('tab-size: 4');
+    expect(html).toContain('overflow-wrap: anywhere');
+    expect(html).toContain('print-color-adjust: exact');
+    expect(html).toMatch(/pre code \{[^}]*white-space: pre-wrap/s);
+  });
+
+  it('M85: PDF HTML embeds mermaid CSS and bootstrap', () => {
+    const html = buildPdfHtmlDocument('<div class="mermaid markly-mermaid-await">x</div>', '');
+    expect(html).toContain('.markly-mermaid-await');
+    expect(html).toContain('mermaid.initialize');
+    expect(html).toContain('DOMContentLoaded');
+  });
+
+  it('M85: markdownToPdfHtml turns mermaid fence into await div', async () => {
+    const h = await markdownToPdfHtml('```mermaid\nflowchart TD\n  A-->B\n```');
+    expect(h).toContain('markly-mermaid-await');
+    expect(h).toContain('A-->B');
+  });
+
+  it('M81: academic template adds body class and serif override CSS', () => {
+    const html = buildPdfHtmlDocument('<p>x</p>', '', { template: 'academic' });
+    expect(html).toContain('class="markly-pdf markly-pdf--academic"');
+    expect(html).toContain('body.markly-pdf--academic');
+    expect(html).toContain('Georgia');
+  });
+
+  it('M81: default template body class without academic-only rules', () => {
+    const html = buildPdfHtmlDocument('<p>x</p>', '', { template: 'default' });
+    expect(html).toContain('markly-pdf--default');
+    expect(getPdfTemplateExtraCss('default')).toBe('');
+  });
+});
+
+describe('getPdfHeaderTemplate (M81)', () => {
+  it('labels academic vs default', () => {
+    expect(getPdfHeaderTemplate('academic')).toContain('学术');
+    expect(getPdfHeaderTemplate('default')).toContain('Markly Export');
+  });
 });
 
 describe('pdfExportOptionsFromPdfConfig', () => {
@@ -153,5 +196,20 @@ describe('pdfExportOptionsFromPdfConfig', () => {
     expect(o.includeToc).toBe(false);
     expect(o.displayHeaderFooter).toBe(false);
     expect(o.baseHref).toBe('file:///tmp/doc/');
+    expect(o.template).toBe('default');
+  });
+
+  it('M81: forwards pdf.template when set', () => {
+    const o = pdfExportOptionsFromPdfConfig(
+      {
+        format: 'A4',
+        margin: { top: 25, right: 20, bottom: 25, left: 20 },
+        includeToc: true,
+        displayHeaderFooter: true,
+        template: 'academic',
+      },
+      undefined
+    );
+    expect(o.template).toBe('academic');
   });
 });

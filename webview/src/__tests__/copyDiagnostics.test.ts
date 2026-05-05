@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import App from '../App.vue';
 
 const ToolbarStub = {
@@ -29,10 +29,10 @@ describe('copy diagnostics button', () => {
     (globalThis as any).navigator.clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     (globalThis as any).window.vscode = {
       postMessage: vi.fn((message: any) => {
-        if (message?.type !== 'CHECK_LOCAL_IMAGE_REFS') return;
-        window.dispatchEvent(
-          new MessageEvent('message', {
-            data: {
+        const respond = () => {
+          let data: any = null;
+          if (message?.type === 'CHECK_LOCAL_IMAGE_REFS') {
+            data = {
               type: 'LOCAL_IMAGE_REFS_RESULT',
               payload: {
                 requestId: message.payload.requestId,
@@ -41,9 +41,23 @@ describe('copy diagnostics button', () => {
                   { ref: './assets/missing.png', exists: false, resolvedPath: '/repo/assets/missing.png', error: 'not found' },
                 ],
               },
-            },
-          })
-        );
+            };
+          } else if (message?.type === 'LIST_ASSETS_IMAGE_FILES') {
+            data = {
+              type: 'ASSETS_IMAGE_FILES_RESULT',
+              payload: {
+                requestId: message.payload.requestId,
+                relativePaths: [
+                  './assets/exists.png',
+                  './assets/missing.png',
+                  './assets/unreferenced-diagnostic-or.png',
+                ],
+              },
+            };
+          }
+          if (data) window.dispatchEvent(new MessageEvent('message', { data }));
+        };
+        queueMicrotask(respond);
       }),
       getState: vi.fn(),
       setState: vi.fn(),
@@ -78,6 +92,7 @@ describe('copy diagnostics button', () => {
     const btn = wrapper.find('[data-testid="copy-diagnostics-btn"]');
     expect(btn.exists()).toBe(true);
     await btn.trigger('click');
+    await flushPromises();
 
     expect((navigator as any).clipboard.writeText).toHaveBeenCalled();
     const arg = (navigator as any).clipboard.writeText.mock.calls[0][0] as string;
@@ -97,6 +112,8 @@ describe('copy diagnostics button', () => {
     expect(arg).toContain('"missingRefs"');
     expect(arg).toContain('./assets/missing.png');
     expect(arg).toContain('/repo/assets/missing.png');
+    expect(arg).toContain('unreferencedAssetRelativePaths');
+    expect(arg).toContain('./assets/unreferenced-diagnostic-or.png');
   });
 
   it('shows image asset actions after missing local image checks', async () => {

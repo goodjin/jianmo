@@ -6,11 +6,13 @@
 
 import { EditorState, Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { markdownToClipboardHtml } from '../utils/richClipboard';
 import { minimalSetup } from 'codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, syntaxHighlighting, foldGutter, foldService } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { openSourceAtRangeEffect } from './decorators/openSourceEffect';
+import { computeMarkdownHeadingFoldRange } from './markdownFolding';
 import {
   headingDecorator,
   emphasisDecorator,
@@ -54,6 +56,22 @@ const createIRDecorators = (): Extension[] => {
 const focusEditorOnPointerDown = EditorView.domEventHandlers({
   mousedown: (_e, view) => {
     view.focus();
+  },
+});
+
+/** M87：源码/IR 复制时附带 HTML，便于邮件/IM 粘贴 */
+const richClipboardCopyCm = EditorView.domEventHandlers({
+  copy(event, view) {
+    const cd = event.clipboardData;
+    if (!cd) return false;
+    const sel = view.state.selection.main;
+    if (sel.empty) return false;
+    const md = view.state.sliceDoc(sel.from, sel.to);
+    if (!md) return false;
+    event.preventDefault();
+    cd.setData('text/plain', md);
+    cd.setData('text/html', markdownToClipboardHtml(md));
+    return true;
   },
 });
 
@@ -110,6 +128,14 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
     }),
   ];
 
+  // M69：按标题折叠正文块（Source/IR）
+  if (mode !== 'rich') {
+    extensions.push(
+      foldService.of((state, lineStart, _lineEnd) => computeMarkdownHeadingFoldRange(state, lineStart)),
+      foldGutter()
+    );
+  }
+
   // IR 模式：应用删除线样式覆盖 + 装饰器
   if (mode === 'ir') {
     extensions.push(strikethroughOverride);
@@ -127,6 +153,10 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
 
   // 行号通过 CSS 类切换（默认显示）
   // extensions.push(lineNumbers());
+
+  if (mode === 'source' || mode === 'ir') {
+    extensions.push(richClipboardCopyCm);
+  }
 
   return extensions;
 };

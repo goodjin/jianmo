@@ -14,7 +14,13 @@ import {
 } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { columnResizingPlugin, gfm } from '@milkdown/preset-gfm';
-import { marklyTableGridPastePlugin, marklyTableStructureKeymapPlugin, marklyPastePlainShortcutPlugin } from '../plugins/markly-table-rich';
+import {
+  interceptRichTableKeydown,
+  marklyTableGridPastePlugin,
+  marklyTableStructureKeymapPlugin,
+  marklyPastePlainShortcutPlugin,
+  marklyRichClipboardCopyPlugin,
+} from '../plugins/markly-table-rich';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
@@ -53,8 +59,10 @@ const props = withDefaults(
     baseUrl?: string; // 用于解析相对图片路径
     /** M8：由 App 计算（含“仍要完整渲染”覆盖） */
     richPerfEffectiveTier?: RichPerfTier;
+    /** M59：大表格性能——关闭后不加载 columnResizingPlugin，减轻拖拽手柄与 layout 开销 */
+    enableRichTableColumnResize?: boolean;
   }>(),
-  { richPerfEffectiveTier: 0 as RichPerfTier }
+  { richPerfEffectiveTier: 0 as RichPerfTier, enableRichTableColumnResize: true }
 );
 
 // 防御性 computed：为 config 提供默认值（优化：避免每次创建新对象）
@@ -69,6 +77,7 @@ const defaultConfig = {
     tableCellWrap: 'wrap',
     enableMermaid: true,
     enableShiki: false,
+    richTableColumnResize: 'auto',
   }
 };
 
@@ -88,6 +97,8 @@ const emit = defineEmits<{
   (e: 'image-click', src: string, images: string[], index: number): void;
   (e: 'image-context-menu', src: string, x: number, y: number): void;
   (e: 'toc-click', headingId: string): void;
+  (e: 'internal-link-hover', payload: { href: string; x: number; y: number }): void;
+  (e: 'internal-link-leave'): void;
   (e: 'open-external-link', url: string): void;
   (e: 'ready', success: boolean): void;
   (e: 'startup-event', payload: { stage: string; detail?: Record<string, unknown> }): void;
@@ -126,6 +137,7 @@ const tableContextMilkdownPlugin = $prose(() => {
 
 const editorRef = ref<HTMLElement | null>(null);
 let editor: Editor | null = null;
+let detachRichTableKeyboardRefine: (() => void) | null = null;
 let isInternalChange = false;
 let lastEmittedContent = '';
 let pendingUpdate: { content: string; cursorPos: number } | null = null;
@@ -159,6 +171,18 @@ async function ensureMermaidLoaded(): Promise<(typeof import('mermaid')) | null>
 let imageClickHandler: ((e: MouseEvent) => void) | null = null;
 let imageContextMenuHandler: ((e: MouseEvent) => void) | null = null;
 let tableContextMenuHandler: ((e: MouseEvent) => void) | null = null;
+let internalHoverHandler: ((e: MouseEvent) => void) | null = null;
+let internalLeaveHandler: ((e: MouseEvent) => void) | null = null;
+
+function shouldEmitInternalHover(href: string): boolean {
+  const h = String(href ?? '').trim();
+  if (!h) return false;
+  if (h.startsWith('#')) return true;
+  if (/^(https?:|mailto:|data:|file:)/i.test(h)) return false;
+  const pathPart = h.split('#')[0]?.split('?')[0] ?? h;
+  if (!pathPart) return false;
+  return /\.md$/i.test(pathPart);
+}
 
 // 提取 Markdown 标题生成目录
 interface TocItem {
@@ -331,18 +355,46 @@ onMounted(() => {
   initEditor();
 });
 
-async function initEditor(): Promise<void> {
+let columnResizeRebuildGen = 0;
+
+async function shutdownMilkdownForRebuild(): Promise<void> {
+  if (updateTimeout) {
+    clearTimeout(updateTimeout);
+    updateTimeout = null;
+  }
+  pendingUpdate = null;
+  teardownMermaidObserver();
+  mermaidRenderQueue.length = 0;
+  mermaidQueuePump = false;
+  detachRichTableKeyboardRefine?.();
+  detachRichTableKeyboardRefine = null;
+  unbindImageEvents();
+
+  if (editor) {
+    try {
+      editor.destroy();
+    } catch (e) {
+      console.warn('[MilkdownEditor] shutdown for rebuild destroy failed (ignored):', e);
+    } finally {
+      editor = null;
+    }
+  }
+}
+
+async function bootstrapMilkdown(args: { reason: string }): Promise<boolean> {
   try {
     emitStartupEvent('milkdown:init:start', {
       chars: props.content?.length ?? 0,
       tier: props.richPerfEffectiveTier ?? 0,
+      reason: args.reason,
+      columnResize: props.enableRichTableColumnResize !== false,
     });
     // 检查必要的依赖是否加载
     if (!Editor || !commonmark || !gfm) {
       console.error('[MilkdownEditor] Required Milkdown modules not loaded');
       emitStartupEvent('milkdown:init:error', { reason: 'modules-missing' });
       emit('ready', false);
-      return;
+      return false;
     }
 
     setRuntimeRichPerfTier(props.richPerfEffectiveTier ?? 0);
@@ -351,15 +403,17 @@ async function initEditor(): Promise<void> {
     const shikiEnabled = (safeConfig.value as any)?.editor?.enableShiki === true && (props.richPerfEffectiveTier ?? 0) === 0;
     const buildEditor = async (withShiki: boolean): Promise<Editor> => {
       emitStartupEvent('milkdown:create:start', { withShiki });
-      let b = Editor.make().config((ctx) => {
+      let       b = Editor.make().config((ctx) => {
         ctx.set(rootCtx, editorRef.value);
         ctx.set(defaultValueCtx, props.content || '');
       });
 
       b = b.use(commonmark);
       b = b.use(gfm);
-      // GFM preset 默认未启用列宽拖拽；补上后表格编辑体验更接近常见富文本编辑器
-      b = b.use(columnResizingPlugin);
+      // GFM preset 默认未启用列宽拖拽；M59：大表可跳过以降低选区与滚动开销
+      if (props.enableRichTableColumnResize !== false) {
+        b = b.use(columnResizingPlugin);
+      }
       b = b.use(marklyTableStructureKeymapPlugin);
       b = b.use(marklyPastePlainShortcutPlugin);
       b = b.use(marklyTableGridPastePlugin);
@@ -401,6 +455,7 @@ async function initEditor(): Promise<void> {
       b = b.use(footnote);
       b = b.use(listener);
       b = b.use(history);
+      b = b.use(marklyRichClipboardCopyPlugin);
       const created = await b.create();
       emitStartupEvent('milkdown:create:end', { withShiki });
       return created;
@@ -438,6 +493,24 @@ async function initEditor(): Promise<void> {
     // 绑定图片点击事件
     bindImageEvents();
 
+    try {
+      detachRichTableKeyboardRefine?.();
+      const view = editor.ctx.get(editorViewCtx);
+      const onKeyDownCapture = (e: KeyboardEvent) => {
+        if (interceptRichTableKeydown(view, e)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      };
+      view.dom.addEventListener('keydown', onKeyDownCapture, true);
+      detachRichTableKeyboardRefine = () => {
+        view.dom.removeEventListener('keydown', onKeyDownCapture, true);
+        detachRichTableKeyboardRefine = null;
+      };
+    } catch (e) {
+      console.warn('[MilkdownEditor] rich table keyboard refine attach skipped:', e);
+    }
+
     // M8-1：先让 Rich 可交互，再排队初始化 Mermaid/视口渲染
     console.log('[MilkdownEditor] Emitting ready event');
     emitStartupEvent('milkdown:ready:emit');
@@ -452,6 +525,7 @@ async function initEditor(): Promise<void> {
     } else {
       setTimeout(() => initMermaid(), 0);
     }
+    return true;
   } catch (error) {
     console.error('[MilkdownEditor] Failed to create editor:', error);
     console.error('[MilkdownEditor] Error stack:', (error as Error).stack);
@@ -460,8 +534,30 @@ async function initEditor(): Promise<void> {
     });
     // 通知父组件编辑器初始化失败
     emit('ready', false);
+    return false;
   }
 }
+
+async function initEditor(): Promise<void> {
+  await bootstrapMilkdown({ reason: 'mount' });
+}
+
+watch(
+  () => props.enableRichTableColumnResize,
+  async (enabled, prev) => {
+    if (prev === undefined) return;
+    if (enabled === prev) return;
+    const gen = ++columnResizeRebuildGen;
+    emitStartupEvent('milkdown:rebuild:table-perf', { columnResize: enabled !== false });
+    lastEmittedContent = props.content || '';
+    await shutdownMilkdownForRebuild();
+    if (gen !== columnResizeRebuildGen) return;
+    if (!editorRef.value) return;
+    const ok = await bootstrapMilkdown({ reason: 'column-resize-toggle' });
+    if (ok || gen !== columnResizeRebuildGen) return;
+    emit('ready', false);
+  }
+);
 
 onUnmounted(() => {
   // 清除 updateTimeout
@@ -472,6 +568,8 @@ onUnmounted(() => {
   teardownMermaidObserver();
   mermaidRenderQueue.length = 0;
   mermaidQueuePump = false;
+
+  detachRichTableKeyboardRefine?.();
 
   // 移除图片事件监听器
   unbindImageEvents();
@@ -1246,6 +1344,23 @@ function bindImageEvents(): void {
   editorRef.value.addEventListener('click', imageClickHandler);
   editorRef.value.addEventListener('contextmenu', imageContextMenuHandler);
   editorRef.value.addEventListener('contextmenu', tableContextMenuHandler);
+
+  internalHoverHandler = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
+    if (!anchor) return;
+    const href = anchor.getAttribute('href') || '';
+    if (!shouldEmitInternalHover(href)) return;
+    emit('internal-link-hover', { href, x: e.clientX, y: e.clientY });
+  };
+  internalLeaveHandler = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
+    if (!anchor) return;
+    emit('internal-link-leave');
+  };
+  editorRef.value.addEventListener('mouseover', internalHoverHandler);
+  editorRef.value.addEventListener('mouseout', internalLeaveHandler);
 }
 
 // 移除图片事件监听
@@ -1262,6 +1377,14 @@ function unbindImageEvents(): void {
     if (tableContextMenuHandler) {
       editorRef.value.removeEventListener('contextmenu', tableContextMenuHandler);
       tableContextMenuHandler = null;
+    }
+    if (internalHoverHandler) {
+      editorRef.value.removeEventListener('mouseover', internalHoverHandler);
+      internalHoverHandler = null;
+    }
+    if (internalLeaveHandler) {
+      editorRef.value.removeEventListener('mouseout', internalLeaveHandler);
+      internalLeaveHandler = null;
     }
   }
 }

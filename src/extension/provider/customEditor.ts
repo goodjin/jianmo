@@ -4,16 +4,38 @@ import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
-import { formatExportFailure } from '@core/export/exportErrors';
+import { showExportFailureWithDiagnostics } from '@extension/export/exportFailureUi';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
 import { exportToHtml } from '@core/export/htmlExport';
-import {
-  checkLocalMarkdownImageRefs,
-  extractMarkdownLocalImageRefs,
-  resolveMarkdownImageUri,
-  toMarkdownImageRelativePath,
-} from './imagePaths';
+import { checkLocalMarkdownImageRefs, resolveMarkdownImageUri, toMarkdownImageRelativePath } from './imagePaths';
+import { findMarkdownBacklinksForDocument } from '../markdown/findMarkdownBacklinks';
+import { computeMarkdownHoverPreview } from '../markdown/markdownHoverPreview';
+import { summarizeViaProvider } from '@extension/ai/summarize';
+import { suggestTitlesViaProvider } from '@extension/ai/suggestTitles';
+import { textToGfmTableViaProvider } from '@extension/ai/textToGfmTable';
 import { rewriteSelectionViaProvider } from '@extension/ai/rewriteSelection';
+import type { ImageSameNameHandling } from '@extension/image/imageFilenameCollision';
+import { pickNonConflictingFilenameAsync } from '@extension/image/imageFilenameCollision';
+import { confirmContinueAfterExportPreflight } from '@extension/export/exportPreflightUi';
+import { showExportHtmlPreviewPanel } from '@extension/preview/exportHtmlPreview';
+
+function isMarkdownFileUriAllowedInWorkspace(openUri: vscode.Uri): boolean {
+  if (openUri.scheme !== 'file') return false;
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length) return false;
+  const fp = path.normalize(openUri.fsPath);
+  for (const f of folders) {
+    const base = path.normalize(f.uri.fsPath);
+    const prefix = base.endsWith(path.sep) ? base : base + path.sep;
+    if (process.platform === 'win32') {
+      const fl = fp.toLowerCase();
+      if (fl === base.toLowerCase() || fl.startsWith(prefix.toLowerCase())) return true;
+    } else if (fp === base || fp.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   private readonly webviews = new Map<string, vscode.WebviewPanel>();
@@ -193,32 +215,36 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
 
       case 'SAVE_IMAGE': {
-        const result = await this.saveImage(uri, message.payload.data, message.payload.filename);
+        const requestId = message.payload.requestId;
+        const requested = message.payload.filename;
+        const result = await this.saveImage(uri, message.payload.data, requested);
         if (result.ok) {
           this.postMessage(uri, {
             type: 'IMAGE_SAVED',
-            payload: { path: result.path, filename: message.payload.filename },
+            payload: { path: result.path, filename: result.filename, requestId },
           });
         } else {
           this.postMessage(uri, {
             type: 'IMAGE_SAVE_FAILED',
-            payload: { filename: message.payload.filename, error: result.error },
+            payload: { filename: requested, error: result.error, requestId },
           });
         }
         break;
       }
 
       case 'UPLOAD_IMAGE': {
-        const result = await this.saveImage(uri, message.payload.base64, message.payload.filename);
+        const requestId = message.payload.requestId;
+        const requested = message.payload.filename;
+        const result = await this.saveImage(uri, message.payload.base64, requested);
         if (result.ok) {
           this.postMessage(uri, {
             type: 'IMAGE_SAVED',
-            payload: { path: result.path, filename: message.payload.filename },
+            payload: { path: result.path, filename: result.filename, requestId },
           });
         } else {
           this.postMessage(uri, {
             type: 'IMAGE_SAVE_FAILED',
-            payload: { filename: message.payload.filename, error: result.error },
+            payload: { filename: requested, error: result.error, requestId },
           });
         }
         break;
@@ -230,6 +256,94 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
           type: 'LOCAL_IMAGE_REFS_RESULT',
           payload: { requestId: message.payload.requestId, results },
         });
+        break;
+      }
+
+      case 'LIST_ASSETS_IMAGE_FILES': {
+        const listings = await this.listAssetsDirectoryImageFiles(uri);
+        this.postMessage(uri, {
+          type: 'ASSETS_IMAGE_FILES_RESULT',
+          payload: {
+            requestId: message.payload.requestId,
+            relativePaths: listings.paths,
+            ...(listings.error ? { error: listings.error } : {}),
+          },
+        });
+        break;
+      }
+
+      case 'FIND_MARKDOWN_BACKLINKS': {
+        const requestId = message.payload.requestId;
+        try {
+          const docUri = vscode.Uri.parse(uri);
+          const result = await findMarkdownBacklinksForDocument(docUri);
+          this.postMessage(uri, {
+            type: 'MARKDOWN_BACKLINKS_RESULT',
+            payload: {
+              requestId,
+              items: result.items,
+              ...(result.error ? { error: result.error } : {}),
+              ...(result.truncated ? { truncated: true } : {}),
+            },
+          });
+        } catch (err) {
+          console.error('[M64] findMarkdownBacklinksForDocument failed', err);
+          this.postMessage(uri, {
+            type: 'MARKDOWN_BACKLINKS_RESULT',
+            payload: { requestId, items: [] },
+          });
+        }
+        break;
+      }
+
+      case 'OPEN_MARKDOWN_DOCUMENT': {
+        const openUri = vscode.Uri.parse(message.payload.uri);
+        if (!isMarkdownFileUriAllowedInWorkspace(openUri)) {
+          void vscode.window.showWarningMessage('只能打开当前工作区内的 Markdown 文件。');
+          break;
+        }
+        try {
+          const td = await vscode.workspace.openTextDocument(openUri);
+          await vscode.window.showTextDocument(td, { preview: true });
+        } catch (err) {
+          void vscode.window.showErrorMessage(`无法打开文件：${String((err as Error)?.message ?? err)}`);
+        }
+        break;
+      }
+
+      case 'MARKDOWN_HOVER_PREVIEW_REQUEST': {
+        const requestId = message.payload.requestId;
+        try {
+          const docUri = vscode.Uri.parse(uri);
+          const r = await computeMarkdownHoverPreview({ sourceDocumentUri: docUri, href: message.payload.href });
+          this.postMessage(uri, {
+            type: 'MARKDOWN_HOVER_PREVIEW_RESULT',
+            payload: { requestId, ...r },
+          });
+        } catch (err) {
+          console.error('[M65] MARKDOWN_HOVER_PREVIEW_REQUEST failed', err);
+          this.postMessage(uri, {
+            type: 'MARKDOWN_HOVER_PREVIEW_RESULT',
+            payload: { requestId, ok: false, error: String((err as Error)?.message ?? err ?? 'failed') },
+          });
+        }
+        break;
+      }
+
+      case 'OPEN_WORKSPACE_SEARCH': {
+        const q = String(message.payload.query ?? '').trim();
+        if (!q) break;
+        try {
+          await vscode.commands.executeCommand('workbench.action.findInFiles', {
+            query: q,
+            triggerSearch: true,
+            isRegex: false,
+            matchWholeWord: false,
+            isCaseSensitive: false,
+          });
+        } catch (err) {
+          console.error('[M68] OPEN_WORKSPACE_SEARCH failed', err);
+        }
         break;
       }
 
@@ -313,6 +427,42 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
       }
 
+      case 'AI_SUMMARY_REQUEST': {
+        const requestId = message.payload.requestId;
+        const r = await summarizeViaProvider(
+          { text: message.payload.text, scope: message.payload.scope },
+          this.config,
+          this.context
+        );
+        this.postMessage(uri, {
+          type: 'AI_SUMMARY_RESULT',
+          payload: r.ok ? { requestId, ok: true, text: r.text } : { requestId, ok: false, error: r.error },
+        });
+        break;
+      }
+
+      case 'AI_SUGGEST_TITLES_REQUEST': {
+        const requestId = message.payload.requestId;
+        const r = await suggestTitlesViaProvider(message.payload.text, this.config, this.context);
+        this.postMessage(uri, {
+          type: 'AI_SUGGEST_TITLES_RESULT',
+          payload: r.ok
+            ? { requestId, ok: true, items: r.items }
+            : { requestId, ok: false, error: r.error },
+        });
+        break;
+      }
+
+      case 'AI_CONVERT_TEXT_TO_TABLE_REQUEST': {
+        const requestId = message.payload.requestId;
+        const r = await textToGfmTableViaProvider(message.payload.text, this.config, this.context);
+        this.postMessage(uri, {
+          type: 'AI_CONVERT_TEXT_TO_TABLE_RESULT',
+          payload: r.ok ? { requestId, ok: true, markdown: r.markdown } : { requestId, ok: false, error: r.error },
+        });
+        break;
+      }
+
       case 'getScrollPosition':
         // 处理获取滚动位置的请求
         // WebView 会在另一侧处理此消息并返回响应
@@ -344,12 +494,94 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     await vscode.workspace.fs.writeFile(docUri, buffer);
   }
 
+  /**
+   * M53：枚举 `image.saveDirectory` 目录下一层的图片文件名，路径相对于文档所在目录（posix）。
+   */
+  private async listAssetsDirectoryImageFiles(documentUriStr: string): Promise<{ paths: string[]; error?: string }> {
+    const imageSuffix = new Set([
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.webp',
+      '.svg',
+      '.bmp',
+      '.tiff',
+      '.tif',
+      '.avif',
+    ]);
+    try {
+      const docUri = vscode.Uri.parse(documentUriStr);
+      const docDirUri = vscode.Uri.joinPath(docUri, '..');
+      const saveDirectory = String(this.config.image.saveDirectory || './assets').trim() || './assets';
+      const assetsDirUri = vscode.Uri.joinPath(docDirUri, saveDirectory);
+
+      await vscode.workspace.fs.stat(assetsDirUri);
+
+      const entries = await vscode.workspace.fs.readDirectory(assetsDirUri);
+      const paths: string[] = [];
+      for (const [name, kind] of entries) {
+        if (kind !== vscode.FileType.File) continue;
+        const low = name.toLowerCase();
+        const dot = low.lastIndexOf('.');
+        if (dot < 0 || !imageSuffix.has(low.slice(dot))) continue;
+        const fileUri = vscode.Uri.joinPath(assetsDirUri, name);
+        paths.push(path.relative(docDirUri.fsPath, fileUri.fsPath).replace(/\\/g, '/'));
+      }
+      paths.sort((a, b) => a.localeCompare(b));
+      return { paths };
+    } catch (e) {
+      return { paths: [], error: String((e as Error)?.message ?? e ?? '读取保存目录失败') };
+    }
+  }
+
+  private async assetBasenameExists(assetsDir: vscode.Uri, basename: string): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.joinPath(assetsDir, basename));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async pickFinalImageBasename(
+    assetsDir: vscode.Uri,
+    requestedFilename: string,
+    policy: ImageSameNameHandling
+  ): Promise<{ ok: true; filename: string } | { ok: false; error: string }> {
+    const conflicts = await this.assetBasenameExists(assetsDir, requestedFilename);
+    if (!conflicts) return { ok: true, filename: requestedFilename };
+
+    if (policy === 'overwrite') return { ok: true, filename: requestedFilename };
+
+    if (policy === 'rename') {
+      const picked = await pickNonConflictingFilenameAsync(requestedFilename, (name) =>
+        this.assetBasenameExists(assetsDir, name)
+      );
+      return { ok: true, filename: picked };
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      ['覆盖已有文件', '自动重命名（推荐）', '取消'],
+      { title: `图片文件名已存在：${requestedFilename}` }
+    );
+    if (!picked || picked === '取消') return { ok: false, error: '已取消保存（文件名冲突）。' };
+    if (picked === '覆盖已有文件') return { ok: true, filename: requestedFilename };
+
+    const next = await pickNonConflictingFilenameAsync(requestedFilename, (name) =>
+      this.assetBasenameExists(assetsDir, name)
+    );
+    return { ok: true, filename: next };
+  }
+
   private async saveImage(
     documentUri: string,
     data: string,
-    filename: string
-  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    requestedFilename: string
+  ): Promise<{ ok: true; path: string; filename: string } | { ok: false; error: string }> {
     try {
+      const basenameOnly = path.posix.basename(String(requestedFilename).replace(/\\/g, '/')) || 'image.png';
+
       const docUri = vscode.Uri.parse(documentUri);
       const docDir = vscode.Uri.joinPath(docUri, '..');
       const assetsDir = vscode.Uri.joinPath(docDir, this.config.image.saveDirectory);
@@ -361,16 +593,20 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         await vscode.workspace.fs.createDirectory(assetsDir);
       }
 
+      const policy = this.config.image.sameNameHandling;
+      const resolved = await this.pickFinalImageBasename(assetsDir, basenameOnly, policy);
+      if (!resolved.ok) return resolved;
+
+      const finalFilename = resolved.filename.replace(/\\/g, '/').split('/').pop() ?? resolved.filename;
+
       // 解析 base64 数据
       const base64Data = data.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
 
-      // 保存图片
-      const imagePath = vscode.Uri.joinPath(assetsDir, filename);
+      const imagePath = vscode.Uri.joinPath(assetsDir, finalFilename);
       await vscode.workspace.fs.writeFile(imagePath, buffer);
 
-      // 返回相对路径
-      return { ok: true, path: `${this.config.image.saveDirectory}/${filename}` };
+      return { ok: true, filename: finalFilename, path: `${this.config.image.saveDirectory}/${finalFilename}` };
     } catch (error) {
       console.error('Failed to save image:', error);
       return { ok: false, error: String((error as any)?.message ?? error ?? 'Unknown image save error') };
@@ -403,12 +639,22 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       },
     });
     const imageUri = selected?.[0];
-    if (!imageUri) return;
+    if (!imageUri) {
+      this.postMessage(documentUri, {
+        type: 'IMAGE_REF_REPAIR_OUTCOME',
+        payload: { fromRef, status: 'cancelled' },
+      } as ExtensionMessage);
+      return;
+    }
     const toRef = toMarkdownImageRelativePath(docUri, imageUri);
     this.postMessage(documentUri, {
       type: 'IMAGE_REF_REPLACEMENT',
       payload: { fromRef, toRef },
     });
+    this.postMessage(documentUri, {
+      type: 'IMAGE_REF_REPAIR_OUTCOME',
+      payload: { fromRef, status: 'replaced' },
+    } as ExtensionMessage);
   }
 
   private async exportDocument(uri: string, payload: any): Promise<void> {
@@ -419,6 +665,15 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     const docUri = vscode.Uri.parse(uri);
     const doc = this.documentStore.getDocument(uri);
     if (!doc) {
+      return;
+    }
+
+    if (payload.format === 'preview') {
+      showExportHtmlPreviewPanel({
+        markdown: doc.content,
+        documentUri: docUri,
+        htmlTheme: this.config.export.html?.theme ?? 'default',
+      });
       return;
     }
 
@@ -434,26 +689,46 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     }
 
     try {
+      const pfScope = this.config.export.preflight?.scope ?? 'full';
+      const pfBlock = this.config.export.preflight?.blockOnIssues === true;
+
       if (payload.format === 'html') {
+        if (
+          !(await confirmContinueAfterExportPreflight({
+            markdown: doc.content,
+            documentUri: docUri,
+            scope: pfScope,
+            blockOnIssues: pfBlock,
+            formatLabel: 'HTML',
+          }))
+        ) {
+          return;
+        }
         await exportToHtml(doc.content, saveUri.fsPath, {
           includeToc: true,
           title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
           htmlTheme: this.config.export.html?.theme ?? 'default',
+          copyLocalImages: this.config.export.html?.copyLocalImages === true,
+          documentBaseDir: path.dirname(docUri.fsPath),
+          assetsSubdirectory: this.config.export.html?.assetsSubdirectory ?? 'markly-html-assets',
         });
         vscode.window.showInformationMessage(`HTML 已导出: ${saveUri.fsPath}`);
         return;
       }
 
       if (payload.format === 'pdf') {
-        const baseHref = vscode.Uri.file(path.dirname(docUri.fsPath)).toString(true) + '/';
-        const localRefs = extractMarkdownLocalImageRefs(doc.content);
-        const imgCheck = await checkLocalMarkdownImageRefs(docUri, localRefs);
-        const missing = imgCheck.filter((r) => !r.exists);
-        if (missing.length > 0) {
-          void vscode.window.showWarningMessage(
-            `导出 PDF：有 ${missing.length} 个本地图片引用未找到文件，PDF 中可能显示为裂图。相对路径已按文档目录解析（见 <base>）。`
-          );
+        if (
+          !(await confirmContinueAfterExportPreflight({
+            markdown: doc.content,
+            documentUri: docUri,
+            scope: pfScope,
+            blockOnIssues: pfBlock,
+            formatLabel: 'PDF',
+          }))
+        ) {
+          return;
         }
+        const baseHref = vscode.Uri.file(path.dirname(docUri.fsPath)).toString(true) + '/';
         await exportToPdf(
           doc.content,
           saveUri.fsPath,
@@ -466,9 +741,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       vscode.window.showWarningMessage(`暂不支持导出 ${payload.format}`);
     } catch (error) {
       const fmt = String(payload.format);
-      const msg =
-        fmt === 'pdf' || fmt === 'html' ? formatExportFailure(fmt, error) : `导出 ${fmt.toUpperCase()} 失败: ${error instanceof Error ? error.message : String(error)}`;
-      vscode.window.showErrorMessage(msg);
+      if (fmt === 'pdf' || fmt === 'html') {
+        void showExportFailureWithDiagnostics(this.context, fmt, error, {
+          documentPath: docUri.fsPath,
+          outputPath: saveUri.fsPath,
+        });
+      } else {
+        vscode.window.showErrorMessage(
+          `导出 ${fmt.toUpperCase()} 失败: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
   }
 

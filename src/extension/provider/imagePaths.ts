@@ -1,22 +1,17 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { isLocalMarkdownImageRef, resolveMarkdownImageFsPath } from '@core/markdown/markdownImageRefs';
 
-export function isLocalMarkdownImageRef(src: string): boolean {
-  const value = String(src ?? '').trim();
-  return !!value && !/^(https?:|data:|file:)/i.test(value) && !value.startsWith('/');
-}
+export { isLocalMarkdownImageRef };
 
 export function normalizeMarkdownImagePath(src: string): string {
   return String(src ?? '').trim().split(/[?#]/)[0] ?? '';
 }
 
 export function resolveMarkdownImageUri(documentUri: vscode.Uri, src: string): vscode.Uri | null {
-  if (!isLocalMarkdownImageRef(src)) return null;
-  const clean = normalizeMarkdownImagePath(src);
-  if (!clean) return null;
-  const docDir = vscode.Uri.joinPath(documentUri, '..');
-  const parts = clean.split('/').filter((part) => part && part !== '.');
-  return vscode.Uri.joinPath(docDir, ...parts);
+  const fsPath = resolveMarkdownImageFsPath(documentUri.fsPath, src);
+  if (!fsPath) return null;
+  return vscode.Uri.file(fsPath);
 }
 
 export function toMarkdownImageRelativePath(documentUri: vscode.Uri, imageUri: vscode.Uri): string {
@@ -24,20 +19,7 @@ export function toMarkdownImageRelativePath(documentUri: vscode.Uri, imageUri: v
   return rel || path.basename(imageUri.fsPath);
 }
 
-/** 从 Markdown 正文中收集 `![](...)` 的 src（含相对路径），用于导出前校验。 */
-export function extractMarkdownLocalImageRefs(markdown: string): string[] {
-  const out: string[] = [];
-  const re = /!\[[^\]]*\]\(\s*([^)\s]+)\s*(?:\s+"[^"]*")?\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(markdown)) !== null) {
-    const raw = String(m[1] ?? '').trim();
-    if (!raw) continue;
-    const src = raw.split(/[?#]/)[0] ?? raw;
-    if (!src || /^(https?:|data:|file:)/i.test(src)) continue;
-    out.push(src);
-  }
-  return out;
-}
+export { extractMarkdownLocalImageRefs } from '@core/markdown/markdownImageRefs';
 
 export async function checkLocalMarkdownImageRefs(
   documentUri: vscode.Uri,

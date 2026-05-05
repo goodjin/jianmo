@@ -20,10 +20,77 @@ export const generateHeadingId = (text: string): string => {
 };
 
 /**
- * 解析 Markdown 内容中的标题
- * @param content - Markdown 内容
- * @returns 标题节点列表（扁平结构）
+ * M63：按 `generateHeadingId` 规则统计各 slug 出现次数，返回出现 ≥2 次的 slug 集合（锚点冲突）。
  */
+export function getDuplicateHeadingSlugs(headings: ReadonlyArray<{ text: string }>): Set<string> {
+  const counts = new Map<string, number>();
+  for (const h of headings) {
+    const id = generateHeadingId(h.text);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const dups = new Set<string>();
+  for (const [id, n] of counts) {
+    if (n > 1) dups.add(id);
+  }
+  return dups;
+}
+
+/** M63：当前文档中该 `headingId`（与大纲/Rich 一致的 slug）是否与别节重复。 */
+export function isHeadingSlugAmbiguous(content: string, headingId: string): boolean {
+  return getDuplicateHeadingSlugs(parseHeadings(content)).has(headingId);
+}
+
+/**
+ * M73：按标题 slug 提取该章节 Markdown（含标题行本身，直到下一条同级或更高标题）。
+ * 找不到时返回 null。
+ */
+export function extractMarkdownSectionByHeadingId(content: string, headingId: string): string | null {
+  const md = String(content ?? '');
+  const hs = parseHeadings(md);
+  if (!hs.length) return null;
+  const ix = hs.findIndex((h) => generateHeadingId(h.text) === headingId);
+  if (ix < 0) return null;
+  const h = hs[ix]!;
+  // from: 行首；parseHeadings 的 from 指向整行起点
+  const from = h.from;
+  let to = md.length;
+  for (let j = ix + 1; j < hs.length; j++) {
+    const next = hs[j]!;
+    if (next.level <= h.level) {
+      to = next.from;
+      break;
+    }
+  }
+  return md.slice(from, to).trim();
+}
+
+/**
+ * M61：按标题子串筛选应保留的大纲下标（含每个匹配项的祖先标题，便于定位章节）。
+ * `query` 经 `trim` 后若为空，返回 `null` 表示调用方走「未筛选」逻辑（如折叠态）。
+ * 匹配不区分大小写（`toLowerCase`）；中文等直接 `includes`。
+ */
+export function collectOutlineFilterIndices(
+  items: ReadonlyArray<{ level: number; text: string }>,
+  query: string
+): Set<number> | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const set = new Set<number>();
+  for (let j = 0; j < items.length; j++) {
+    if (!items[j].text.toLowerCase().includes(q)) continue;
+    set.add(j);
+    let L = items[j].level;
+    for (let i = j - 1; i >= 0; i--) {
+      if (items[i].level < L) {
+        set.add(i);
+        L = items[i].level;
+      }
+    }
+  }
+  return set;
+}
+
+/** 解析 Markdown 中的 ATX 标题为扁平列表（含 `from`/`to`/`line`）。 */
 export const parseHeadings = (content: string): HeadingNode[] => {
   const headings: HeadingNode[] = [];
   const lines = content.split('\n');

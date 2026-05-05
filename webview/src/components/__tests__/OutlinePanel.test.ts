@@ -60,5 +60,55 @@ describe('OutlinePanel', () => {
       'B.1',
     ]);
   });
+
+  it('M61: filters by heading text and keeps ancestor path', async () => {
+    const content = '# 导论\n## 安装\n## 使用\n# 附录';
+    const wrapper = mount(OutlinePanel, {
+      props: {
+        content,
+        currentMode: 'source',
+        activeHeadingId: '',
+        collapsedHeadingIds: [],
+      },
+    });
+    await wrapper.get('.outline-filter-input').setValue('使用');
+    expect(wrapper.findAll('.outline-item').map((w) => w.text())).toEqual(['导论', '使用']);
+  });
+
+  it('M61: shows empty hint when filter matches nothing', async () => {
+    const wrapper = mount(OutlinePanel, {
+      props: { content: '# Only', currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    await wrapper.get('.outline-filter-input').setValue('zzz');
+    expect(wrapper.find('.outline-filter-empty').exists()).toBe(true);
+    expect(wrapper.findAll('.outline-item')).toHaveLength(0);
+  });
+
+  it('M63: shows slug conflict marker when two headings share the same generated id', () => {
+    const content = '# Same\n# Same\n';
+    const wrapper = mount(OutlinePanel, {
+      props: { content, currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    const warns = wrapper.findAll('.outline-slug-conflict');
+    expect(warns).toHaveLength(2);
+    expect(warns[0].attributes('title')).toContain('锚点');
+  });
+
+  it('M62: shows drag handles when at least two top-level sections', () => {
+    const wrapper = mount(OutlinePanel, {
+      props: { content: '# A\n# B\n', currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    expect(wrapper.findAll('.outline-drag-handle').length).toBe(2);
+  });
+
+  it('M61: Escape clears filter input', async () => {
+    const wrapper = mount(OutlinePanel, {
+      props: { content: '# A', currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    const input = wrapper.get('.outline-filter-input');
+    await input.setValue('x');
+    await input.trigger('keydown', { key: 'Escape' });
+    expect((input.element as HTMLInputElement).value).toBe('');
+  });
 });
 
