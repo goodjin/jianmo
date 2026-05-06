@@ -30,31 +30,27 @@
 |------|------|
 | [`webview/src/composables/useEditor.ts`](../webview/src/composables/useEditor.ts) | 默认 `initialMode \|\| 'ir'`（CM6 内部默认，与 App 外层 `rich` 并存需注意） |
 | [`webview/src/types/editor.ts`](../webview/src/types/editor.ts) | webview 本地类型仅 `ir \| source` |
-| [`webview/src/core/editor.ts`](../webview/src/core/editor.ts) | `mode === 'ir'` 挂载装饰器、`richClipboard` 等 |
-
-## 5. 装饰器实现（IR 核心）
-
-| 路径 | 说明 |
-|------|------|
-| [`webview/src/core/decorators/`](../webview/src/core/decorators/) | `index.ts` 聚合；各 `*.ts` 为 IR 视觉装饰（冻结期 **禁止新增模块**，见 `npm run check:ir-freeze`） |
+| [`webview/src/core/editor.ts`](../webview/src/core/editor.ts) | **M278** 起不再为 `ir` 挂载 decorators（IR decorators 已移除）；`ir` 输入会在 Webview 侧 **降级为 Source**（见下文）。 |
 
 ## 6. 测试与 E2E
 
 | 路径 | 说明 |
 |------|------|
-| [`webview/test/ir-mode.test.ts`](../webview/test/ir-mode.test.ts) | IR 行为单测 |
-| [`webview/src/composables/__tests__/useEditor.test.ts`](../webview/src/composables/__tests__/useEditor.test.ts) | IR ↔ Source 切换 |
-| [`webview/src/core/__tests__/editorInteraction.test.ts`](../webview/src/core/__tests__/editorInteraction.test.ts) | `createEditorState(..., 'ir')` |
-| [`webview/src/utils/__tests__/richTabPolicy.test.ts`](../webview/src/utils/__tests__/richTabPolicy.test.ts) | `'ir'` Tab 策略 |
-| [`e2e/ui-suite/markly-ui.test.js`](../e2e/ui-suite/markly-ui.test.js) | `bridgeSwitchMode(driver, 'ir')` |
+| [`webview/src/composables/__tests__/useEditor.test.ts`](../webview/src/composables/__tests__/useEditor.test.ts) | 历史上含 IR ↔ Source 切换（后续会随 IR 退场继续收缩） |
+| [`webview/src/utils/__tests__/richTabPolicy.test.ts`](../webview/src/utils/__tests__/richTabPolicy.test.ts) | `'ir'` Tab 策略（兼容保留；后续可随类型收缩一并移除） |
+| [`e2e/ui-suite/markly-ui.test.js`](../e2e/ui-suite/markly-ui.test.js) | 历史上可能触发 `bridgeSwitchMode(driver, 'ir')`（后续会收敛到 Rich/Source） |
 
-## 7. Extension 宿主（不直接等于 `ir`，但影响模式名）
+## 7. 兼容降级（现状）
+
+- **M279**：Webview 收到 `SWITCH_MODE: { mode: 'ir' }` 时，会 **自动降级为 `source`**，避免落入已删除的 IR 实现层。
+
+## 8. Extension 宿主（不直接等于 `ir`，但影响模式名）
 
 | 路径 | 说明 |
 |------|------|
 | [`src/extension/commands/index.ts`](../src/extension/commands/index.ts) | `markly.toggleMode`：`source` ↔ `preview`（发往 webview 后 **preview → rich**） |
 | [`src/core/modeController/index.ts`](../src/core/modeController/index.ts) | 宿主侧 `source` / `preview`，与 webview `EditorMode` 命名不完全一致 → 见 [`TECH_DEBT_PREVIEW_RICH_NAMING.md`](./TECH_DEBT_PREVIEW_RICH_NAMING.md) |
 
-## 8. 死代码 / 低优先
+## 9. 死代码 / 低优先
 
 - 历史文档 [`docs/v4/**`](../docs/v4/) 中「即时渲染 / IR / Split」描述与当前产品不一致，**不作为运行入口**；以本文件与 `CLAUDE.md` 为准。
