@@ -15,3 +15,7 @@
 | Mermaid | 依赖；Rich 默认可关；导出内联脚本见导出管线 |
 
 仓库脚本与 CI 以实际 `package.json` / `esbuild` 外部化为准。
+
+## 体积趋势（可选）
+
+发版或重大依赖变更后可在本地运行 **`npm run record:bundle-sizes`**，说明见 **[`BUNDLE_SIZE_HISTORY.md`](BUNDLE_SIZE_HISTORY.md)**。

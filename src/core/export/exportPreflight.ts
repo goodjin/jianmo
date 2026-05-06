@@ -13,7 +13,12 @@ export type ExportPreflightIssueKind =
   | 'broken_math'
   | 'missing_local_link'
   /** M46：`image.remoteHttpsHostsAllowlist` 非空时，HTTPS 外链图 host 不在名单中 */
-  | 'remote_image_host';
+  | 'remote_image_host'
+  /** M264：不同本地图片引用较多时的内存/耗时风险提示（不改变导出行为） */
+  | 'many_local_images';
+
+/** 触发「大量本地图引用」告警的阈值（唯一 ref 计数，非像素尺寸） */
+export const EXPORT_PREFLIGHT_MANY_LOCAL_IMAGES_THRESHOLD = 50;
 
 export interface ExportPreflightIssue {
   kind: ExportPreflightIssueKind;
@@ -171,6 +176,13 @@ export function analyzeMarkdownExportPreflight(options: {
           sourceLine: findFirstMarkdownSourceLine(markdown, ref) ?? findFirstMarkdownSourceLine(markdown, `](${ref}`),
         });
       }
+    }
+
+    if (seen.size >= EXPORT_PREFLIGHT_MANY_LOCAL_IMAGES_THRESHOLD) {
+      issues.push({
+        kind: 'many_local_images',
+        message: `文档含 ${seen.size} 处不同的本地图片引用，导出 HTML/PDF 时峰值内存与时间可能明显增加；建议压缩图片或分批导出。详见 docs/EXPORT_GUIDE.md 第 6 节。`,
+      });
     }
 
     const allow = (options.remoteHttpsHostsAllowlist ?? []).map((h) => String(h ?? '').trim()).filter(Boolean);

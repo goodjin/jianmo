@@ -16,6 +16,9 @@
 
 ## Remote / WSL（M273）
 
-- **Remote SSH / Dev Containers / WSL**：一般可用；PDF 导出依赖远端/容器内可用的 **Node + Puppeteer Chromium**（与本地路径、权限、`no-sandbox` 策略有关）。若在远程侧失败率高，可先尝试「同一代码在本地桌面打开导出」对照排障。
-- **纯 Web / Codespaces**：是否有显示子进程与安全策略差异，需以实际宿主为准；导出失败时请附 **导出诊断包** 与运行环境标签。
+- **Remote SSH / Dev Containers / WSL**：一般可用；PDF 导出依赖远端/容器内可用的 **Node + Puppeteer Chromium**（与路径/权限、`no-sandbox` 策略有关）。若在远程侧失败率高：
+  - 先用 `Export: Copy Last Failure Diagnostics` 复制诊断包（脱敏）；
+  - 尝试将导出输出目录换到明确可写的位置（如工作区内临时目录）；
+  - 进行对照：同一文档在本地桌面 VS Code 中导出一次，区分“远程环境问题”还是“内容问题”。
+- **纯 Web / Codespaces**：子进程/权限策略差异更大；导出失败时请附 **导出诊断包** 与运行环境标签（Remote 类型、容器/WSL、Node 版本等）。
 

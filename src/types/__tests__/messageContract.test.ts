@@ -66,6 +66,7 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'SWITCH_MODE', payload: { mode: 'preview' } },
     { type: 'SAVE' },
     { type: 'SAVE_SUCCESS', payload: { version: 9 } },
+    { type: 'SAVE_FAILED', payload: { error: 'EACCES' } },
     { type: 'IMAGE_SAVED', payload: { path: 'assets/a.png', filename: 'a.png' } },
     { type: 'IMAGE_SAVED', payload: { path: 'assets/a.png', filename: 'a-2.png', requestId: 'u1' } },
     { type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png', error: 'disk full' } },
@@ -146,6 +147,8 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({ type: 'INIT', payload: { content: 1, config: minimalConfig } })).toBe(false);
     expect(isExtensionMessage({ type: 'UNKNOWN' })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'SAVE_FAILED', payload: { error: 1 } })).toBe(false);
+    expect(isExtensionMessage({ type: 'SAVE_FAILED', payload: {} as any })).toBe(false);
     expect(isExtensionMessage({ type: 'IMAGE_SAVE_FAILED', payload: { filename: 'a.png' } })).toBe(false);
     expect(isExtensionMessage({ type: 'LOCAL_IMAGE_REFS_RESULT', payload: { requestId: 'x', results: [{ ref: 'a.png' }] } })).toBe(false);
     expect(isExtensionMessage({ type: 'IMAGE_REF_REPLACEMENT', payload: { fromRef: './a.png' } })).toBe(false);

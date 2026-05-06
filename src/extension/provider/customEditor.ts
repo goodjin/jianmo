@@ -18,6 +18,11 @@ import type { ImageSameNameHandling } from '@extension/image/imageFilenameCollis
 import { pickNonConflictingFilenameAsync } from '@extension/image/imageFilenameCollision';
 import { confirmContinueAfterExportPreflight } from '@extension/export/exportPreflightUi';
 import { showExportHtmlPreviewPanel } from '@extension/preview/exportHtmlPreview';
+import { getExportFilters } from './exportFilters';
+import {
+  classifyExportDocumentIntent,
+  classifyOpenExternalNavigationTarget,
+} from './webviewInboundRouting';
 
 function isMarkdownFileUriAllowedInWorkspace(openUri: vscode.Uri): boolean {
   if (openUri.scheme !== 'file') return false;
@@ -378,17 +383,14 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
 
       case 'OPEN_EXTERNAL_LINK': {
-        const url = String((message as any).payload?.url ?? '');
-        if (!url.trim()) break;
-        try {
-          const u = vscode.Uri.parse(url);
-          // 仅放行 http/https
-          if (u.scheme === 'http' || u.scheme === 'https') {
-            await vscode.env.openExternal(u);
-          } else {
-            vscode.window.showWarningMessage('仅支持打开 http/https 链接。');
-          }
-        } catch {
+        const decided = classifyOpenExternalNavigationTarget((message as any).payload?.url);
+        if (decided.action === 'open') {
+          await vscode.env.openExternal(vscode.Uri.parse(decided.url));
+        } else if (decided.reason === 'empty') {
+          break;
+        } else if (decided.reason === 'forbidden_scheme') {
+          vscode.window.showWarningMessage('仅支持打开 http/https 链接。');
+        } else {
           vscode.window.showWarningMessage('链接无效，无法打开。');
         }
         break;
@@ -397,16 +399,23 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       case 'SAVE':
         // 处理保存 - 保存当前文档内容
         if (message.payload?.content !== undefined) {
-          await this.saveDocument(uri, message.payload.content);
-          // 更新版本号
-          const newVersion = (this.documentVersions.get(uri) || 0) + 1;
-          this.documentVersions.set(uri, newVersion);
-          this.documentStore.updateContent(uri, message.payload.content);
-          // 通知 WebView 保存完成
-          this.postMessage(uri, {
-            type: 'SAVE_SUCCESS',
-            payload: { version: newVersion },
-          });
+          try {
+            await this.saveDocument(uri, message.payload.content);
+            const newVersion = (this.documentVersions.get(uri) || 0) + 1;
+            this.documentVersions.set(uri, newVersion);
+            this.documentStore.updateContent(uri, message.payload.content);
+            this.postMessage(uri, {
+              type: 'SAVE_SUCCESS',
+              payload: { version: newVersion },
+            });
+          } catch (e) {
+            const errMsg = String((e as Error)?.message ?? e ?? '写入失败');
+            this.postMessage(uri, {
+              type: 'SAVE_FAILED',
+              payload: { error: errMsg },
+            });
+            void vscode.window.showErrorMessage(`保存失败：${errMsg}`);
+          }
         }
         break;
 
@@ -658,19 +667,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   }
 
   private async exportDocument(uri: string, payload: any): Promise<void> {
-    if (!payload?.format) {
+    const doc = this.documentStore.getDocument(uri);
+    const intent = classifyExportDocumentIntent(payload, doc);
+    if (intent.kind === 'abort') {
       return;
     }
 
     const docUri = vscode.Uri.parse(uri);
-    const doc = this.documentStore.getDocument(uri);
-    if (!doc) {
-      return;
-    }
-
-    if (payload.format === 'preview') {
+    if (intent.kind === 'preview') {
       showExportHtmlPreviewPanel({
-        markdown: doc.content,
+        markdown: intent.markdown,
         documentUri: docUri,
         htmlTheme: this.config.export.html?.theme ?? 'default',
         mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
@@ -678,11 +684,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       return;
     }
 
+    const docForExport = doc!;
     // 显示保存对话框
-    const defaultName = docUri.fsPath.replace(/\.\w+$/, `.${payload.format}`);
+    const defaultName = docUri.fsPath.replace(/\.\w+$/, `.${intent.format}`);
     const saveUri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.parse(defaultName),
-      filters: this.getExportFilters(payload.format),
+      filters: getExportFilters(intent.format),
     });
 
     if (!saveUri) {
@@ -693,10 +700,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       const pfScope = this.config.export.preflight?.scope ?? 'full';
       const pfBlock = this.config.export.preflight?.blockOnIssues === true;
 
-      if (payload.format === 'html') {
+      if (intent.format === 'html') {
         if (
           !(await confirmContinueAfterExportPreflight({
-            markdown: doc.content,
+            markdown: docForExport.content,
             documentUri: docUri,
             scope: pfScope,
             blockOnIssues: pfBlock,
@@ -706,7 +713,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         ) {
           return;
         }
-        await exportToHtml(doc.content, saveUri.fsPath, {
+        await exportToHtml(docForExport.content, saveUri.fsPath, {
           includeToc: true,
           title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
           htmlTheme: this.config.export.html?.theme ?? 'default',
@@ -719,10 +726,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         return;
       }
 
-      if (payload.format === 'pdf') {
+      if (intent.format === 'pdf') {
         if (
           !(await confirmContinueAfterExportPreflight({
-            markdown: doc.content,
+            markdown: docForExport.content,
             documentUri: docUri,
             scope: pfScope,
             blockOnIssues: pfBlock,
@@ -734,7 +741,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         }
         const baseHref = vscode.Uri.file(path.dirname(docUri.fsPath)).toString(true) + '/';
         await exportToPdf(
-          doc.content,
+          docForExport.content,
           saveUri.fsPath,
           {
             ...pdfExportOptionsFromPdfConfig(this.config.export.pdf, baseHref),
@@ -745,9 +752,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         return;
       }
 
-      vscode.window.showWarningMessage(`暂不支持导出 ${payload.format}`);
+      vscode.window.showWarningMessage(`暂不支持导出 ${intent.format}`);
     } catch (error) {
-      const fmt = String(payload.format);
+      const fmt = String(intent.format);
       if (fmt === 'pdf' || fmt === 'html') {
         void showExportFailureWithDiagnostics(this.context, fmt, error, {
           documentPath: docUri.fsPath,
@@ -759,16 +766,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         );
       }
     }
-  }
-
-  private getExportFilters(format: string): { [key: string]: string[] } {
-    const filters: { [key: string]: string[] } = {
-      markdown: ['md', 'markdown'],
-      html: ['html'],
-      pdf: ['pdf'],
-      json: ['json'],
-    };
-    return { [format.toUpperCase()]: filters[format] || ['*'] };
   }
 
   postMessage(uri: string, message: ExtensionMessage): void {

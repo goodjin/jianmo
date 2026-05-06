@@ -989,6 +989,9 @@ function setContent(content: string): void {
     });
   } catch (e) {
     console.error('Failed to set content:', e);
+    emitStartupEvent('milkdown:setContent:error', {
+      message: String((e as any)?.message ?? e ?? '').slice(0, 400),
+    });
   }
 }
 

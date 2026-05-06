@@ -23,6 +23,8 @@ npm run gates:stable
 
 等价于：`lint` + `check:ir-freeze` + `test` + `build` + `check:bundle`。
 
+GitHub Actions 的 **CI** 在上述基础上还会跑 **`npm run test:vscode`**（Linux + `xvfb-run`，见 `.github/workflows/ci.yml`）与 **`npm run record:bundle-sizes`**（仅写 `tmp/bundle-sizes.json`，不落库）。本地若跑集成测试：先 `npm run build`，再 `npm run test:vscode`；macOS 可用系统 VS Code，或通过环境变量指定 CLI：`MARKLY_VSCODE_EXECUTABLE_PATH=/path/to/code`。
+
 ## 发版路径额外检查
 
 ```bash

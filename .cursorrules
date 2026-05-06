@@ -108,3 +108,9 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - When searching for recent news, use the authoritative current calendar year from the user's environment instead of guessing past years, or use the keyword "recent" / "latest".
 
 # Scratchpad
+
+- [X] M258–M266：路由/`getExportFilters` 单测、`SAVE_FAILED`、`webviewInitMs`、Rich 错误摘要可复制、预检大量本地图、pipe fixture、`PROTOCOL_COMPAT_SMOKE` / `ACTIVATION_EVENTS_AUDIT`；版本 **1.39.15**。
+
+## Lessons（项目）
+
+- Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。

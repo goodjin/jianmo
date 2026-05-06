@@ -191,6 +191,10 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       const p = msg.payload;
       return isRecord(p) && isNumber(p.version);
     }
+    case 'SAVE_FAILED': {
+      const p = msg.payload;
+      return isRecord(p) && isString(p.error);
+    }
     case 'IMAGE_SAVED': {
       const p = msg.payload;
       return (

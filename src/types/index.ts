@@ -205,7 +205,8 @@ export interface LocalImageRefCheckResult {
 // 消息类型（Extension ⇄ Webview 自定义编辑器协议）
 //
 // Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
-//   IMAGE_SAVED / IMAGE_SAVE_FAILED / LOCAL_IMAGE_REFS_RESULT / EDITOR_COMMAND / THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
+//   SAVE_FAILED / IMAGE_SAVED / IMAGE_SAVE_FAILED / LOCAL_IMAGE_REFS_RESULT / EDITOR_COMMAND /
+//   THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
 // Webview → Extension：READY / CONTENT_CHANGE / SAVE / SAVE_IMAGE / OPEN_* / EXPORT /
 //   UPLOAD_IMAGE / CHECK_LOCAL_IMAGE_REFS / FIND_MARKDOWN_BACKLINKS /
 //   OPEN_MARKDOWN_DOCUMENT / MARKDOWN_BACKLINKS_RESULT / scrollPositionResponse
@@ -219,6 +220,7 @@ export type ExtensionMessage =
   /** 宿主侧保存（如 workbench 保存）触发 Webview 同步 TOC 等 */
   | { type: 'SAVE' }
   | { type: 'SAVE_SUCCESS'; payload: { version: number } }
+  | { type: 'SAVE_FAILED'; payload: { error: string } }
   | { type: 'IMAGE_SAVED'; payload: { path: string; filename: string; requestId?: string } }
   | { type: 'IMAGE_SAVE_FAILED'; payload: { filename: string; error: string; requestId?: string } }
   | {

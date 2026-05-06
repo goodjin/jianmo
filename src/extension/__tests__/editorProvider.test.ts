@@ -10,20 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-/**
- * 从 customEditor.ts 中提取的 getExportFilters 逻辑（private 方法，
- * 在此镜像以验证映射关系，与源码保持同步）。
- */
-function getExportFilters(format: string): { [key: string]: string[] } {
-  const filters: { [key: string]: string[] } = {
-    markdown: ['md', 'markdown'],
-    html: ['html'],
-    pdf: ['pdf'],
-    json: ['json'],
-  };
-  return { [format.toUpperCase()]: filters[format] || ['*'] };
-}
+import { getExportFilters } from '../provider/exportFilters';
 
 describe('getExportFilters', () => {
   it('returns correct extensions for html', () => {

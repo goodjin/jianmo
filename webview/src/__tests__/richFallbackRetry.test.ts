@@ -62,7 +62,7 @@ describe('Rich fallback banner + retry', () => {
     expect(banner.exists()).toBe(true);
 
     // 点击重试：应隐藏 banner（并尝试切回 rich）
-    await banner.find('button.retry-btn').trigger('click');
+    await banner.find('[data-testid="retry-rich-from-fallback-btn"]').trigger('click');
     await w.vm.$nextTick();
     expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(false);
 
@@ -123,7 +123,7 @@ describe('Rich fallback banner + retry', () => {
       await w.vm.$nextTick();
       expect(w.find('[data-testid="rich-fallback-banner"]').exists()).toBe(true);
 
-      await w.find('button.retry-btn').trigger('click');
+      await w.find('[data-testid="retry-rich-from-fallback-btn"]').trigger('click');
       await w.vm.$nextTick();
 
       // @ts-expect-error setup function

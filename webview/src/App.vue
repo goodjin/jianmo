@@ -240,7 +240,20 @@
       <span class="msg">
         Rich 启动{{ richFallbackBannerReason === 'timeout' ? '超时' : '失败' }}，已切换到 Source。
       </span>
-      <button type="button" class="retry-btn" @click="retryRichFromFallback">重试 Rich</button>
+      <span v-if="richLastError" class="rich-fallback-error" :title="richLastError">
+        {{ richLastError.length > 140 ? `${richLastError.slice(0, 140)}…` : richLastError }}
+      </span>
+      <button type="button" class="retry-btn" data-testid="copy-rich-error-snippet-btn" @click="copyRichLastErrorSnippet">
+        复制错误摘要
+      </button>
+      <button
+        type="button"
+        class="retry-btn"
+        data-testid="retry-rich-from-fallback-btn"
+        @click="retryRichFromFallback"
+      >
+        重试 Rich
+      </button>
       <button type="button" class="retry-btn" data-testid="reload-webview-btn" @click="reloadWebview">
         重载 Webview
       </button>
@@ -993,6 +1006,8 @@ function installGlobalErrorGuards(): void {
         // 只在 rich 下处理；避免误伤其它错误
         richLastError.value = msg;
         recordRichStartupEvent('global-error:milkdown-editorView-missing', { message: msg.slice(0, 240) });
+        richFallbackBannerVisible.value = true;
+        richFallbackBannerReason.value = 'fail';
         if (currentMode.value === 'rich') currentMode.value = 'source';
       } catch {
         // ignore
@@ -1129,6 +1144,16 @@ function onRichReady(_success: boolean): void {
 function onRichStartupEvent(payload: { stage: string; detail?: Record<string, unknown> }): void {
   const stage = typeof payload?.stage === 'string' ? payload.stage : 'milkdown:unknown';
   recordRichStartupEvent(stage, payload?.detail);
+  if (stage === 'milkdown:init:error' || stage === 'milkdown:setContent:error') {
+    const d = payload?.detail;
+    const msg =
+      typeof d?.message === 'string'
+        ? d.message
+        : typeof d?.reason === 'string'
+          ? `${stage}: ${d.reason}`
+          : stage;
+    richLastError.value = msg.slice(0, 480);
+  }
 }
 
 function hasRichEditableDom(): boolean {
@@ -1874,6 +1899,13 @@ function handleMessage(event: MessageEvent) {
         editor.setContent(message.payload.content);
       }
       break;
+
+    case 'SAVE_FAILED': {
+      const raw = typeof message.payload.error === 'string' ? message.payload.error : '';
+      richLastError.value = raw.slice(0, 480);
+      showToast(`保存失败：${raw.slice(0, 200)}${raw.length > 200 ? '…' : ''}`, 5800);
+      break;
+    }
 
     case 'CONFIG_CHANGE':
       // 防御性编程：确保 config.value 不为 null
@@ -3418,6 +3450,20 @@ function handleWindowPointerDownCapture(e: PointerEvent) {
   closeRichTableContextMenu();
 }
 
+async function copyRichLastErrorSnippet() {
+  const t = richLastError.value?.trim();
+  if (!t) {
+    showToast('暂无错误摘要可复制。');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(t);
+    showToast('已复制错误摘要。');
+  } catch {
+    showToast(`复制失败：${t.slice(0, 200)}`);
+  }
+}
+
 function showToast(msg: string, durationMs = 2400) {
   toastMessage.value = msg;
   toastOpen.value = true;
@@ -3513,6 +3559,11 @@ function buildDiagnosticsPayload() {
         host: hostDiagnostics.value,
         app: {
           webviewMountMs:
+            typeof (globalThis as any).__marklyWebviewMountMs === 'number'
+              ? (globalThis as any).__marklyWebviewMountMs
+              : null,
+          /** M262：路线图字段名对齐（与 webviewMountMs 同源） */
+          webviewInitMs:
             typeof (globalThis as any).__marklyWebviewMountMs === 'number'
               ? (globalThis as any).__marklyWebviewMountMs
               : null,
@@ -4375,6 +4426,7 @@ onUnmounted(() => {
 
 .rich-fallback-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -4394,6 +4446,13 @@ onUnmounted(() => {
 .rich-fallback-banner .msg {
   font-size: 12px;
   opacity: 0.9;
+}
+
+.rich-fallback-banner .rich-fallback-error {
+  flex: 1 1 220px;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  opacity: 0.85;
 }
 
 .rich-fallback-banner .retry-btn {

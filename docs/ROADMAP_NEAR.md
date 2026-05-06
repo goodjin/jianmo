@@ -98,14 +98,14 @@
 | 64 | M264 | 导出：大批量图片内存策略 | 预检警告/分批导出（若暂不实现则需文档限制） | M224 |
 | 65 | M265 | 表格：GFM pipe 逃逸监控 | fixture 捕获「代码单元格里 `|`」等已知限制 | M216 |
 | 66 | M266 | 扩展激活：延迟与必要性审计 | activationEvents 是否仍最小集合；文档记录 | — |
-| 67 | M267 | Marketplace：README/Changelog 摘要 | 对用户可见的三大卖点+最近修复 | M251 |
+| 67 | M267 | Marketplace：README/Changelog 摘要 | 对用户可见的三大卖点+最近修复（见 README 与 `docs/marketplace/HIGHLIGHTS.md`） | M251 |
 | 68 | M268 | 近期「Go/No-Go」自检 | 对照 `docs/2.0_RISKS_AND_ACCEPTANCE.md` 风险 1–3 未抬头 | — |
 | 69 | M269 | 近期收尾：里程碑表归档 | `CHANGELOG`/`MARKDOWN_CAPABILITIES` 本节链接本文件与本阶段完成日期 | M268 |
 | 70 | M270 | 近期正式封板位 | 「可移交中期」：**IR 仍为 legacy 但未删代码**；Rich/导出主线稳定 | M269+M256 |
-| 71 | M271 | 可选：本地化架构评估 | 文案外置、`nls`/`l10n` 方案选型（无译稿也行） | 并行 |
+| 71 | M271 | 可选：本地化架构评估 | 文案外置、`nls`/`l10n` 方案选型（无译稿也行，见 `docs/LOCALIZATION_ARCH_EVAL.md`） | 并行 |
 | 72 | M272 | 可选：`telemetry`（若产品有）默认关复核 | — | — |
 | 73 | M273 | 可选：WSL／Remote SSH 手记 | 「已知良好/限制」记入 `COMPATIBILITY_MATRIX` | M253 |
-| 74 | M274 | Bugfix Sprint 预留 | — | — |
+| 74 | M274 | Bugfix Sprint 预留 | `docs/bugfix/README.md` 作为闭环模板与归档入口 | — |
 | 75 | M275 | 近期最终 Release Train | semver + `gates:stable` + `check-release` | M270 |
 
 > **说明**：M271–M275 可与主链并行收尾，但以 **M270** 为移交中期的硬性封板参考。
@@ -149,6 +149,8 @@
 
 以下为 **已实现或已入库文档/模板** 的摘要，便于和表格对照；「Kickoff／季度复盘／E2E 全绿」类组织项仍需团队自行维护。（**补丁版本**：以 `CHANGELOG` / `package.json` 为准。）
 
+> Near Phase 完成记录（v1.39.15 / 2026-05-06）：`docs/NEAR_PHASE_COMPLETE_1.39.15.md`。
+
 | 编号段 | 已对齐交付（节选） |
 |--------|---------------------|
 | M201–M207 | README 路线图链、Walkthrough/IR 叙事与设置项 `deferDiagramRenderInRich` 说明指向 `PERFORMANCE_NOTES`、`IR_REMOVAL_ROADMAP`、`ROADMAP_NEAR` |
@@ -158,12 +160,13 @@
 | M235–M236 | SVG sanitize 增补用例 |
 | M246–M248 | PR 模板 **messageGuards** 勾选；`CONTRIBUTING.md`；Issue 模板 `bug_report.md` |
 | M251–M254 | README 三步链路；`EXPORT_GUIDE` 设置索引与大图节；`COMPATIBILITY_MATRIX` Remote/WSL |
-| M262–M264 | `webviewMountMs`、`EXPORT_GUIDE` 大图与内存文案 |
+| M258–M266 | `webviewInboundRouting`/`exportFilters` 单测；`SAVE_FAILED`；Rich 降级条可复制错误摘要；诊断 `webviewInitMs`（与 mount 同源）；导出预检 `many_local_images`；`PROTOCOL_COMPAT_SMOKE.md`、`ACTIVATION_EVENTS_AUDIT.md`、fixture `17-table-code-cell-pipe.md` |
+| M262–M264 | `webviewMountMs`/`webviewInitMs`、`EXPORT_GUIDE` 第 6 节与预检大量本地图告警 |
 | M245 / M257 | `docs/FLAKY_TESTS.md`（flaky 管控）；`docs/REGRESSION_PLAYBOOK.md`（issue→fixture 回归手册） |
 | M247 / M250 | CI 增加 `npm run test:vscode`（headless, xvfb）；`scripts/record-bundle-sizes.mjs` + `resources/BUNDLE_SIZE_HISTORY.md` |
 | M201 / M268 / M270 / M275 | `docs/NEAR_KICKOFF_TEMPLATE.md`、`docs/NEAR_GONOGO_TEMPLATE.md`（组织项模板化） |
 | M259 | `docs/EXPORT_PREVIEW_VS_EXPORT.md`（Preview vs 正式导出差异说明） |
-| M269–M275 | **`MARKDOWN_CAPABILITIES` §5.8**；**本快照** |
+| M267–M275 | Marketplace 摘要：`docs/marketplace/HIGHLIGHTS.md`；Go/No-Go 记录：`docs/NEAR_GONOGO_1.39.15.md`；封板声明：`docs/NEAR_PHASE_COMPLETE_1.39.15.md`；本地化评估：`docs/LOCALIZATION_ARCH_EVAL.md`；Bugfix Sprint：`docs/bugfix/README.md`；`MARKDOWN_CAPABILITIES` §5.8 与 `CHANGELOG` 同步完成日期 |
 
 **仍为人工/周期长项**：`npm audit` SLA 的持续执行、M257 工单选择与回归优先级的持续治理、M201/M268/M270 等“封板/复盘/Owner”类组织项。
 

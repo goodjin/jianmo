@@ -1,6 +1,6 @@
 {
   "name": "md-editor-webview",
-  "version": "1.39.14",
+  "version": "1.39.15",
   "private": true,
   "scripts": {
     "dev": "vite",

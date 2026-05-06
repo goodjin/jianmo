@@ -10,6 +10,10 @@
 npm run test:vscode
 ```
 
+**CI（M247）**：GitHub Actions 在 Linux 上使用 `xvfb-run -a npm run test:vscode`，无需本机安装 VS Code（`@vscode/test-electron` 会下载测试用 VS Code）。
+
+**指定本机 VS Code CLI（可选）**：设置环境变量 `MARKLY_VSCODE_EXECUTABLE_PATH` 指向 `code` 可执行文件；macOS 默认尝试 `/Applications/Visual Studio Code.app/.../bin/code`（若存在）。
+
 ## 2. 真实 UI：ExTester（推荐用于验证「像用户一样点」）
 
 首次需下载测试专用 VS Code 与驱动（进入 `.vscode-test/extest-ui/`）：

@@ -154,6 +154,21 @@ describe('analyzeMarkdownExportPreflight', () => {
     expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('a.allowed.example'))).toBe(false);
     expect(issues.some((i) => i.kind === 'remote_image_host' && (i.ref ?? '').includes('allowed.example/y.png'))).toBe(false);
   });
+
+  it('M264: warns when many distinct local image refs exist', () => {
+    const md = Array.from({ length: 52 }, (_, i) => `![](./img-${i}.png)`).join('\n');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'markly-pf-manyimg-'));
+    const mdPath = path.join(root, 'doc.md');
+    fs.writeFileSync(mdPath, md + '\n');
+    const issues = analyzeMarkdownExportPreflight({
+      markdown: md,
+      sourceFileFsPath: mdPath,
+      workspaceRootFsPath: root,
+      scope: 'images',
+      existsSync: () => true,
+    });
+    expect(issues.some((i) => i.kind === 'many_local_images')).toBe(true);
+  });
 });
 
 describe('extractHttpsMarkdownImageHosts', () => {

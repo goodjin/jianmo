@@ -600,13 +600,15 @@ graph TD
 
 ### 5.8 近期路线图工程收口（M201–M275，摘录）
 
-以下内容对应 **`docs/ROADMAP_NEAR.md`** 的工程交付摘要（不等于「路线图已全盘完结」）：主路径 **Rich + Source**、`markly.experimental`/`IR legacy`、导出预检可 **打开文档跳转首issue行（约）**、`formatExportFailure` **取消/磁盘/权限** 分类、大纲筛选 **防抖**、诊断包 **webviewMountMs**、CONTRIBUTING/issue 模板/PR 勾选 **messageGuards**、`EXPORT_GUIDE` 导出设置索引与安全/大图说明补强等。逐项 owner 与时间线仍以 **`ROADMAP_NEAR`** 表格为准。
+本仓库已按 **`docs/ROADMAP_NEAR.md`**（M201–M275）完成近期阶段收口（记录：**2026-05-06 / v1.39.15**）。核心交付包括：主路径 **Rich + Source**、IR 标记为 `legacy-ir` 且冻结、导出预检可 **打开文档并定位**、导出错误可复制诊断包、Rich 启动失败可降级并复制错误摘要、协议守卫与单测门禁稳定等。
 
 | 文档 | 说明 |
 |------|------|
 | **Rich vs Source** | **`docs/SOURCE_VS_RICH.md`** |
 | **Preview vs Export** | **`docs/EXPORT_PREVIEW_VS_EXPORT.md`** |
 | **Near templates** | **`docs/NEAR_KICKOFF_TEMPLATE.md`** / **`docs/NEAR_GONOGO_TEMPLATE.md`** |
+| **Near Go/No-Go record** | **`docs/NEAR_GONOGO_1.39.15.md`** |
+| **Near phase complete** | **`docs/NEAR_PHASE_COMPLETE_1.39.15.md`** |
 
 ---
 

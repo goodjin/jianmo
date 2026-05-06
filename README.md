@@ -4,6 +4,14 @@
 
 A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing experience.
 
+## Highlights (Marketplace)
+
+- **Rich + Source**: Rich is the primary WYSIWYG experience; Source is a reliable fallback when needed.
+- **Tables & images**: Rich table editing + paste support; image paste/drag-save with assets tools.
+- **Export & supportability**: PDF/HTML export with preflight checks and copyable, sanitized diagnostics when things go wrong.
+
+Recent (v1.39.15): Rich fallback banner shows a copyable error snippet; export preflight warns on many local images; save failures return `SAVE_FAILED`.
+
 ## Features
 
 - **Outline**: side panel with **heading search** (filter with ancestor path, Esc to clear) and **drag top-level sections** to reorder chapter blocks; sidebar **AI 操作** lists confirmed **selection rewrite / table-to-GFM applies** for read-back and revert (M79, see `CHANGELOG.md`)

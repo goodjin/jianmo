@@ -7,16 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.15] - 2026-05-06
+
+### Highlights (user-facing)
+
+- Rich 启动失败/超时时：顶部提示条可展示错误摘录，并支持「复制错误摘要」自助排障。
+- 导出预检：当本地图片引用过多时给出风险提示，减少导出内存/耗时误判。
+- 保存失败：宿主写入失败会回传 `SAVE_FAILED`，避免静默丢保存。
+
+### Added
+
+- **M258**：`webviewInboundRouting`/`exportFilters` 可测拆分与单测（Open/导出意图与对话框过滤器）。
+- **M261 / M266**：`docs/PROTOCOL_COMPAT_SMOKE.md`、`docs/ACTIVATION_EVENTS_AUDIT.md`。
+- **M262**：诊断包增补 **`webviewInitMs`**（与同源的 `webviewMountMs` 一致）。
+- **M264**：导出预检 **`many_local_images`**（阈值 50）；`EXPORT_GUIDE` 第 6 节补充说明。
+- **M265**：`docs/fixtures/m9/17-table-code-cell-pipe.md`（GFM pipe 边界监控）。
+- **协议**：Extension → Webview **`SAVE_FAILED`**（宿主写入失败）；`messageGuards`/`messageContract` 覆盖。
+
+### Changed
+
+- **M263**：Rich 降级条展示错误摘录并支持 **复制错误摘要**；`setContent` 失败上报 `milkdown:setContent:error`；全局 Milkdown editorView 竞态降级时同步显示降级条。
+- **customEditor**：`OPEN_EXTERNAL_LINK`/导出早退路径与 **`classify*`** / **`getExportFilters`** 对齐；Webview **`SAVE`** 失败时宿主提示 + `SAVE_FAILED`。
+
+### Documentation
+
+- `docs/ROADMAP_NEAR.md`：§7 快照增补 **M258–M266** 落地摘要。
+
 ## [1.39.14] - 2026-05-06
 
 ### Added
 
 - **M201 / M268 / M270 / M275**：新增近期阶段 **Kickoff / Go-NoGo** 可重复记录模板：`docs/NEAR_KICKOFF_TEMPLATE.md`、`docs/NEAR_GONOGO_TEMPLATE.md`。
 - **M259**：新增 `docs/EXPORT_PREVIEW_VS_EXPORT.md`，说明 Preview 导出与正式导出差异与排障建议。
+- **M250**：npm 脚本 **`npm run record:bundle-sizes`**（同 `node ./scripts/record-bundle-sizes.mjs`）。
+
+### Changed
+
+- **CI**：`check` job **timeout** 调至 **30min**（覆盖 `test:vscode` 下载与冷启动）。
 
 ### Documentation
 
 - `docs/ROADMAP_NEAR.md`、`docs/MARKDOWN_CAPABILITIES.md`、`README.md` 增补上述模板与说明的链接入口。
+- **`CONTRIBUTING.md` / `e2e/README.md`**：说明 CI 跑 `test:vscode` / `record:bundle-sizes` 与 **`MARKLY_VSCODE_EXECUTABLE_PATH`**。
+- **`resources/BUNDLE_GOVERNANCE.md`**：补充指向 **`resources/BUNDLE_SIZE_HISTORY.md`**（趋势记录入口）。
 
 ## [1.39.13] - 2026-05-06
 
