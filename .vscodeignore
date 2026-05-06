@@ -56,6 +56,13 @@ patch-*.js
 ENDPYTHON
 EOF
 PYEOF
+Bn
+
+# Local-only tooling / environments
+venv/
+tmp/
+tools/
+requirements.txt
 
 # 源码与工具链已进 dist，webview 目录不必进 VSIX
 webview/
