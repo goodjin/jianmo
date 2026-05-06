@@ -31,6 +31,9 @@ jobs:
         working-directory: webview
         run: npm ci
 
+      - name: Early guard: release metadata
+        run: npm run check:release
+
       - name: Lint
         run: npm run lint
 
@@ -55,5 +58,5 @@ jobs:
           sudo apt-get install -y xvfb
           xvfb-run -a npm run test:vscode
 
-      - name: Release metadata guard
+      - name: Final guard: release metadata
         run: npm run check:release

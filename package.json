@@ -1,7 +1,7 @@
 {
   "name": "markly",
-  "displayName": "Markly",
-  "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
+  "displayName": "%ext.displayName%",
+  "description": "%ext.description%",
   "version": "1.39.15",
   "publisher": "jianmo",
   "repository": {
@@ -30,307 +30,307 @@
     "commands": [
       {
         "command": "markly.toggleMode",
-        "title": "Toggle Edit Mode (切换 Rich / Source)",
+        "title": "%cmd.markly.toggleMode%",
         "icon": "$(refresh)",
         "category": "Markly"
       },
       {
         "command": "markly.export.pdf",
-        "title": "Export as PDF (导出 PDF)",
+        "title": "%cmd.markly.export.pdf%",
         "icon": "$(file-pdf)",
         "category": "Markly"
       },
       {
         "command": "markly.export.html",
-        "title": "Export as HTML (导出 HTML)",
+        "title": "%cmd.markly.export.html%",
         "icon": "$(file-code)",
         "category": "Markly"
       },
       {
         "command": "markly.export.copyFailureDiagnostics",
-        "title": "Export: Copy Last Failure Diagnostics",
+        "title": "%cmd.markly.export.copyFailureDiagnostics%",
         "icon": "$(copy)",
         "category": "Markly"
       },
       {
         "command": "markly.preview.exportHtml",
-        "title": "Preview: Export HTML (read-only)",
+        "title": "%cmd.markly.preview.exportHtml%",
         "icon": "$(open-preview)",
         "category": "Markly"
       },
       {
         "command": "markly.template.newFromLibrary",
-        "title": "New Markdown from Template…",
+        "title": "%cmd.markly.template.newFromLibrary%",
         "icon": "$(file-add)",
         "category": "Markly"
       },
       {
         "command": "markly.export.image",
-        "title": "Export as Image",
+        "title": "%cmd.markly.export.image%",
         "icon": "$(file-media)",
         "category": "Markly"
       },
       {
         "command": "markly.toggleOutline",
-        "title": "Toggle Outline (切换大纲)",
+        "title": "%cmd.markly.toggleOutline%",
         "icon": "$(list-tree)",
         "category": "Markly"
       },
       {
         "command": "markly.find.toggle",
-        "title": "Find: Toggle Find and Replace Panel",
+        "title": "%cmd.markly.find.toggle%",
         "icon": "$(search)",
         "category": "Markly"
       },
       {
         "command": "markly.find.next",
-        "title": "Find: Next Match",
+        "title": "%cmd.markly.find.next%",
         "icon": "$(arrow-down)",
         "category": "Markly"
       },
       {
         "command": "markly.find.previous",
-        "title": "Find: Previous Match",
+        "title": "%cmd.markly.find.previous%",
         "icon": "$(arrow-up)",
         "category": "Markly"
       },
       {
         "command": "markly.edit.pastePlain",
-        "title": "Edit: Paste as Plain Text",
+        "title": "%cmd.markly.edit.pastePlain%",
         "icon": "$(clippy)",
         "category": "Markly"
       },
       {
         "command": "markly.edit.wrapUrlLink",
-        "title": "Edit: Wrap Selection as Markdown Link (URL)",
+        "title": "%cmd.markly.edit.wrapUrlLink%",
         "icon": "$(link-external)",
         "category": "Markly"
       },
       {
         "command": "markly.insert.table",
-        "title": "Insert Table",
+        "title": "%cmd.markly.insert.table%",
         "icon": "$(table)",
         "category": "Markly"
       },
       {
         "command": "markly.insert.codeBlock",
-        "title": "Insert Code Block",
+        "title": "%cmd.markly.insert.codeBlock%",
         "icon": "$(code)",
         "category": "Markly"
       },
       {
         "command": "markly.insert.image",
-        "title": "Insert Image",
+        "title": "%cmd.markly.insert.image%",
         "icon": "$(file-media)",
         "category": "Markly"
       },
       {
         "command": "markly.insert.link",
-        "title": "Insert Link",
+        "title": "%cmd.markly.insert.link%",
         "icon": "$(link)",
         "category": "Markly"
       },
       {
         "command": "markly.insert.hr",
-        "title": "Insert Horizontal Rule",
+        "title": "%cmd.markly.insert.hr%",
         "icon": "$(horizontal-rule)",
         "category": "Markly"
       },
       {
         "command": "markly.image.copyMissingRefs",
-        "title": "Images: Copy Missing Image List",
+        "title": "%cmd.markly.image.copyMissingRefs%",
         "icon": "$(copy)",
         "category": "Markly"
       },
       {
         "command": "markly.image.copyUnreferencedList",
-        "title": "Images: Copy Unreferenced Assets List",
+        "title": "%cmd.markly.image.copyUnreferencedList%",
         "icon": "$(file-media)",
         "category": "Markly"
       },
       {
         "command": "markly.image.openAssetsDirectory",
-        "title": "Images: Open Assets Directory",
+        "title": "%cmd.markly.image.openAssetsDirectory%",
         "icon": "$(folder-opened)",
         "category": "Markly"
       },
       {
         "command": "markly.image.openAssetsPanel",
-        "title": "Images: Open Assets Panel",
+        "title": "%cmd.markly.image.openAssetsPanel%",
         "icon": "$(references)",
         "category": "Markly"
       },
       {
         "command": "markly.image.repairFirstMissingRef",
-        "title": "Images: Repair First Missing Image",
+        "title": "%cmd.markly.image.repairFirstMissingRef%",
         "icon": "$(wrench)",
         "category": "Markly"
       },
       {
         "command": "markly.image.repairMissingRefsBatch",
-        "title": "Images: Repair All Missing Images (Sequential)",
+        "title": "%cmd.markly.image.repairMissingRefsBatch%",
         "icon": "$(wand)",
         "category": "Markly"
       },
       {
         "command": "markly.image.normalizeRefs",
-        "title": "Images: Normalize Local Image Paths",
+        "title": "%cmd.markly.image.normalizeRefs%",
         "icon": "$(symbol-file)",
         "category": "Markly"
       },
       {
         "command": "markly.image.batchReplaceInDocument",
-        "title": "Images: Batch Replace Text in Document",
+        "title": "%cmd.markly.image.batchReplaceInDocument%",
         "icon": "$(replace-all)",
         "category": "Markly"
       },
       {
         "command": "markly.image.replaceMovedImageRef",
-        "title": "Images: Replace Image Reference (Pick Old/New)",
+        "title": "%cmd.markly.image.replaceMovedImageRef%",
         "icon": "$(files)",
         "category": "Markly"
       },
       {
         "command": "markly.table.addRowBefore",
-        "title": "Table: Add Row Above",
+        "title": "%cmd.markly.table.addRowBefore%",
         "icon": "$(insert)",
         "category": "Markly"
       },
       {
         "command": "markly.table.addRowAfter",
-        "title": "Table: Add Row Below",
+        "title": "%cmd.markly.table.addRowAfter%",
         "icon": "$(insert)",
         "category": "Markly"
       },
       {
         "command": "markly.table.addColBefore",
-        "title": "Table: Add Column Left",
+        "title": "%cmd.markly.table.addColBefore%",
         "icon": "$(insert)",
         "category": "Markly"
       },
       {
         "command": "markly.table.addColAfter",
-        "title": "Table: Add Column Right",
+        "title": "%cmd.markly.table.addColAfter%",
         "icon": "$(insert)",
         "category": "Markly"
       },
       {
         "command": "markly.table.toggleHeaderRow",
-        "title": "Table: Toggle Header Row",
+        "title": "%cmd.markly.table.toggleHeaderRow%",
         "icon": "$(table)",
         "category": "Markly"
       },
       {
         "command": "markly.table.alignLeft",
-        "title": "Table: Align Left",
+        "title": "%cmd.markly.table.alignLeft%",
         "icon": "$(align-left)",
         "category": "Markly"
       },
       {
         "command": "markly.table.alignCenter",
-        "title": "Table: Align Center",
+        "title": "%cmd.markly.table.alignCenter%",
         "icon": "$(align-center)",
         "category": "Markly"
       },
       {
         "command": "markly.table.alignRight",
-        "title": "Table: Align Right",
+        "title": "%cmd.markly.table.alignRight%",
         "icon": "$(align-right)",
         "category": "Markly"
       },
       {
         "command": "markly.table.mergeCells",
-        "title": "Table: Merge Cells",
+        "title": "%cmd.markly.table.mergeCells%",
         "icon": "$(combine)",
         "category": "Markly"
       },
       {
         "command": "markly.table.splitCell",
-        "title": "Table: Split Cell",
+        "title": "%cmd.markly.table.splitCell%",
         "icon": "$(split-horizontal)",
         "category": "Markly"
       },
       {
         "command": "markly.table.deleteTable",
-        "title": "Table: Delete Table",
+        "title": "%cmd.markly.table.deleteTable%",
         "icon": "$(trash)",
         "category": "Markly"
       },
       {
         "command": "markly.table.deleteRow",
-        "title": "Table: Delete Row",
+        "title": "%cmd.markly.table.deleteRow%",
         "icon": "$(trash)",
         "category": "Markly"
       },
       {
         "command": "markly.table.deleteCol",
-        "title": "Table: Delete Column",
+        "title": "%cmd.markly.table.deleteCol%",
         "icon": "$(trash)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.summarize",
-        "title": "Writing: Insert Local Summary",
+        "title": "%cmd.markly.assist.summarize%",
         "icon": "$(sparkle)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.suggestTitle",
-        "title": "Writing: Suggest Title",
+        "title": "%cmd.markly.assist.suggestTitle%",
         "icon": "$(symbol-string)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.fixMarkdown",
-        "title": "Writing: Fix Markdown Structure",
+        "title": "%cmd.markly.assist.fixMarkdown%",
         "icon": "$(wand)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.tidyTables",
-        "title": "Writing: Tidy Markdown Tables",
+        "title": "%cmd.markly.assist.tidyTables%",
         "icon": "$(table)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.convertTextToGfmTable",
-        "title": "Writing: Convert Selection to GFM Table (AI)",
+        "title": "%cmd.markly.assist.convertTextToGfmTable%",
         "icon": "$(table)",
         "category": "Markly"
       },
       {
         "command": "markly.assist.rewriteSelection",
-        "title": "Writing: Rewrite Selection (local mock)",
+        "title": "%cmd.markly.assist.rewriteSelection%",
         "icon": "$(edit)",
         "category": "Markly"
       },
       {
         "command": "markly.ai.setApiKey",
-        "title": "AI: Set API Key",
+        "title": "%cmd.markly.ai.setApiKey%",
         "icon": "$(key)",
         "category": "Markly"
       },
       {
         "command": "markly.ai.clearApiKey",
-        "title": "AI: Clear API Key",
+        "title": "%cmd.markly.ai.clearApiKey%",
         "icon": "$(trash)",
         "category": "Markly"
       },
       {
         "command": "markly.ai.validateSetup",
-        "title": "AI: Validate Setup",
+        "title": "%cmd.markly.ai.validateSetup%",
         "icon": "$(check)",
         "category": "Markly"
       },
       {
         "command": "markly.ai.openPrivacyNotice",
-        "title": "AI: Open Privacy Notice",
+        "title": "%cmd.markly.ai.openPrivacyNotice%",
         "icon": "$(info)",
         "category": "Markly"
       },
       {
         "command": "markly.help.recoveryCenter",
-        "title": "Help: Open Recovery & Troubleshooting",
+        "title": "%cmd.markly.help.recoveryCenter%",
         "icon": "$(tools)",
         "category": "Markly"
       }
@@ -360,75 +360,83 @@
     "walkthroughs": [
       {
         "id": "markly.welcome",
-        "title": "Markly 快速上手",
-        "description": "熟悉 Rich / Source、导出与快捷键；遇到问题可查自救指南。",
+        "title": "%walkthrough.markly.welcome.title%",
+        "description": "%walkthrough.markly.welcome.description%",
         "steps": [
           {
             "id": "markly.welcome.modes",
-            "title": "Rich 与 Source",
-            "description": "**推荐主路径**：工具栏切换 **Rich**（所见即所得）与 **Source**（Markdown 源码）。命令面板：**Markly: Toggle Edit Mode (切换 Rich / Source)**（默认快捷键 macOS `Cmd+\\`，Windows / Linux `Ctrl+\\`）。\n\n历史 **IR（中间模式）** 已冻结、不向新场景投入；如需了解迁移与移除计划见仓库 **`docs/IR_REMOVAL_ROADMAP.md`**。\n\n[打开键盘快捷方式](command:workbench.action.openGlobalKeybindings)",
+            "title": "%walkthrough.markly.welcome.step.modes.title%",
+            "description": "%walkthrough.markly.welcome.step.modes.description%",
             "media": {
               "image": "images/icon.png",
-              "altText": "Markly"
+              "altText": "%walkthrough.markly.welcome.step.modes.altText%"
             },
-            "completionEvents": ["onStepSelected"]
+            "completionEvents": [
+              "onStepSelected"
+            ]
           },
           {
             "id": "markly.welcome.export",
-            "title": "导出 PDF / HTML",
-            "description": "编辑器标题栏可快速导出；或在命令面板搜索 **Export as PDF** / **Export as HTML**。导出失败时可复制诊断包（**Export: Copy Last Failure Diagnostics**）。",
+            "title": "%walkthrough.markly.welcome.step.export.title%",
+            "description": "%walkthrough.markly.welcome.step.export.description%",
             "media": {
               "image": "images/icon.png",
-              "altText": "Export"
+              "altText": "%walkthrough.markly.welcome.step.export.altText%"
             },
-            "completionEvents": ["onStepSelected"]
+            "completionEvents": [
+              "onStepSelected"
+            ]
           },
           {
             "id": "markly.welcome.assets",
-            "title": "图片与资产",
-            "description": "粘贴图片默认写入文档相对目录（见设置 **markly.image.saveDirectory**）。缺失图、未引用资产可用命令面板里的 **Images:** 系列命令修复。\n\n[打开设置（搜索 markly）](command:workbench.action.openSettings)",
+            "title": "%walkthrough.markly.welcome.step.assets.title%",
+            "description": "%walkthrough.markly.welcome.step.assets.description%",
             "media": {
               "image": "images/icon.png",
-              "altText": "Assets"
+              "altText": "%walkthrough.markly.welcome.step.assets.altText%"
             },
-            "completionEvents": ["onStepSelected"]
+            "completionEvents": [
+              "onStepSelected"
+            ]
           },
           {
             "id": "markly.welcome.recovery",
-            "title": "遇到问题？自救中心",
-            "description": "集中查看 Rich / 导出 / 资产的常见问题与命令入口。\n\n[打开自救与排障指南](command:markly.help.recoveryCenter)",
+            "title": "%walkthrough.markly.welcome.step.recovery.title%",
+            "description": "%walkthrough.markly.welcome.step.recovery.description%",
             "media": {
               "image": "images/icon.png",
-              "altText": "Recovery"
+              "altText": "%walkthrough.markly.welcome.step.recovery.altText%"
             },
-            "completionEvents": ["onCommand:markly.help.recoveryCenter"]
+            "completionEvents": [
+              "onCommand:markly.help.recoveryCenter"
+            ]
           }
         ]
       }
     ],
     "configuration": {
-      "title": "Markly",
+      "title": "%config.title%",
       "properties": {
         "markly.telemetry.enabled": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "**可选匿名遥测（默认关闭）。**\n\n- `false`（默认）：不向第三方发送遥测；不在本地 Output 记录计数。\n- `true`：仅在本地 **Output → 「Markly Telemetry (local)」** 写入匿名事件计数（如会话开始、导出成功），便于你自己排查；**仍不向第三方发送**。后续若接入云端需另行隐私说明与同意。\n\n示例：保持默认即可：`\"markly.telemetry.enabled\": false`"
+          "markdownDescription": "%config.markly.telemetry.enabled.markdownDescription%"
         },
         "markly.image.saveDirectory": {
           "type": "string",
           "default": "./assets",
-          "description": "Subdirectory for pasted/dropped images, relative to the Markdown file.",
-          "markdownDescription": "粘贴/拖入图片时，相对 **当前 Markdown 文件** 保存的子目录。\n\n示例： `\"./assets\"` → 图片落在 `文档同级/assets/`；`\"./images\"` → `文档同级/images/`。"
+          "description": "%config.markly.image.saveDirectory.description%",
+          "markdownDescription": "%config.markly.image.saveDirectory.markdownDescription%"
         },
         "markly.image.compressThreshold": {
           "type": "number",
           "default": 512000,
-          "description": "Image compression threshold in bytes (500KB default)"
+          "description": "%config.markly.image.compressThreshold.description%"
         },
         "markly.image.compressQuality": {
           "type": "number",
           "default": 0.8,
-          "description": "Image compression quality (0-1)"
+          "description": "%config.markly.image.compressQuality.description%"
         },
         "markly.image.sameNameHandling": {
           "type": "string",
@@ -438,7 +446,7 @@
             "prompt"
           ],
           "default": "rename",
-          "description": "When saving a pasted/dropped image, if an asset filename already exists: overwrite file, pick a unique name automatically, or ask (prompt)"
+          "description": "%config.markly.image.sameNameHandling.description%"
         },
         "markly.editor.theme": {
           "type": "string",
@@ -448,17 +456,17 @@
             "light",
             "dark"
           ],
-          "description": "Editor theme"
+          "description": "%config.markly.editor.theme.description%"
         },
         "markly.editor.fontSize": {
           "type": "number",
           "default": 14,
-          "description": "Editor font size"
+          "description": "%config.markly.editor.fontSize.description%"
         },
         "markly.editor.fontFamily": {
           "type": "string",
           "default": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-          "description": "Editor font family"
+          "description": "%config.markly.editor.fontFamily.description%"
         },
         "markly.editor.wrapPolicy": {
           "type": "string",
@@ -467,7 +475,7 @@
             "autoWrap",
             "preferScroll"
           ],
-          "description": "Overflow policy for long lines: auto wrap or prefer horizontal scroll"
+          "description": "%config.markly.editor.wrapPolicy.description%"
         },
         "markly.editor.tableCellWrap": {
           "type": "string",
@@ -476,19 +484,19 @@
             "wrap",
             "nowrap"
           ],
-          "description": "Rich table cell wrapping: wrap text or keep single-line with horizontal scroll"
+          "description": "%config.markly.editor.tableCellWrap.description%"
         },
         "markly.editor.enableMermaid": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Mermaid rendering in Rich mode (may impact performance)",
-          "markdownDescription": "Rich 模式下是否渲染 Mermaid 图（导出 HTML/PDF 时也会内联处理）。\n\n- **示例**：`true`（默认）在文档较大或图多时可能更耗 CPU；卡顿可先改为 `false` 再试。\n- 与 **包体/依赖**：`mermaid` 为扩展依赖，详见仓库 `resources/BUNDLE_GOVERNANCE.md`。"
+          "description": "%config.markly.editor.enableMermaid.description%",
+          "markdownDescription": "%config.markly.editor.enableMermaid.markdownDescription%"
         },
         "markly.editor.enableShiki": {
           "type": "boolean",
           "default": false,
-          "description": "Enable Shiki syntax highlighting in Rich mode (may impact stability)",
-          "markdownDescription": "Rich 模式下代码块是否用 Shiki 高亮。\n\n- **示例**：默认 `false`（更稳）；开启后大文档可能与 **档位** 降级联动。\n- Shiki 与主题字体一并影响编辑负载。"
+          "description": "%config.markly.editor.enableShiki.description%",
+          "markdownDescription": "%config.markly.editor.enableShiki.markdownDescription%"
         },
         "markly.editor.richTableColumnResize": {
           "type": "string",
@@ -498,17 +506,17 @@
             "on",
             "off"
           ],
-          "description": "Rich mode: draggable column widths in tables. Auto skips the plugin for large tables (same soft limits as table paste) to reduce scroll/selection latency; use on/off to force."
+          "description": "%config.markly.editor.richTableColumnResize.description%"
         },
         "markly.editor.deferDiagramRenderInRich": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "为 `true` 时 Rich 模式 **完全不初始化 Mermaid**，图表保持 ```mermaid 源码块形态（省电/弱机可先开）；与文档体量档位/看门狗降级正交。**导出 HTML/PDF 不受影响**。\n\n- 性能档位与启动说明：**`resources/PERFORMANCE_NOTES.md`**\n- **IR（decorator 中间模式）冻结**、不向新用户推荐使用：**`docs/IR_REMOVAL_ROADMAP.md`**；近期收口路线：**`docs/ROADMAP_NEAR.md`**（M201+）"
+          "markdownDescription": "%config.markly.editor.deferDiagramRenderInRich.markdownDescription%"
         },
         "markly.editor.defaultForMarkdown": {
           "type": "boolean",
           "default": true,
-          "description": "Use Markly as the default editor for Markdown files"
+          "description": "%config.markly.editor.defaultForMarkdown.description%"
         },
         "markly.export.pdf.format": {
           "type": "string",
@@ -519,7 +527,7 @@
             "Letter",
             "Legal"
           ],
-          "description": "PDF page format"
+          "description": "%config.markly.export.pdf.format.description%"
         },
         "markly.export.pdf.margin": {
           "type": "object",
@@ -529,17 +537,17 @@
             "bottom": 25,
             "left": 20
           },
-          "description": "PDF page margins in mm"
+          "description": "%config.markly.export.pdf.margin.description%"
         },
         "markly.export.pdf.includeToc": {
           "type": "boolean",
           "default": true,
-          "description": "Include table of contents in PDF export"
+          "description": "%config.markly.export.pdf.includeToc.description%"
         },
         "markly.export.pdf.displayHeaderFooter": {
           "type": "boolean",
           "default": true,
-          "description": "Display header/footer in PDF export"
+          "description": "%config.markly.export.pdf.displayHeaderFooter.description%"
         },
         "markly.export.pdf.template": {
           "type": "string",
@@ -548,7 +556,7 @@
             "default",
             "academic"
           ],
-          "description": "PDF layout theme: default (GitHub-like sans) vs academic (serif, print-oriented colors). Page margins still use export.pdf.margin."
+          "description": "%config.markly.export.pdf.template.description%"
         },
         "markly.export.html.theme": {
           "type": "string",
@@ -557,17 +565,17 @@
             "default",
             "print-friendly"
           ],
-          "description": "HTML export theme: screen default vs print-oriented layout/CSS"
+          "description": "%config.markly.export.html.theme.description%"
         },
         "markly.export.html.copyLocalImages": {
           "type": "boolean",
           "default": false,
-          "description": "M82: When exporting HTML, copy local images (relative to the Markdown file directory) next to the output file and rewrite <img src>."
+          "description": "%config.markly.export.html.copyLocalImages.description%"
         },
         "markly.export.html.assetsSubdirectory": {
           "type": "string",
           "default": "markly-html-assets",
-          "description": "M82: Subfolder name under the HTML output directory for copied images. Must be a single segment (no /, \\, or ..)."
+          "description": "%config.markly.export.html.assetsSubdirectory.description%"
         },
         "markly.export.diagram.mermaidScriptBundling": {
           "type": "string",
@@ -576,7 +584,7 @@
             "embedded",
             "external"
           ],
-          "markdownDescription": "**M40**：导出 HTML/PDF/预览里的 Mermaid 脚本注入方式。\n\n- **embedded（默认）**：内联扩展自带的 `mermaid.min.js`，离线可渲染，文件较大。\n- **external**：从 jsDelivr 拉取与扩展固定版本一致的 `mermaid.min.js`，HTML 体积小，导出环境需联网。"
+          "markdownDescription": "%config.markly.export.diagram.mermaidScriptBundling.markdownDescription%"
         },
         "markly.export.preflight.scope": {
           "type": "string",
@@ -586,14 +594,14 @@
             "images",
             "full"
           ],
-          "description": "M83: Preflight before PDF/HTML export. off: none; images: missing local images only; full: images + missing local markdown links + unbalanced $/$$ math delimiters (heuristic).",
-          "markdownDescription": "导出 PDF/HTML **之前** 的静态检查范围。\n\n| 值 | 含义 |\n|----|------|\n| `off` | 不检查 |\n| `images` | 仅缺失本地图片 |\n| `full`（默认） | 图片 + 失效本地 Markdown 链接 + `$`/`$$` 数学定界符启发式检查 |\n\n**示例**：若只想快导出、接受缺图，可设 `\"markly.export.preflight.scope\": \"off\"`。"
+          "description": "%config.markly.export.preflight.scope.description%",
+          "markdownDescription": "%config.markly.export.preflight.scope.markdownDescription%"
         },
         "markly.export.preflight.blockOnIssues": {
           "type": "boolean",
           "default": false,
-          "description": "M83: When true, if preflight finds any issue, show a modal and require confirmation before exporting.",
-          "markdownDescription": "为 `true` 时，预检发现问题会 **弹窗确认** 后才继续导出；`false` 时仅展示问题（若实现为通知）或仍允许一键继续。适合「不想带着错图就发 PDF」的工作流。"
+          "description": "%config.markly.export.preflight.blockOnIssues.description%",
+          "markdownDescription": "%config.markly.export.preflight.blockOnIssues.markdownDescription%"
         },
         "markly.image.remoteHttpsHostsAllowlist": {
           "type": "array",
@@ -601,23 +609,23 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "**M46**：HTTPS 外链图片 **host** 允许列表。\n\n- **空数组（默认）**：不额外告警。\n- **非空**：在导出预检「images/full」范围内，对每个 `![](https://…)` 检查 host（忽略大小写、`www.` 前缀）是否列出；不符合则报错/提示。**http://** 同样检查。"
+          "markdownDescription": "%config.markly.image.remoteHttpsHostsAllowlist.markdownDescription%"
         },
         "markly.image.pasteImageBasenamePrefix": {
           "type": "string",
           "default": "paste",
-          "markdownDescription": "**M49**：粘贴/保存到工作区的图片文件名前缀：`{前缀}-YYYYMMDD-HHmmss-{随机}.{扩展}`。\n\n仅影响 **新生成** 的文件名。"
+          "markdownDescription": "%config.markly.image.pasteImageBasenamePrefix.markdownDescription%"
         },
         "markly.templates.userDirectory": {
           "type": "string",
           "default": "",
-          "markdownDescription": "M90: Folder containing your own `*.md` / `*.markdown` templates (top level only). Use an absolute path or `~/…` for under the user home directory. Empty: only built-in templates appear in **New Markdown from Template**."
+          "markdownDescription": "%config.markly.templates.userDirectory.markdownDescription%"
         },
         "markly.ai.rewrite.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Allow AI writing assists (selection rewrite, sidecar summary, title suggest, table conversion, etc.).",
-          "markdownDescription": "开启后，侧栏摘要、标题建议、选区润色、选区转表等 **AI 能力** 才会按配置访问提供商。\n\n- **默认 `false`**：不向任何 Endpoint 发起 AI 请求（相当于「默认不上传全文 / 不做后台同步」）。\n- 使用 **openai-compatible** 时，出站 HTTPS **仅在你点击对应功能的那一次**发生，且传输范围见随扩展附带的说明文档。\n\n命令：**AI: Open Privacy Notice**（`markly.ai.openPrivacyNotice`）。"
+          "description": "%config.markly.ai.rewrite.enabled.description%",
+          "markdownDescription": "%config.markly.ai.rewrite.enabled.markdownDescription%"
         },
         "markly.ai.rewrite.provider": {
           "type": "string",
@@ -627,24 +635,24 @@
             "mock",
             "openai-compatible"
           ],
-          "description": "AI provider: none / mock (no remote HTTP) / openai-compatible.",
-          "markdownDescription": "- **`mock`（默认）** / **`none`**：不向公网发送写作内容（`none` 下相关能力会按实现拒绝）。\n- **`openai-compatible`**：仅在 `markly.ai.rewrite.enabled=true` 且你执行具体 AI 操作时，将对应文本片段发往 `markly.ai.rewrite.endpoint`。\n\n完整数据范围与「三句话可复述」摘要：**AI: Open Privacy Notice**。"
+          "description": "%config.markly.ai.rewrite.provider.description%",
+          "markdownDescription": "%config.markly.ai.rewrite.provider.markdownDescription%"
         },
         "markly.ai.rewrite.endpoint": {
           "type": "string",
           "default": "https://api.openai.com/v1/chat/completions",
-          "description": "openai-compatible endpoint URL (usually ends with /v1/chat/completions). Tip: run “AI: Validate Setup” after changing settings."
+          "description": "%config.markly.ai.rewrite.endpoint.description%"
         },
         "markly.ai.rewrite.model": {
           "type": "string",
           "default": "gpt-4o-mini",
-          "description": "openai-compatible model name. Tip: run “AI: Set API Key” once (stored in VS Code SecretStorage)."
+          "description": "%config.markly.ai.rewrite.model.description%"
         },
         "markly.ai.rewrite.timeoutMs": {
           "type": "number",
           "default": 15000,
           "minimum": 1000,
-          "description": "openai-compatible request timeout in milliseconds"
+          "description": "%config.markly.ai.rewrite.timeoutMs.description%"
         }
       }
     },
@@ -674,6 +682,7 @@
     "preflight": "npm run lint && npm run check:ir-freeze && npm test && npm run build && npm run check:bundle && npm run check:release",
     "gates:stable": "npm run lint && npm run check:ir-freeze && npm test && npm run build && npm run check:bundle",
     "m8:baseline": "node ./scripts/m8-baseline.mjs",
+    "sbom:generate": "node ./scripts/generate-sbom.mjs",
     "dev:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --format=cjs --platform=node --watch --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "dev:webview": "cd webview && npm run dev",
     "test": "vitest run && cd webview && npm test",
@@ -685,6 +694,7 @@
     "test:vscode:ui:stable": "MARKLY_UI_REPEAT=3 npm run test:vscode:ui",
     "vscode:ui": "npm run build && node ./e2e/vscode-ui-launch.mjs",
     "lint": "eslint src --ext .ts,.tsx",
+    "images:optimize": "node ./scripts/optimize-images.mjs",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -700,6 +710,7 @@
     "eslint": "^8.55.0",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",
+    "oxipng-bin": "^1.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.2",
     "vitest": "^1.0.4",
@@ -709,7 +720,7 @@
     "browser-image-compression": "^2.0.2",
     "katex": "^0.16.9",
     "marked": "^12.0.2",
-    "mermaid": "^11.12.3",
+    "mermaid": "^11.14.0",
     "puppeteer": "^24.38.0",
     "shiki": "^1.0.0",
     "tui-image-editor": "^3.15.3",

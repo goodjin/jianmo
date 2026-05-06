@@ -25,6 +25,12 @@ npm run gates:stable
 
 GitHub Actions 的 **CI** 在上述基础上还会跑 **`npm run test:vscode`**（Linux + `xvfb-run`，见 `.github/workflows/ci.yml`）与 **`npm run record:bundle-sizes`**（仅写 `tmp/bundle-sizes.json`，不落库）。本地若跑集成测试：先 `npm run build`，再 `npm run test:vscode`；macOS 可用系统 VS Code，或通过环境变量指定 CLI：`MARKLY_VSCODE_EXECUTABLE_PATH=/path/to/code`。
 
+## 中期补充（M307–M316）
+
+- **i18n**：`package.json` 的用户可见文案通过 `package.nls*.json` 维护（避免中英混杂硬编码）。
+- **排障**：优先引导用户复制诊断信息（`resources/TROUBLESHOOTING.md` 有汇总入口）。
+- **包体治理**：bundle budget 与阈值环境变量见 `resources/BUNDLE_GOVERNANCE.md`。
+
 ## 发版路径额外检查
 
 ```bash

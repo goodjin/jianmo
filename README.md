@@ -9,6 +9,7 @@ A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing 
 - **Rich + Source**: Rich is the primary WYSIWYG experience; Source is a reliable fallback when needed.
 - **Tables & images**: Rich table editing + paste support; image paste/drag-save with assets tools.
 - **Export & supportability**: PDF/HTML export with preflight checks and copyable, sanitized diagnostics when things go wrong.
+- **Mid-phase hardening**: stricter CSP, Mermaid offline-default for export preview, image assets cleanup wizard, SBOM generation.
 
 Recent (v1.39.15): Rich fallback banner shows a copyable error snippet; export preflight warns on many local images; save failures return `SAVE_FAILED`.
 

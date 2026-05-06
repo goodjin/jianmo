@@ -20,3 +20,9 @@
   - 右上角“打开方式/选择编辑器”改回 `Text Editor` 或其它 Markdown 编辑器
 - 或在设置里调整文件关联（以 VS Code 的 UI 为准）
 
+## M320：策略落地说明（当前实现）
+
+- **默认行为**：安装后 `.md` 默认使用 Markly（见设置 `markly.editor.defaultForMarkdown`，默认 `true`）。
+- **用户可控**：用户可在任意工作区或 Profile 中覆盖该设置，或对单个文件选择其它编辑器。
+- **企业/团队**：若需要在某个仓库统一策略，建议放到 `.vscode/settings.json`（见 `docs/ENTERPRISE_POLICY_MANAGED_SETTINGS_M306.md`）。
+

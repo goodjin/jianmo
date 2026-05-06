@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Mid Phase (M305–M316) snapshot
+
+- Docs: Profiles support (`docs/CONFIG_PROFILES_M305.md`), enterprise managed settings (`docs/ENTERPRISE_POLICY_MANAGED_SETTINGS_M306.md`).
+- i18n: moved `package.json` user-facing strings to `package.nls*.json`.
+- A11y/E2E/Perf: added baseline docs (`docs/A11Y_BASELINE_M308.md`, `docs/E2E_BRIDGE_CONTRACT_M309.md`, `docs/E2E_SMOKE_SUITE_M310.md`, `docs/PERF_BASELINE_M312.md`).
+- Release: added release playbook (`docs/RELEASE_PLAYBOOK_M316.md`).
+
 ## [1.39.15] - 2026-05-06
 
 ### Highlights (user-facing)
