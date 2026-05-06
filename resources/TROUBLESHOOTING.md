@@ -15,8 +15,14 @@
 ## 导出 PDF / HTML 失败
 
 1. 使用 **Export: Copy Last Failure Diagnostics**（`markly.export.copyFailureDiagnostics`）复制脱敏诊断，便于提 Issue。
-2. 将 **`markly.export.preflight.scope`** 设为 `images` 或 `off` 试是否由预检项引起；检查 **`markly.export.pdf`** / **`markly.export.html`** 各项。
-3. PDF 依赖本机可用的 Chromium（Puppeteer）；企业网络或沙箱环境可能拦截浏览器下载或启动。
+2. **预检（M224）**：非阻塞提示里可点 **「打开文档并定位」**，在默认 Markdown 编辑器中跳到**首条问题的大概行号**；阻塞预检里选 **「打开文档并定位」** 会先打开文档并**取消本次导出**（修好后再导出一次即可）。
+3. 将 **`markly.export.preflight.scope`** 设为 `images` 或 `off` 试是否由预检项引起；检查 **`markly.export.pdf`** / **`markly.export.html`** 各项。
+4. PDF 依赖本机可用的 Chromium（Puppeteer）；企业网络或沙箱环境可能拦截浏览器下载或启动。进度通知上可 **取消导出**（best-effort）。
+
+## 大图粘贴 / 剪贴板很慢（M219）
+
+- 高分辨率截图进剪贴板时，扩展会按 **`markly.image.compressThreshold`** / **`markly.image.compressQuality`** 尝试压缩后再落盘；超大图仍可能明显卡顿，属预期成本。
+- **建议**：先缩小截图区域、或保存为文件后拖入；弱机可酌情调低质量阈值。
 
 ## 图片 / 资产路径
 

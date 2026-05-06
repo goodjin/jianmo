@@ -5,6 +5,10 @@ export function formatExportFailure(format: 'pdf' | 'html' | string, err: unknow
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
+  if (lower.includes('export cancelled')) {
+    return `导出已取消。若卡住过久，可先关闭进度通知再试。`;
+  }
+
   if (format === 'pdf') {
     if (lower.includes('failed to launch') || lower.includes('browser') || lower.includes('chromium')) {
       return `PDF 导出失败：无法启动内置 Chromium（Puppeteer）。请在允许启动子进程的环境中重试，或检查安全软件是否拦截。\n详情：${raw}`;
@@ -15,12 +19,24 @@ export function formatExportFailure(format: 'pdf' | 'html' | string, err: unknow
     if (lower.includes('enoent') || lower.includes('no such file')) {
       return `PDF 导出失败：输出路径无效或磁盘不可写。\n详情：${raw}`;
     }
+    if (lower.includes('eacces') || lower.includes('eperm') || lower.includes('permission denied')) {
+      return `PDF 导出失败：当前环境无权限写入目标路径（或被安全软件拦截）。请换目录或以可写权限重试。\n详情：${raw}`;
+    }
+    if (lower.includes('enospc') || lower.includes('no space left')) {
+      return `PDF 导出失败：磁盘空间不足，请清理后重试。\n详情：${raw}`;
+    }
     return `PDF 导出失败：${raw}`;
   }
 
   if (format === 'html') {
     if (lower.includes('enoent') || lower.includes('no such file')) {
       return `HTML 导出失败：输出路径无效或磁盘不可写。\n详情：${raw}`;
+    }
+    if (lower.includes('eacces') || lower.includes('eperm') || lower.includes('permission denied')) {
+      return `HTML 导出失败：当前环境无权限写入目标路径。请换目录或以可写权限重试。\n详情：${raw}`;
+    }
+    if (lower.includes('enospc') || lower.includes('no space left')) {
+      return `HTML 导出失败：磁盘空间不足，请清理后重试。\n详情：${raw}`;
     }
     return `HTML 导出失败：${raw}`;
   }

@@ -46,5 +46,14 @@ jobs:
       - name: Bundle size guard
         run: npm run check:bundle
 
+      - name: Bundle size report (M250)
+        run: node ./scripts/record-bundle-sizes.mjs
+
+      - name: VS Code integration tests (M247 smoke, headless)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          xvfb-run -a npm run test:vscode
+
       - name: Release metadata guard
         run: npm run check:release

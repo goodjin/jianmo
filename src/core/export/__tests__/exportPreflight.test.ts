@@ -58,7 +58,23 @@ describe('analyzeMarkdownExportPreflight', () => {
       workspaceRootFsPath: root,
       scope: 'images',
     });
-    expect(issues.some((i) => i.kind === 'missing_image' && i.ref === './a.png')).toBe(true);
+    const miss = issues.find((i) => i.kind === 'missing_image' && i.ref === './a.png');
+    expect(miss).toBeTruthy();
+    expect(miss?.sourceLine).toBe(1);
+  });
+
+  it('M224: attaches sourceLine for broken math outside fences', () => {
+    const md = '# t\n\nok\n\ninline $broken\n';
+    const issues = analyzeMarkdownExportPreflight({
+      markdown: md,
+      sourceFileFsPath: '/tmp/x.md',
+      workspaceRootFsPath: '/tmp',
+      scope: 'full',
+      existsSync: () => true,
+    });
+    const math = issues.find((i) => i.kind === 'broken_math');
+    expect(math).toBeTruthy();
+    expect(math?.sourceLine).toBe(5);
   });
 
   it('reports missing local link under full scope', () => {

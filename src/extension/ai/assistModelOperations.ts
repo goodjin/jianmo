@@ -236,7 +236,10 @@ export function createAssistModelOperations(
   let inFlight = 0;
   const guard = async <T>(fn: () => Promise<AssistResult<T>>): Promise<AssistResult<T>> => {
     if (inFlight >= 1) {
-      return { ok: false, error: 'AI 请求过于频繁：请等待上一条请求完成。' };
+      return {
+          ok: false,
+          error: 'AI：上一条请求尚未结束，请等待完成后再试（防误触连发）。',
+        };
     }
     inFlight++;
     try {

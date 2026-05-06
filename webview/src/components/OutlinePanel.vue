@@ -24,7 +24,7 @@
     <div v-else class="outline-list">
       <div
         v-for="item in visibleOutline"
-        :key="item.headingIndex"
+        :key="item.stableKey"
         class="outline-row"
         :class="{
           'outline-row-drag-over':
@@ -51,7 +51,7 @@
             >⋮⋮</span>
         </div>
         <button
-          v-if="!filterActive && item.hasChildren"
+          v-if="!filterActive && item.kind !== 'diagram' && item.hasChildren"
           class="outline-collapse"
           type="button"
           :title="item.collapsed ? '展开小节' : '折叠小节'"
@@ -72,7 +72,7 @@
         {{ item.text }}
       </button>
         <span
-          v-if="item.duplicateSlug"
+          v-if="item.kind === 'heading' && item.duplicateSlug"
           class="outline-slug-conflict"
           role="img"
           :aria-label="'锚点与其它小节重复：' + item.text"
@@ -87,8 +87,12 @@
 import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import type { EditorMode } from '../../src/types';
 import { collectOutlineFilterIndices, generateHeadingId, getDuplicateHeadingSlugs, parseHeadings } from '../shared/outline';
+import { parseMermaidOutlineEntries } from '../shared/mermaidOutline';
 
 interface OutlineItem {
+  kind: 'heading' | 'diagram';
+  /** Vue 列表 key（避免标题下标与图表项冲突） */
+  stableKey: string;
   id: string;
   level: number;
   text: string;
@@ -123,7 +127,21 @@ const emit = defineEmits<{
 const outline = ref<OutlineItem[]>([]);
 /** M61：标题筛选（本地状态；面板 v-if 关闭时会随组件销毁清空） */
 const outlineSearchQuery = ref('');
-const filterActive = computed(() => outlineSearchQuery.value.trim().length > 0);
+/** M231：筛选输入防抖，减轻大文档下连续键入时的重算 */
+const outlineFilterDebounced = ref('');
+const OUTLINE_FILTER_DEBOUNCE_MS = 100;
+let outlineFilterTimer: ReturnType<typeof setTimeout> | null = null;
+watch(outlineSearchQuery, (q) => {
+  if (outlineFilterTimer) {
+    clearTimeout(outlineFilterTimer);
+    outlineFilterTimer = null;
+  }
+  outlineFilterTimer = setTimeout(() => {
+    outlineFilterDebounced.value = q;
+    outlineFilterTimer = null;
+  }, OUTLINE_FILTER_DEBOUNCE_MS);
+}, { immediate: true });
+const filterActive = computed(() => outlineFilterDebounced.value.trim().length > 0);
 const MARKLY_TOP_DND = 'markly-outline-top:';
 const draggingTopFrom = ref<number | null>(null);
 const dragOverTopLevelIndex = ref<number | null>(null);
@@ -143,11 +161,14 @@ let hasParsedOnce = false;
 // 解析内容生成大纲
 function parseOutline(content: string): OutlineItem[] {
   const headings = parseHeadings(content);
-  if (headings.length === 0) return [];
-  const duplicateIds = getDuplicateHeadingSlugs(headings);
-  const minLevel = Math.min(...headings.map((h) => h.level));
+  const diagrams = parseMermaidOutlineEntries(content);
+  if (headings.length === 0 && diagrams.length === 0) return [];
+
+  const duplicateIds = headings.length ? getDuplicateHeadingSlugs(headings) : new Set<string>();
+  const minLevel = headings.length ? Math.min(...headings.map((h) => h.level)) : 1;
   let topLevelCounter = 0;
-  return headings.map((heading, index) => {
+
+  const headingItems: OutlineItem[] = headings.map((heading, index) => {
     let hasChildren = false;
     for (const next of headings.slice(index + 1)) {
       if (next.level <= heading.level) break;
@@ -158,6 +179,8 @@ function parseOutline(content: string): OutlineItem[] {
     const isTop = heading.level === minLevel;
     const topLevelIndex = isTop ? topLevelCounter++ : -1;
     return {
+      kind: 'heading',
+      stableKey: `h:${index}:${id}`,
       id,
       level: heading.level,
       text: heading.text,
@@ -169,6 +192,27 @@ function parseOutline(content: string): OutlineItem[] {
       topLevelIndex,
     };
   });
+
+  const diagramItems: OutlineItem[] = diagrams.map((d) => ({
+    kind: 'diagram',
+    stableKey: `d:${d.index}:${d.id}`,
+    id: d.id,
+    level: 2,
+    text: d.label,
+    pos: d.from,
+    collapsed: false,
+    hasChildren: false,
+    duplicateSlug: false,
+    headingIndex: -1,
+    topLevelIndex: -1,
+  }));
+
+  const merged = [
+    ...headingItems.map((item) => ({ sort: item.pos, item })),
+    ...diagramItems.map((item) => ({ sort: item.pos, item })),
+  ];
+  merged.sort((a, b) => a.sort - b.sort);
+  return merged.map((row) => row.item);
 }
 
 // 监听内容变化，更新大纲
@@ -206,6 +250,10 @@ onBeforeUnmount(() => {
   if (parseTimer) {
     clearTimeout(parseTimer);
     parseTimer = null;
+  }
+  if (outlineFilterTimer) {
+    clearTimeout(outlineFilterTimer);
+    outlineFilterTimer = null;
   }
 });
 
@@ -268,7 +316,7 @@ function onRowDrop(item: OutlineItem, e: DragEvent) {
 }
 
 const visibleOutline = computed(() => {
-  const allowed = collectOutlineFilterIndices(outline.value, outlineSearchQuery.value);
+  const allowed = collectOutlineFilterIndices(outline.value, outlineFilterDebounced.value);
   if (allowed !== null) {
     if (allowed.size === 0) return [];
     return outline.value.filter((_, i) => allowed.has(i));

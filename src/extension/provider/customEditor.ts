@@ -673,6 +673,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         markdown: doc.content,
         documentUri: docUri,
         htmlTheme: this.config.export.html?.theme ?? 'default',
+        mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
       });
       return;
     }
@@ -700,6 +701,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
             scope: pfScope,
             blockOnIssues: pfBlock,
             formatLabel: 'HTML',
+            remoteHttpsHostsAllowlist: this.config.image?.remoteHttpsHostsAllowlist,
           }))
         ) {
           return;
@@ -711,6 +713,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
           copyLocalImages: this.config.export.html?.copyLocalImages === true,
           documentBaseDir: path.dirname(docUri.fsPath),
           assetsSubdirectory: this.config.export.html?.assetsSubdirectory ?? 'markly-html-assets',
+          mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
         });
         vscode.window.showInformationMessage(`HTML 已导出: ${saveUri.fsPath}`);
         return;
@@ -724,6 +727,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
             scope: pfScope,
             blockOnIssues: pfBlock,
             formatLabel: 'PDF',
+            remoteHttpsHostsAllowlist: this.config.image?.remoteHttpsHostsAllowlist,
           }))
         ) {
           return;
@@ -732,7 +736,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         await exportToPdf(
           doc.content,
           saveUri.fsPath,
-          pdfExportOptionsFromPdfConfig(this.config.export.pdf, baseHref)
+          {
+            ...pdfExportOptionsFromPdfConfig(this.config.export.pdf, baseHref),
+            mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
+          }
         );
         vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
         return;

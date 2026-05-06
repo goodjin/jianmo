@@ -32,6 +32,8 @@ import {
   TableMap,
 } from 'prosemirror-tables';
 
+import { sanitizeRichPasteHtml } from '../utils/richPasteSanitize';
+
 function listItemSchemaType(schema: Schema): NodeType | null {
   const n = schema.nodes;
   return (n as { list_item?: NodeType; listItem?: NodeType }).list_item ?? (n as { listItem?: NodeType }).listItem ?? null;
@@ -109,6 +111,9 @@ export function interceptRichTableKeydown(view: EditorView, event: KeyboardEvent
   return false;
 }
 
+/** M27：`text/html` 体积软上限（按 UTF-16 码元计）。超限则跳过 HTML 表格解析，避免巨量 DOMParser 拖死 webview；仍可走纯文本矩阵路径。 */
+export const MARKLY_TABLE_HTML_CLIPBOARD_MAX_CHARS = 2_000_000;
+
 /** 粘贴矩阵上限（防止超大表格卡死 webview） */
 export const MARKLY_TABLE_PASTE_MAX_ROWS = 80;
 export const MARKLY_TABLE_PASTE_MAX_COLS = 40;
@@ -120,18 +125,10 @@ export const MARKLY_TABLE_PASTE_SOFT_CONFIRM_COLS = 10;
 export const MARKLY_TABLE_PASTE_SOFT_CONFIRM_CELLS = 200;
 
 /**
- * M37：解析表格前轻量清理剪贴板 HTML，去掉 script/style 等噪音，降低误匹配与冗余解析成本。
+ * M37+M13+M14：解析表格前 HTML 清理（与其它 Rich HTML 粘贴入口共用 `sanitizeRichPasteHtml`）。
  */
 export function sanitizeClipboardHtmlForTableParse(html: string): string {
-  const raw = (html ?? '').trim();
-  if (!raw) return raw;
-  try {
-    const doc = new DOMParser().parseFromString(raw, 'text/html');
-    doc.querySelectorAll('script,style,iframe,object,embed').forEach((el) => el.remove());
-    return doc.body?.innerHTML ?? raw;
-  } catch {
-    return raw;
-  }
+  return sanitizeRichPasteHtml(html);
 }
 
 function enforcePasteGridLimits(rows: string[][]): { grid: string[][] | null; reason: 'empty' | 'over_limit' | null } {
@@ -812,6 +809,32 @@ export const marklyTableStructureKeymapPlugin = $prose(() =>
   })
 );
 
+/** M11：表格外无序/有序列表 Tab 缩进 — 已从 MilkdownEditor 抽取，便于与其它 keymap 同测 */
+export const marklyRichListIndentKeymapPlugin = $prose(() =>
+  keymap({
+    Tab: (state, dispatch) => {
+      try {
+        if (isInTable(state)) return false;
+      } catch {
+        // ignore
+      }
+      const li = listItemSchemaType(state.schema);
+      if (!li) return false;
+      return sinkListItem(li)(state, dispatch);
+    },
+    'Shift-Tab': (state, dispatch) => {
+      try {
+        if (isInTable(state)) return false;
+      } catch {
+        // ignore
+      }
+      const li = listItemSchemaType(state.schema);
+      if (!li) return false;
+      return liftListItem(li)(state, dispatch);
+    },
+  })
+);
+
 const marklyTableGridPasteKey = new PluginKey('markly-table-grid-paste');
 
 function emitTablePasteToast(message: string) {
@@ -822,6 +845,15 @@ function emitTablePasteToast(message: string) {
   } catch {
     // ignore
   }
+}
+
+/** HTML 超限则清空并提示，表格解析链路只看待解析串 */
+function clipboardHtmlForTableParse(raw: string): string {
+  if (raw.length <= MARKLY_TABLE_HTML_CLIPBOARD_MAX_CHARS) return raw;
+  emitTablePasteToast(
+    '剪贴板 HTML 体积过大，已跳过基于 HTML 的表格解析（仍可按纯文本矩阵粘贴或通过 Mod+Shift+V 纯文本粘贴）。'
+  );
+  return '';
 }
 
 function cellTextAt(grid: string[][], r: number, c: number): string {
@@ -915,7 +947,8 @@ export function createMarklyTableGridPastePlugin(): Plugin {
     priority: 1000,
     props: {
       handlePaste(view, event, _slice) {
-        const html = event.clipboardData?.getData('text/html') ?? '';
+        const htmlRaw = event.clipboardData?.getData('text/html') ?? '';
+        const html = clipboardHtmlForTableParse(htmlRaw);
         const plain = event.clipboardData?.getData('text/plain') ?? '';
 
         try {
@@ -1094,7 +1127,7 @@ export function createMarklyTableGridPastePlugin(): Plugin {
       const handler = (e: Event) => {
         const ce = e as CustomEvent;
         const detail = (ce?.detail ?? {}) as { plain?: string; html?: string };
-        const html = detail.html ?? '';
+        const html = clipboardHtmlForTableParse(detail.html ?? '');
         const plain = detail.plain ?? '';
         const fakeEvt = ({
           clipboardData: {

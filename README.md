@@ -112,7 +112,9 @@ Search `markly` in VSCode settings:
 
 ## Contributing / IR freeze
 
-维护政策与 **`ir`（CodeMirror 装饰器中间模式）** 冻结约定见 **[`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md)**。提交 PR 前请勾选 [`.github/pull_request_template.md`](.github/pull_request_template.md)，并确保 **`npm run gates:stable`**（含 **`check:ir-freeze`**）通过。
+维护政策与 **`ir`（CodeMirror 装饰器中间模式）** 冻结约定见 **[`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md)**。产品路线图（里程碑顺序与验收要点）见：**[近期](docs/ROADMAP_NEAR.md)** · **[中期](docs/ROADMAP_MID.md)** · **[远期](docs/ROADMAP_FAR.md)**。**参与贡献**：[`CONTRIBUTING.md`](CONTRIBUTING.md)。三步排障：**[`resources/TROUBLESHOOTING.md`](resources/TROUBLESHOOTING.md)** → Webview「复制诊断」/ 导出失败「复制诊断包」→ Issue 模板（[`docs/REPRO_TEMPLATE.md`](docs/REPRO_TEMPLATE.md)）。提交 PR 前请勾选 [`.github/pull_request_template.md`](.github/pull_request_template.md)，并确保 **`npm run gates:stable`**（含 **`check:ir-freeze`**）通过。
+
+补充文档：**Preview 导出 vs 正式导出**见 [`docs/EXPORT_PREVIEW_VS_EXPORT.md`](docs/EXPORT_PREVIEW_VS_EXPORT.md)；近期阶段的 Kickoff/Go-NoGo 记录模板见 [`docs/NEAR_KICKOFF_TEMPLATE.md`](docs/NEAR_KICKOFF_TEMPLATE.md) / [`docs/NEAR_GONOGO_TEMPLATE.md`](docs/NEAR_GONOGO_TEMPLATE.md)。
 
 ## Testing
 

@@ -68,7 +68,6 @@ describe('useImageHandler', () => {
     });
 
     it('图片粘贴成功后会上传并插入返回的 Markdown 路径', async () => {
-      vi.spyOn(Date, 'now').mockReturnValue(123);
       vi.stubGlobal(
         'FileReader',
         class {
@@ -85,6 +84,7 @@ describe('useImageHandler', () => {
       const { handlePaste } = useImageHandler({
         editorView: ref(null),
         insertMarkdown,
+        getPasteBasenamePrefix: () => 'snap',
       });
       const file = new File([new Uint8Array([1])], 'clip.png', { type: 'image/png' });
       const event = {
@@ -103,16 +103,76 @@ describe('useImageHandler', () => {
       };
       expect(sent.type).toBe('UPLOAD_IMAGE');
       expect(sent.payload.base64).toBe('data:image/png;base64,abc');
-      expect(sent.payload.filename).toBe('image-123.png');
+      expect(sent.payload.filename).toMatch(/^snap-\d{8}-\d{6}-\d{4}\.png$/);
       expect(sent.payload.requestId).toMatch(/./);
 
+      const fn = sent.payload.filename;
       vscodeMock.listeners[0]?.({
         type: 'IMAGE_SAVED',
-        payload: { filename: 'image-123.png', path: 'assets/image-123.png', requestId: sent.payload.requestId },
+        payload: {
+          filename: fn,
+          path: `assets/${fn}`,
+          requestId: sent.payload.requestId,
+        },
       });
       await pending;
 
-      expect(insertMarkdown).toHaveBeenCalledWith('![image-123](assets/image-123.png)');
+      const base = fn.replace(/\.[^/.]+$/, '');
+      expect(insertMarkdown).toHaveBeenCalledWith(`![${base}](assets/${fn})`);
+    });
+
+    it('M134: same-second pastes use incremental sequence to avoid duplicates', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(123);
+      vi.stubGlobal(
+        'FileReader',
+        class {
+          result = 'data:image/png;base64,abc';
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            this.onload?.();
+          }
+        }
+      );
+      // freeze ISO time to same second
+      const realToISOString = Date.prototype.toISOString;
+      vi.spyOn(Date.prototype, 'toISOString').mockImplementation(function () {
+        return '2026-05-05T12:34:56.000Z';
+      });
+
+      const insertMarkdown = vi.fn();
+      const { handlePaste } = useImageHandler({
+        editorView: ref(null),
+        insertMarkdown,
+        getPasteBasenamePrefix: () => 'snap',
+      });
+      const file = new File([new Uint8Array([1])], 'clip.png', { type: 'image/png' });
+      const evt = () =>
+        ({
+          clipboardData: {
+            items: [{ type: 'image/png', getAsFile: () => file }],
+          },
+          preventDefault: vi.fn(),
+        }) as unknown as ClipboardEvent;
+
+      const p1 = handlePaste(evt());
+      await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalledTimes(1));
+      const fn1 = (vscodeMock.postMessage.mock.calls[0][0] as any).payload.filename as string;
+      vscodeMock.listeners[0]?.({ type: 'IMAGE_SAVED', payload: { filename: fn1, path: `assets/${fn1}` } });
+      await p1;
+
+      const p2 = handlePaste(evt());
+      await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalledTimes(2));
+      const fn2 = (vscodeMock.postMessage.mock.calls[1][0] as any).payload.filename as string;
+      vscodeMock.listeners[0]?.({ type: 'IMAGE_SAVED', payload: { filename: fn2, path: `assets/${fn2}` } });
+      await p2;
+
+      expect(fn1).toBe('snap-20260505-123456-0001.png');
+      expect(fn2).toBe('snap-20260505-123456-0002.png');
+
+      // restore
+      (Date.prototype.toISOString as any).mockRestore?.();
+      Date.prototype.toISOString = realToISOString;
     });
 
     it('同名策略重命名保存时插入实际落盘文件名', async () => {
@@ -144,18 +204,18 @@ describe('useImageHandler', () => {
 
       const pending = handlePaste(event);
       await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
-      const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string } };
+      const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string; filename: string } };
       vscodeMock.listeners[0]?.({
         type: 'IMAGE_SAVED',
         payload: {
-          filename: 'image-777-2.png',
-          path: 'assets/image-777-2.png',
+          filename: 'renamed-777.png',
+          path: 'assets/renamed-777.png',
           requestId: sent.payload.requestId,
         },
       });
       await pending;
 
-      expect(insertMarkdown).toHaveBeenCalledWith('![image-777-2](assets/image-777-2.png)');
+      expect(insertMarkdown).toHaveBeenCalledWith('![renamed-777](assets/renamed-777.png)');
     });
 
     it('图片保存失败时记录错误且不会插入 Markdown', async () => {
@@ -280,13 +340,16 @@ describe('useImageHandler', () => {
     const pending = handlePaste(event);
     await vi.waitFor(() => expect(onCompressingStart).toHaveBeenCalled());
     await vi.waitFor(() => expect(vscodeMock.postMessage).toHaveBeenCalled());
-    const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string } };
+    const sent = vscodeMock.postMessage.mock.calls[0][0] as { payload: { requestId: string; filename: string } };
+    const fn = sent.payload.filename;
     vscodeMock.listeners[0]?.({
       type: 'IMAGE_SAVED',
-      payload: { filename: 'image-999.png', path: 'assets/image-999.png', requestId: sent.payload.requestId },
+      payload: { filename: fn, path: `assets/${fn}`, requestId: sent.payload.requestId },
     });
     await pending;
-    expect(insertMarkdown).toHaveBeenCalled();
+    expect(insertMarkdown).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`^!\\[[^\\]]+\\]\\(assets/${fn.replace(/\./g, '\\.')}\\)$`))
+    );
   });
 
   describe('compressImage', () => {

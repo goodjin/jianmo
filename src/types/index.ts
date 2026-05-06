@@ -1,7 +1,7 @@
 // 编辑器模式
-// - ir: Markdown 源码 + decorators 的“所见即所得”视图（仍是 markdown 文本为真源）
+// - ir: Markdown + CM6 decorators（冻结：不接新能力与体验投入，仅阻断性回归可修；后续计划移除）
 // - source: 纯 markdown 源码
-// - rich: 真富文本（ProseMirror/Milkdown 节点模型），保存时序列化为 markdown
+// - rich: 真富文本（ProseMirror/Milkdown），保存时序列化为 markdown — 产品与里程碑默认以此为主战场
 export type EditorMode = 'ir' | 'source' | 'rich';
 
 export type RichTableCommandValue =
@@ -74,6 +74,11 @@ export interface EditorConfig {
   tableCellWrap: 'wrap' | 'nowrap';
   /** Rich：是否启用 Mermaid 渲染（重渲染，可按需关闭） */
   enableMermaid: boolean;
+  /**
+   * M45：Rich 内不初始化 Mermaid 动态渲染（仍保留 fenced 源码；导出 PDF/HTML 照常可渲染）。
+   * 与档位 ≥2 的「关掉 Mermaid」正交——本项为用户显式省编辑期主线程开销。
+   */
+  deferDiagramRenderInRich?: boolean;
   /** Rich：是否启用 Shiki 高亮（可能影响启动稳定性，默认关闭） */
   enableShiki: boolean;
   /**
@@ -88,6 +93,13 @@ export interface ImageConfig {
   saveDirectory: string;
   compressThreshold: CompressThreshold;
   compressQuality: CompressQuality;
+  /** M49：粘贴落盘文件名前缀（后接日期时间与短随机后缀） */
+  pasteImageBasenamePrefix?: string;
+  /**
+   * M46：若为 **非空** 数组，则仅允许 `![](https://host/…)` 中 host 精确匹配任一值（端口敏感；大小写按 URL 语义）。
+   * 空数组或未设置：**不启用**远端白名单门禁（沿用现状）。
+   */
+  remoteHttpsHostsAllowlist?: string[];
   /**
    * M52：assets 下已存在同名文件时的策略（粘贴/拖拽 UPLOAD_IMAGE / SAVE_IMAGE）。
    * - overwrite：覆盖
@@ -102,6 +114,14 @@ export type PdfExportTemplateId = 'default' | 'academic';
 
 /** M83：导出前预检范围 */
 export type ExportPreflightScope = 'off' | 'images' | 'full';
+
+/** M40：导出 HTML/PDF 中 Mermaid JS 载入方式（体积 vs 离线） */
+export type ExportMermaidScriptBundling = 'embedded' | 'external';
+
+export interface ExportDiagramConfig {
+  /** 默认 embedded：离线可预览；external 体积小但依赖 CDN */
+  mermaidScriptBundling?: ExportMermaidScriptBundling;
+}
 
 export interface ExportPreflightConfig {
   scope: ExportPreflightScope;
@@ -147,6 +167,8 @@ export interface ExtensionConfig {
     };
     /** M83：导出 PDF/HTML 前的静态预检 */
     preflight?: ExportPreflightConfig;
+    /** M40/M43/M42：导出侧图表策略（与编辑器 `enableMermaid` 无关） */
+    diagram?: ExportDiagramConfig;
   };
   /** M47：选区「润色」开关（工作区 `markly.ai.rewrite.enabled`） */
   ai?: {

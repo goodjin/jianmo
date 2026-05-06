@@ -1,5 +1,10 @@
 <template>
-  <div class="milkdown-editor" ref="editorRef"></div>
+  <div class="milkdown-shell" :class="{ 'is-rich-empty-guide': showRichEmptyGuide }">
+    <div class="milkdown-editor" ref="editorRef"></div>
+    <p v-if="showRichEmptyGuide" class="markly-rich-empty-guide" aria-hidden="true">
+      在此输入，或使用命令 「New Markdown from Template…」（<span class="kbd">templates</span>）从模板新建。
+    </p>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -20,20 +25,22 @@ import {
   marklyTableStructureKeymapPlugin,
   marklyPastePlainShortcutPlugin,
   marklyRichClipboardCopyPlugin,
+  marklyRichListIndentKeymapPlugin,
 } from '../plugins/markly-table-rich';
+import 'prosemirror-gapcursor/style/gapcursor.css';
+import { gapCursor } from 'prosemirror-gapcursor';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { history } from '@milkdown/plugin-history';
 import { $prose } from '@milkdown/utils';
-import { Plugin } from '@milkdown/prose/state';
+import { Plugin, TextSelection, type EditorState } from '@milkdown/prose/state';
 import { CellSelection, isInTable, TableMap, selectedRect } from 'prosemirror-tables';
-import { keymap } from 'prosemirror-keymap';
 import { Fragment, Slice, type Node as PMNode } from '@milkdown/prose/model';
 import { footnote } from '../plugins/footnote';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
-import { TextSelection } from '@milkdown/prose/state';
+import type { EditorView } from '@milkdown/prose/view';
 import type { ExtensionConfig } from '../../src/types';
 import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
 import type { RichPerfTier } from '../utils/richPerfTier';
@@ -51,6 +58,42 @@ function textSelectionNear(doc: PMNode, pos: number): TextSelection {
   const p = Math.max(0, Math.min(pos, size));
   return TextSelection.near(doc.resolve(p), 1);
 }
+
+/** M16：工具栏块级命令前，将折叠光标扩到整段；跨段选区扩到块范围（不记入历史，与后续命令同一 undo） */
+function expandFormattingBlockSelection(state: EditorState, sel: TextSelection): TextSelection {
+  const $from = state.doc.resolve(sel.from);
+  const $to = state.doc.resolve(sel.to);
+  if (!sel.empty && !$from.sameParent($to)) {
+    const br = $from.blockRange($to);
+    if (br) return TextSelection.create(state.doc, br.start, br.end);
+  }
+  if (sel.empty && $from.parent.isTextblock) {
+    return TextSelection.create(state.doc, $from.start(), $from.end());
+  }
+  return sel;
+}
+
+function prepareSelectionForToolbarBlockFormats(view: EditorView): void {
+  const sel = view.state.selection;
+  if (!(sel instanceof TextSelection)) return;
+  const next = expandFormattingBlockSelection(view.state, sel);
+  if (next.eq(sel)) return;
+  view.dispatch(view.state.tr.setSelection(next).setMeta('addToHistory', false));
+}
+
+const MARKLY_TOOLBAR_BLOCK_FORMAT = new Set<string>([
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'bulletList',
+  'orderedList',
+  'quote',
+  'indent',
+  'outdent',
+]);
 
 const props = withDefaults(
   defineProps<{
@@ -78,6 +121,7 @@ const defaultConfig = {
     enableMermaid: true,
     enableShiki: false,
     richTableColumnResize: 'auto',
+    deferDiagramRenderInRich: false,
   }
 };
 
@@ -91,6 +135,9 @@ const safeConfig = computed(() => {
     },
   };
 });
+
+/** M18：空文档引导（仅 Markdown 字面量为空） */
+const showRichEmptyGuide = computed(() => !String(props.content ?? '').trim().length);
 
 const emit = defineEmits<{
   (e: 'change', content: string): void;
@@ -151,10 +198,14 @@ const mermaidSvgCache: Map<string, string> = new Map();
 const MERMAID_SVG_CACHE_MAX = 120;
 let mermaidRuntimeInitialized = false;
 
+/** M37：内容/observer 拆除时递增，丢弃已过期的异步 `m.render` 结果 */
+let mermaidRenderGeneration = 0;
+
 async function ensureMermaidLoaded(): Promise<(typeof import('mermaid')) | null> {
   if (mermaidApi) return mermaidApi;
   const enabled = (safeConfig.value as any)?.editor?.enableMermaid !== false;
   if (!enabled) return null;
+  if ((safeConfig.value as any)?.editor?.deferDiagramRenderInRich === true) return null;
   // M8 档 2：关闭 Mermaid
   if ((props.richPerfEffectiveTier ?? 0) >= 2) return null;
   try {
@@ -165,6 +216,35 @@ async function ensureMermaidLoaded(): Promise<(typeof import('mermaid')) | null>
     console.warn('[MilkdownEditor] mermaid lazy import failed (ignored):', e);
     return null;
   }
+}
+
+/** M41：贴近 VS Code 编辑器色与字体（Mermaid themeVariables） */
+function readVscodeCssThemeVariablesForMermaid(): Record<string, string> {
+  if (typeof document === 'undefined') return {};
+  const root = document.documentElement;
+  const pick = (n: string) =>
+    root.style.getPropertyValue(n).trim() || window.getComputedStyle(root).getPropertyValue(n).trim();
+  const primaryTextColor = pick('--vscode-editor-foreground');
+  const primaryColor = pick('--vscode-foreground');
+  const background = pick('--vscode-editor-background');
+  const secondaryColor = pick('--vscode-descriptionForeground');
+  const fontFamily = pick('--vscode-editor-font-family');
+  const out: Record<string, string> = {};
+  if (primaryTextColor) out.primaryTextColor = primaryTextColor;
+  if (primaryColor) out.primaryColor = primaryColor;
+  if (background) out.background = background;
+  if (secondaryColor) out.secondaryColor = secondaryColor;
+  if (fontFamily) out.fontFamily = fontFamily;
+  return out;
+}
+
+function findMermaidJumpTarget(diagramIndex1: number): HTMLElement | null {
+  const root = editorRef.value;
+  if (!root) return null;
+  const list = root.querySelectorAll('pre.language-mermaid, div.mermaid');
+  const n = diagramIndex1 - 1;
+  if (n < 0 || n >= list.length) return null;
+  return list[n] as HTMLElement;
 }
 
 // 图片事件处理函数引用（用于清理）
@@ -298,6 +378,19 @@ function scrollHeadingIntoMilkdownRoot(heading: HTMLElement): void {
 
 /** 大纲 / TOC：滚动到标题并（若编辑器已就绪）将光标落入该标题附近 */
 function scrollToHeading(headingId: string): void {
+  const diagramMatch = /^markly-diagram-(\d+)$/.exec(headingId);
+  if (diagramMatch) {
+    const idx = Number(diagramMatch[1]);
+    const el = findMermaidJumpTarget(idx);
+    if (!el) return;
+    scrollHeadingIntoMilkdownRoot(el);
+    el.classList.add('toc-highlight');
+    setTimeout(() => {
+      el.classList.remove('toc-highlight');
+    }, 2000);
+    return;
+  }
+
   const heading = findHeadingElement(headingId);
   if (!heading) return;
 
@@ -418,32 +511,8 @@ async function bootstrapMilkdown(args: { reason: string }): Promise<boolean> {
       b = b.use(marklyPastePlainShortcutPlugin);
       b = b.use(marklyTableGridPastePlugin);
       b = b.use(tableContextMilkdownPlugin);
-      b = b.use(
-        $prose(() =>
-          keymap({
-            Tab: (state, dispatch) => {
-              try {
-                if (isInTable(state)) return false;
-              } catch {
-                // ignore
-              }
-              const li = state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
-              if (!li) return false;
-              return sinkListItem(li)(state, dispatch);
-            },
-            'Shift-Tab': (state, dispatch) => {
-              try {
-                if (isInTable(state)) return false;
-              } catch {
-                // ignore
-              }
-              const li = state.schema.nodes.list_item ?? (state.schema.nodes as any).listItem;
-              if (!li) return false;
-              return liftListItem(li)(state, dispatch);
-            },
-          })
-        )
-      );
+      b = b.use(marklyRichListIndentKeymapPlugin);
+      b = b.use($prose(() => gapCursor()));
 
       if (withShiki) {
         // M7-1：避免把 shiki 大包强行打进主 chunk；仅在启用时再动态加载插件实现
@@ -587,10 +656,33 @@ onUnmounted(() => {
 });
 
 function teardownMermaidObserver(): void {
+  mermaidRenderGeneration++;
   mermaidObserver?.disconnect();
   mermaidObserver = null;
   mermaidRenderQueue.length = 0;
   mermaidQueuePump = false;
+}
+
+/** M38：懒加载失败或主动跳过时，给用户可视反馈（不静默留白） */
+function mountMermaidUnavailableShell(pre: HTMLPreElement, message: string): void {
+  if (!pre.isConnected || !pre.parentNode) return;
+  pre.dataset.mermaidRenderDone = '1';
+  pre.dataset.mermaidRendered = 'error';
+  const shell = document.createElement('div');
+  shell.className = 'markly-mermaid-offline';
+  shell.setAttribute('role', 'status');
+  shell.setAttribute('aria-live', 'polite');
+  const p = document.createElement('p');
+  p.className = 'markly-mermaid-offline-msg';
+  p.textContent = message;
+  shell.appendChild(p);
+  const preClone = document.createElement('pre');
+  preClone.className = 'markly-mermaid-offline-source language-mermaid';
+  const code = document.createElement('code');
+  code.textContent = pre.querySelector('code')?.textContent ?? '';
+  preClone.appendChild(code);
+  shell.appendChild(preClone);
+  pre.parentNode.replaceChild(shell, pre);
 }
 
 function setupMermaidAfterDom(): void {
@@ -638,7 +730,15 @@ async function pumpMermaidRenderQueue(): Promise<void> {
     if (!pre.isConnected) continue;
     if ((props.richPerfEffectiveTier ?? 0) >= 2) break;
     const m = await ensureMermaidLoaded();
-    if (!m) break;
+    if (!m) {
+      mountMermaidUnavailableShell(
+        pre,
+        typeof navigator !== 'undefined' && navigator.onLine === false
+          ? '当前离线，Mermaid 图表包无法加载；已显示源码。恢复网络后刷新或重新打开文档再试。'
+          : 'Mermaid 图表无法加载；已显示源码。'
+      );
+      continue;
+    }
     await renderMermaidForPre(pre, m);
     await new Promise<void>((resolve) => {
       const w = window as unknown as { requestIdleCallback?: (c: () => void, o?: { timeout: number }) => void };
@@ -654,6 +754,7 @@ async function renderMermaidForPre(
   m: NonNullable<Awaited<ReturnType<typeof ensureMermaidLoaded>>>
 ): Promise<void> {
   if ((props.richPerfEffectiveTier ?? 0) >= 2) return;
+  const genAtStart = mermaidRenderGeneration;
   const code = pre.querySelector('code');
   if (!code) {
     pre.dataset.mermaidRenderDone = '1';
@@ -669,6 +770,7 @@ async function renderMermaidForPre(
     let svg: string | null = mermaidSvgCache.get(mermaidCode) ?? null;
     if (!svg) {
       const r = await m.render(id, mermaidCode);
+      if (genAtStart !== mermaidRenderGeneration) return;
       svg = r.svg;
       mermaidSvgCache.set(mermaidCode, svg);
       if (mermaidSvgCache.size > MERMAID_SVG_CACHE_MAX) {
@@ -676,6 +778,7 @@ async function renderMermaidForPre(
         mermaidSvgCache.delete(first);
       }
     }
+    if (genAtStart !== mermaidRenderGeneration) return;
     if (!pre.isConnected) return;
     const container = document.createElement('div');
     container.className = 'mermaid';
@@ -684,8 +787,11 @@ async function renderMermaidForPre(
     pre.parentNode?.replaceChild(container, pre);
   } catch (error) {
     console.error('Mermaid render error:', error);
-    pre.dataset.mermaidRendered = 'error';
-    pre.dataset.mermaidRenderDone = '1';
+    const msg =
+      typeof navigator !== 'undefined' && navigator.onLine === false
+        ? '当前离线或渲染失败（Mermaid）；已保留源码便于复制。'
+        : '图表渲染失败；请检查语法或网络后重试。已保留源码。';
+    mountMermaidUnavailableShell(pre, msg);
   }
 }
 
@@ -713,10 +819,12 @@ function initMermaid(): void {
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
         }
         try {
+          const themeVariables = readVscodeCssThemeVariablesForMermaid();
           m.initialize({
             startOnLoad: false,
             theme: theme,
             securityLevel: 'loose',
+            themeVariables: Object.keys(themeVariables).length ? themeVariables : undefined,
             flowchart: { useMaxWidth: true, htmlLabels: true },
             sequence: {
               useMaxWidth: true,
@@ -895,6 +1003,9 @@ function applyFormat(format: string): void {
     // 编辑器尚未完全注入 editorViewCtx（启动/重建瞬间）时直接跳过，避免抛出 MilkdownError 让整个 webview 崩溃
     console.warn('[MilkdownEditor] applyFormat skipped (editorViewCtx not ready):', e);
     return;
+  }
+  if (MARKLY_TOOLBAR_BLOCK_FORMAT.has(format)) {
+    prepareSelectionForToolbarBlockFormats(view);
   }
   const { state, dispatch } = view;
   const { marks, nodes } = state.schema;
@@ -1850,6 +1961,44 @@ function getSelectedPlainText(): string {
   }
 }
 
+function getSelectionRange(): { anchor: number; head: number } | null {
+  if (!editor) return null;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const { from, to } = view.state.selection;
+    return { anchor: from, head: to };
+  } catch {
+    return null;
+  }
+}
+
+function setCursorPosition(anchor: number, head?: number | null): void {
+  if (!editor) return;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    const len = view.state.doc.content.size;
+    const a = Math.min(Math.max(0, Number(anchor) || 0), len);
+    // WebDriver/bridge 可能把 undefined 变成 null
+    const h = head == null ? a : Math.min(Math.max(0, Number(head) || 0), len);
+    const $a = view.state.doc.resolve(a);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, $a.pos, h)).scrollIntoView());
+  } catch (e) {
+    console.warn('[MilkdownEditor] setCursorPosition failed:', e);
+  }
+}
+
+function getScrollTop(): number {
+  const root = editorRef.value;
+  if (!root) return 0;
+  return Number(root.scrollTop) || 0;
+}
+
+function setScrollTop(scrollTop: number): void {
+  const root = editorRef.value;
+  if (!root) return;
+  root.scrollTop = Math.max(0, Number(scrollTop) || 0);
+}
+
 /** 将选区替换为纯文本（不经 Markdown 解析） */
 function replacePlainSelection(text: string): void {
   if (!editor) return;
@@ -1869,6 +2018,10 @@ defineExpose({
   insertMarkdown,
   pastePlainAtSelection,
   getSelectedPlainText,
+  getSelectionRange,
+  setCursorPosition,
+  getScrollTop,
+  setScrollTop,
   replacePlainSelection,
   focus,
   getContent,
@@ -1902,9 +2055,37 @@ defineExpose({
 </script>
 
 <style>
+.milkdown-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.markly-rich-empty-guide {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: 28px;
+  margin: 0;
+  pointer-events: none;
+  color: var(--vscode-descriptionForeground, rgba(160, 160, 160, 0.92));
+  font-size: 0.95rem;
+  line-height: 1.6;
+  z-index: 0;
+}
+
+.markly-rich-empty-guide .kbd {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  opacity: 0.88;
+}
+
 .milkdown-editor {
   flex: 1;
   min-height: 0;
+  position: relative;
+  z-index: 1;
   outline: none;
   padding: 24px;
   overflow-y: auto;
@@ -1953,6 +2134,12 @@ defineExpose({
 .milkdown-editor .ProseMirror-content {
   outline: none;
   min-height: 100%;
+}
+
+/* M22：选中文本与高对比主题下的可见性（宿主变量优先） */
+.milkdown-editor .ProseMirror ::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(0, 120, 212, 0.35));
+  color: var(--vscode-editor-selectionForeground, inherit);
 }
 
 .milkdown-editor h1 {
@@ -2175,6 +2362,12 @@ defineExpose({
   margin: 0.5em 0;
 }
 
+/* M28：表格区域键盘焦点可见轮廓 */
+.milkdown-editor table:focus-within {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+}
+
 .milkdown-editor th,
 .milkdown-editor td {
   border: 1px solid var(--vscode-editorWidget-border);
@@ -2188,6 +2381,30 @@ defineExpose({
 .milkdown-editor th {
   background: var(--vscode-editor-inactiveSelectionBackground);
   font-weight: 600;
+}
+
+/* M38：Mermaid 不可用 / 渲染失败时的占位（含源码回退） */
+.milkdown-editor .markly-mermaid-offline {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, rgba(120, 120, 120, 0.06));
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.milkdown-editor .markly-mermaid-offline-msg {
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.milkdown-editor .markly-mermaid-offline-source {
+  margin: 0;
+  overflow: auto;
+  max-height: 220px;
+  font-size: 12px;
+  padding: 8px;
 }
 
 .milkdown-editor ul,
@@ -2211,5 +2428,28 @@ defineExpose({
 
 .milkdown-editor .toc-link:hover {
   text-decoration: underline;
+}
+
+/* M23：Rich 面板较窄时左右留白收窄 */
+@media (max-width: 520px) {
+  .milkdown-editor {
+    padding: 16px 14px;
+  }
+
+  .markly-rich-empty-guide {
+    left: 14px;
+    right: 14px;
+    top: 20px;
+  }
+
+  /* M33：窄视口下表格略压缩，减少横向滚动压力 */
+  .milkdown-editor table {
+    font-size: 0.92em;
+  }
+
+  .milkdown-editor th,
+  .milkdown-editor td {
+    padding: 8px 10px;
+  }
 }
 </style>

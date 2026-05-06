@@ -57,7 +57,7 @@ function kindLabel(k: AiApplyHistoryEntry['kind']): string {
 }
 
 function modeLabel(e: AiApplyHistoryEntry): string {
-  return e.editorMode === 'rich' ? 'Rich' : 'IR/源码';
+  return e.editorMode === 'rich' ? 'Rich' : '源码';
 }
 
 function ellip(s: string, max = 42): string {

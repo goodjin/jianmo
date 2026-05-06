@@ -574,7 +574,11 @@ import {
   type WritingAssistAction,
 } from './utils/writingAssistant';
 import { MARKLY_E2E_BRIDGE_KEYS } from './utils/e2eBridgeContract';
-import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown } from './utils/diagnosticsPackage';
+import {
+  buildDiagnosticsPackageText,
+  buildIssueTemplateMarkdown,
+  diagnosticsTrackedEditorMode,
+} from './utils/diagnosticsPackage';
 import { applySuggestedTitleToMarkdown } from './utils/titleSuggestions';
 import {
   adjustAiApplyHistoryAfterSourceRevert,
@@ -721,6 +725,10 @@ const richRetryCount = ref(0);
 const webviewReloadCount = ref(0);
 const richStartupWatchdogFired = ref(false);
 const richLastError = ref<string>('');
+// M111：Rich ↔ Source：尽量保留光标与滚动位置（仅 best-effort；失败不影响编辑）
+const richLastCursorAnchor = ref<number>(-1);
+const richLastCursorHead = ref<number>(-1);
+const richLastScrollTop = ref<number>(0);
 type RichStartupEvent = {
   ts: string;
   stage: string;
@@ -1068,6 +1076,8 @@ function insertUploadedImageMarkdown(markdown: string): void {
 const imageHandler = useImageHandler({
   editorView: editor.view,
   insertMarkdown: insertUploadedImageMarkdown,
+  getPasteBasenamePrefix: () =>
+    String(config.value?.image?.pasteImageBasenamePrefix ?? 'paste').trim() || 'paste',
   compressThreshold: () => Number(config.value?.image?.compressThreshold) || 512000,
   onSaved: () => showToast('图片已保存并插入。'),
   onError: (err) => showToast(`图片保存失败：${err.message}。请重新粘贴或拖入图片重试。`, 4200),
@@ -1157,6 +1167,21 @@ const showOutline = ref(false);
 const outlineHighlightHeadingId = ref('');
 /** M40：折叠的标题 id（随 webview state 持久化） */
 const outlineCollapsedIds = ref<string[]>([]);
+
+type LastReadingPosition = {
+  /** 记录时的编辑模式（用于 best-effort 恢复） */
+  mode: EditorMode;
+  /** 选区锚点（collapsed 光标用） */
+  anchor: number;
+  /** 选区 head（同 anchor 表示光标） */
+  head: number;
+  /**
+   * 滚动位置：Source/IR 记录为 0..1 的比例；Rich 记录为像素 scrollTop
+   *（避免 cm scrollHeight 在初始化早期不稳定导致绝对值失真）
+   */
+  scroll: number;
+  ts: number;
+};
 
 /** M64：工作区内链入当前文档的列表 */
 const markdownBacklinksItems = ref<BacklinkRow[]>([]);
@@ -2363,6 +2388,23 @@ function switchMode(mode: EditorMode) {
       recordRichStartupEvent('rich:ready:existing', { attemptId: attempt });
       clearRichStartupWatchdog('watchdog:cleared', { reason: 'existing-rich-instance' });
     });
+
+    // M111：恢复 Rich 光标/滚动（best-effort，不阻塞 watchdog）
+    void nextTick(() => {
+      requestAnimationFrame(() => {
+        try {
+          const st = richLastScrollTop.value;
+          if (Number.isFinite(st) && st > 0) milkdownRef.value?.setScrollTop?.(st);
+          const a = richLastCursorAnchor.value;
+          const h = richLastCursorHead.value;
+          if (a >= 0) {
+            milkdownRef.value?.setCursorPosition?.(a, h >= 0 ? h : null);
+          }
+        } catch {
+          // ignore
+        }
+      });
+    });
     return;
   }
 
@@ -2373,6 +2415,18 @@ function switchMode(mode: EditorMode) {
   cancelPendingFindRecompute();
 
   if (currentMode.value === 'rich') {
+    // 先记住 Rich 的光标与滚动位置（即便 content 无变化也应保存）
+    try {
+      const sel = milkdownRef.value?.getSelectionRange?.();
+      if (sel && typeof sel.anchor === 'number') {
+        richLastCursorAnchor.value = sel.anchor;
+        richLastCursorHead.value = typeof sel.head === 'number' ? sel.head : sel.anchor;
+      }
+      const st = milkdownRef.value?.getScrollTop?.();
+      if (typeof st === 'number' && Number.isFinite(st)) richLastScrollTop.value = st;
+    } catch {
+      // ignore
+    }
     const latestRichContent = milkdownRef.value?.getContent?.();
     if (typeof latestRichContent === 'string' && latestRichContent !== content.value) {
       content.value = latestRichContent;
@@ -3458,7 +3512,12 @@ function buildDiagnosticsPayload() {
       extra: {
         host: hostDiagnostics.value,
         app: {
+          webviewMountMs:
+            typeof (globalThis as any).__marklyWebviewMountMs === 'number'
+              ? (globalThis as any).__marklyWebviewMountMs
+              : null,
           mode: currentMode.value,
+          editorModeTracked: diagnosticsTrackedEditorMode(currentMode.value),
           richFocused: isMilkdownProseMirrorFocused(),
           richReadySuccess: richReadySuccess.value,
           richFallbackBannerVisible: richFallbackBannerVisible.value,
@@ -3512,7 +3571,13 @@ function buildDiagnosticsPayload() {
   } catch {
     return buildDiagnosticsPackageText({
       base: {},
-      extra: { app: { mode: currentMode.value, richReadySuccess: richReadySuccess.value } },
+      extra: {
+        app: {
+          mode: currentMode.value,
+          editorModeTracked: diagnosticsTrackedEditorMode(currentMode.value),
+          richReadySuccess: richReadySuccess.value,
+        },
+      },
     });
   }
 }
@@ -3651,7 +3716,99 @@ function onDocumentScrollOutlineSpy(): void {
   outlineSpyThrottleTimer = setTimeout(() => {
     outlineSpyThrottleTimer = null;
     scheduleOutlineHeadingRefresh();
+    // M129：记录“上次阅读位置”（best-effort，不影响滚动性能）
+    persistLastReadingPosition();
   }, 120);
+}
+
+let persistReadingThrottle: ReturnType<typeof setTimeout> | null = null;
+function persistLastReadingPosition(): void {
+  if (persistReadingThrottle) return;
+  persistReadingThrottle = setTimeout(() => {
+    persistReadingThrottle = null;
+    try {
+      let anchor = -1;
+      let head = -1;
+      let scroll = 0;
+      if (currentMode.value === 'rich') {
+        const sel = milkdownRef.value?.getSelectionRange?.();
+        if (sel && typeof sel.anchor === 'number' && typeof sel.head === 'number') {
+          anchor = sel.anchor;
+          head = sel.head;
+        }
+        const st = milkdownRef.value?.getScrollTop?.();
+        scroll = typeof st === 'number' && Number.isFinite(st) ? st : 0;
+      } else {
+        const v = editor.view.value;
+        if (v) {
+          const s = v.state.selection.main;
+          anchor = s.anchor;
+          head = s.head;
+        }
+        const scroller = document.querySelector('.cm-scroller') as HTMLElement | null;
+        if (scroller && scroller.scrollHeight > 0) {
+          scroll = scroller.scrollTop / scroller.scrollHeight;
+          if (!Number.isFinite(scroll)) scroll = 0;
+        }
+      }
+      if (anchor < 0) return;
+      const prev = getState();
+      const base = prev && typeof prev === 'object' ? (prev as any) : {};
+      const next: LastReadingPosition = {
+        mode: currentMode.value,
+        anchor,
+        head: head >= 0 ? head : anchor,
+        scroll: scroll >= 0 ? scroll : 0,
+        ts: Date.now(),
+      };
+      setState({ ...base, lastReadingPosition: next });
+    } catch {
+      // ignore
+    }
+  }, 350);
+}
+
+function restoreLastReadingPosition(): void {
+  try {
+    const st = getState();
+    const p = st && typeof st === 'object' ? (st as any).lastReadingPosition : null;
+    if (!p || typeof p !== 'object') return;
+    const anchor = Number((p as any).anchor);
+    const head = Number((p as any).head);
+    const scroll = Number((p as any).scroll);
+    const mode = String((p as any).mode) as EditorMode;
+    if (!Number.isFinite(anchor) || anchor < 0) return;
+    if (mode === 'rich') {
+      nextTick(() => {
+        requestAnimationFrame(() => {
+          try {
+            if (Number.isFinite(scroll) && scroll > 0) {
+              milkdownRef.value?.setScrollTop?.(scroll);
+            }
+            milkdownRef.value?.setCursorPosition?.(anchor, Number.isFinite(head) ? head : null);
+          } catch {
+            // ignore
+          }
+        });
+      });
+      return;
+    }
+    const v = editor.view.value;
+    if (!v) return;
+    const len = v.state.doc.length;
+    const a = Math.min(Math.max(0, anchor), len);
+    const h = Number.isFinite(head) ? Math.min(Math.max(0, head), len) : a;
+    v.dispatch({ selection: { anchor: a, head: h } });
+    setTimeout(() => {
+      const scroller = document.querySelector('.cm-scroller') as HTMLElement | null;
+      if (!scroller || scroller.scrollHeight <= 0) return;
+      if (Number.isFinite(scroll) && scroll > 0) {
+        scroller.scrollTop = scroll * scroller.scrollHeight;
+      }
+    }, 50);
+  } catch {
+    // ignore
+  }
 }
 
 function handleOutlineReorder(payload: { fromTopLevelIndex: number; toTopLevelIndex: number }) {
@@ -3824,6 +3981,14 @@ function checkInitStatus() {
 // Lifecycle
 onMounted(() => {
   recordRichStartupEvent('app:mounted');
+  try {
+    const t0 = (globalThis as any).__marklyWebviewBootT0 as number | undefined;
+    if (typeof performance !== 'undefined' && typeof t0 === 'number' && Number.isFinite(t0)) {
+      (globalThis as any).__marklyWebviewMountMs = Math.round(performance.now() - t0);
+    }
+  } catch {
+    /* ignore */
+  }
   // restore persisted zoom (per webview)
   try {
     const st = getState();
@@ -3863,6 +4028,8 @@ onMounted(() => {
       el.addEventListener('click', handleGlobalClick);
       el.addEventListener('contextmenu', handleGlobalContextMenu);
     }
+    // M129：恢复“上次阅读位置”（best-effort；若未记录则跳过）
+    restoreLastReadingPosition();
     sendMessage({ type: 'READY' });
     initRetryTimer = setTimeout(checkInitStatus, 1000);
   });
@@ -4327,5 +4494,19 @@ onUnmounted(() => {
 
 .word-count span {
   white-space: nowrap;
+}
+
+/* M22/M23：窄视口下减少边距、大纲列略收（嵌套 webview / 面板较窄时） */
+@media (max-width: 520px) {
+  :deep(.cm-scroller) {
+    padding: 14px 16px 18px;
+  }
+
+  .markly-side-column {
+    flex: 0 0 160px;
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
+  }
 }
 </style>

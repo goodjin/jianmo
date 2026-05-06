@@ -17,4 +17,8 @@ describe('canonicalMarkdownLocalRefKey', () => {
   it('strips query and hash suffixes before normalize', () => {
     expect(canonicalMarkdownLocalRefKey('./assets/x.png?v=1#h')).toBe('assets/x.png');
   });
+
+  it('M181 lowercases for case-insensitive comparison', () => {
+    expect(canonicalMarkdownLocalRefKey('./Assets/Logo.PNG')).toBe('assets/logo.png');
+  });
 });

@@ -1,5 +1,15 @@
 export const DIAGNOSTICS_MAX_CHARS_DEFAULT = 32 * 1024;
 
+/** 面向诊断读者：将 `EditorMode` 规范为三路，便于与支持/统计对齐（IR → legacy-ir）。 */
+export type DiagnosticsTrackedEditorMode = 'rich' | 'source' | 'legacy-ir';
+
+export function diagnosticsTrackedEditorMode(mode: string | undefined | null): DiagnosticsTrackedEditorMode {
+  if (mode === 'rich') return 'rich';
+  if (mode === 'source') return 'source';
+  if (mode === 'ir') return 'legacy-ir';
+  return 'source';
+}
+
 type Json =
   | null
   | boolean

@@ -70,7 +70,7 @@ export function extractMarkdownSectionByHeadingId(content: string, headingId: st
  * 匹配不区分大小写（`toLowerCase`）；中文等直接 `includes`。
  */
 export function collectOutlineFilterIndices(
-  items: ReadonlyArray<{ level: number; text: string }>,
+  items: ReadonlyArray<{ level: number; text: string; kind?: 'heading' | 'diagram' }>,
   query: string
 ): Set<number> | null {
   const q = query.trim().toLowerCase();
@@ -79,8 +79,10 @@ export function collectOutlineFilterIndices(
   for (let j = 0; j < items.length; j++) {
     if (!items[j].text.toLowerCase().includes(q)) continue;
     set.add(j);
+    if (items[j].kind === 'diagram') continue;
     let L = items[j].level;
     for (let i = j - 1; i >= 0; i--) {
+      if (items[i].kind === 'diagram') continue;
       if (items[i].level < L) {
         set.add(i);
         L = items[i].level;

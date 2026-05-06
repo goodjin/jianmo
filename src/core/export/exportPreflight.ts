@@ -20,6 +20,35 @@ export interface ExportPreflightIssue {
   message: string;
   ref?: string;
   resolvedPath?: string;
+  /** Markdown 源文件中首次出现该问题的行号（1-based），供预检 UI 跳转 */
+  sourceLine?: number;
+}
+
+/** 首个包含子串的行号（1-based）；无可选 undefined */
+export function findFirstMarkdownSourceLine(markdown: string, needle: string): number | undefined {
+  const n = String(needle ?? '');
+  if (!n) return undefined;
+  const lines = String(markdown ?? '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]!.includes(n)) return i + 1;
+  }
+  return undefined;
+}
+
+function firstLineOutsideFencesContainingDollar(markdown: string): number | undefined {
+  const lines = String(markdown ?? '').split('\n');
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i]!;
+    const fence = /^\s*(```|~~~)/.exec(L);
+    if (fence) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (/\$/.test(L)) return i + 1;
+  }
+  return undefined;
 }
 
 /** 去掉围栏代码块与 HTML 注释，便于粗查公式分隔符（非完整 Markdown 语法树）。 */
@@ -117,7 +146,11 @@ export function analyzeMarkdownExportPreflight(options: {
   if (options.scope === 'full') {
     const math = detectBrokenMathDelimiters(markdown);
     if (math) {
-      issues.push({ kind: 'broken_math', message: math });
+      issues.push({
+        kind: 'broken_math',
+        message: math,
+        sourceLine: firstLineOutsideFencesContainingDollar(markdown),
+      });
     }
   }
 
@@ -135,6 +168,7 @@ export function analyzeMarkdownExportPreflight(options: {
           message: `本地图片未找到: ${ref}`,
           ref,
           resolvedPath: p,
+          sourceLine: findFirstMarkdownSourceLine(markdown, ref) ?? findFirstMarkdownSourceLine(markdown, `](${ref}`),
         });
       }
     }
@@ -147,6 +181,7 @@ export function analyzeMarkdownExportPreflight(options: {
             kind: 'remote_image_host',
             message: `外链图片 host 不在白名单 (${host})：${src}`,
             ref: src,
+            sourceLine: findFirstMarkdownSourceLine(markdown, src),
           });
         }
       }
@@ -171,6 +206,8 @@ export function analyzeMarkdownExportPreflight(options: {
           message: `本地链接目标不存在: ${href}`,
           ref: href,
           resolvedPath: p,
+          sourceLine:
+            findFirstMarkdownSourceLine(markdown, `](${href}`) ?? findFirstMarkdownSourceLine(markdown, href),
         });
       }
     }

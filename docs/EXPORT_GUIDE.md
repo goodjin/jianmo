@@ -54,3 +54,27 @@
 - **内联脚本**（`embedded`）更适合离线与可控交付。
 - 导出失败诊断包会对常见本地路径做脱敏（不会把你的用户目录完整路径直接暴露出来）。
 
+## 5. 导出相关 `markly.*` 设置索引（M252）
+
+| 设置键 | 作用摘要 |
+|--------|----------|
+| `markly.export.diagram.mermaidScriptBundling` | Mermaid 脚本 embedded（离线）/ external（小体积、需联网） |
+| `markly.export.html.theme` | 导出 HTML 主题 |
+| `markly.export.html.copyLocalImages` | 是否拷贝本地相对图片到 HTML 输出旁 |
+| `markly.export.html.assetsSubdirectory` | 拷贝图片子目录名（单层） |
+| `markly.export.preflight.scope` | 预检关 / 仅图 / 全量 |
+| `markly.export.preflight.blockOnIssues` | 有问题时是否模态阻断导出 |
+| `markly.export.pdf.*` | 版式、边距、目录、页眉页脚、`template` 等 |
+| `markly.image.remoteHttpsHostsAllowlist` | 非空时预检校验 `![](https://…)` 的 host（支持 `*.example.com`） |
+
+编辑器侧与导出正交但常一起调整：
+
+| 设置键 | 作用摘要 |
+|--------|----------|
+| `markly.editor.enableMermaid` | Rich 内是否启用 Mermaid 动态渲染 |
+| `markly.editor.deferDiagramRenderInRich` | Rich 内延迟/跳过 Mermaid 初始化（仍保留围栏；导出不受影响） |
+
+## 6. 大批量图片与内存（M264）
+
+导出 HTML/PDF 时，若一篇文档引用**极多**超大本地图，峰值内存与耗时会上升。建议：先压缩图片、分拆文档，或暂时将预检设为 `images`/`off` 做对比试验；团队交付可配合 `blockOnIssues` 做门禁。
+

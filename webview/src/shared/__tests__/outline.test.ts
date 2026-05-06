@@ -137,6 +137,15 @@ describe('collectOutlineFilterIndices (M61)', () => {
     const ix = collectOutlineFilterIndices(items, 'WORLD');
     expect([...(ix as Set<number>)]).toEqual([0]);
   });
+
+  it('M42: matching a diagram row does not pull in heading ancestors', () => {
+    const items = [
+      { level: 1, text: '第一章', kind: 'heading' as const },
+      { level: 2, text: '饼图摘要', kind: 'diagram' as const },
+    ];
+    const ix = collectOutlineFilterIndices(items, '饼图');
+    expect([...(ix as Set<number>)].sort((a, b) => a - b)).toEqual([1]);
+  });
 });
 
 describe('buildTree', () => {

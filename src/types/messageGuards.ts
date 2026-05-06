@@ -63,6 +63,8 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   const exp = x.export;
   if (!isRecord(editor) || !isRecord(image) || !isRecord(exp)) return false;
   if (!isRecord(exp.pdf)) return false;
+  const ddr = (editor as { deferDiagramRenderInRich?: unknown }).deferDiagramRenderInRich;
+  if (ddr !== undefined && typeof ddr !== 'boolean') return false;
   const theme = editor.theme;
   if (theme !== 'auto' && theme !== 'light' && theme !== 'dark') return false;
   if (!isNumber(editor.fontSize)) return false;
@@ -72,6 +74,10 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   if (!isNumber(image.compressQuality)) return false;
   const sn = (image as { sameNameHandling?: unknown }).sameNameHandling;
   if (sn !== 'overwrite' && sn !== 'rename' && sn !== 'prompt') return false;
+  const ral = (image as { remoteHttpsHostsAllowlist?: unknown }).remoteHttpsHostsAllowlist;
+  if (ral !== undefined && (!Array.isArray(ral) || !ral.every(isString))) return false;
+  const pip = (image as { pasteImageBasenamePrefix?: unknown }).pasteImageBasenamePrefix;
+  if (pip !== undefined && !isString(pip)) return false;
   const pdf = exp.pdf;
   const fmt = pdf.format;
   if (fmt !== 'A4' && fmt !== 'A3' && fmt !== 'Letter' && fmt !== 'Legal') return false;
@@ -97,6 +103,12 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
     const sc = (pf as { scope?: unknown }).scope;
     if (sc !== 'off' && sc !== 'images' && sc !== 'full') return false;
     if (typeof (pf as { blockOnIssues?: unknown }).blockOnIssues !== 'boolean') return false;
+  }
+  const diag = (exp as { diagram?: unknown }).diagram;
+  if (diag !== undefined) {
+    if (!isRecord(diag)) return false;
+    const bund = (diag as { mermaidScriptBundling?: unknown }).mermaidScriptBundling;
+    if (bund !== undefined && bund !== 'embedded' && bund !== 'external') return false;
   }
   const tpl = (x as { templates?: unknown }).templates;
   if (tpl !== undefined) {

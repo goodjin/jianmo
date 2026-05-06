@@ -21,5 +21,8 @@ export function canonicalMarkdownLocalRefKey(raw: string): string {
     segments.push(p);
   }
 
-  return segments.join('/');
+  const joined = segments.join('/');
+  // M181：Windows/macOS 默认文件系统常为大小写不敏感；用于“引用对比”时统一小写以降低误报
+  // 注：这是“诊断键”，不用于真实文件访问。
+  return joined.toLowerCase();
 }

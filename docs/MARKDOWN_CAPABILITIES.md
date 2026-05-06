@@ -598,6 +598,16 @@ graph TD
 
 计划在 **semver major（2.0.0）** 前或过 major 发行线时：按 **`docs/M100-2.0-GATE.md`** 逐项核对「M₅₁–M₉₉ 收口、契约单测、gates、是否破坏性变更」，并由发版 Owner 在该文档勾选 **保持 1.x** 或 **升 2.0.0**（附迁移）。**不作为**替换 `npm run gates:stable` 的自动化脚本。
 
+### 5.8 近期路线图工程收口（M201–M275，摘录）
+
+以下内容对应 **`docs/ROADMAP_NEAR.md`** 的工程交付摘要（不等于「路线图已全盘完结」）：主路径 **Rich + Source**、`markly.experimental`/`IR legacy`、导出预检可 **打开文档跳转首issue行（约）**、`formatExportFailure` **取消/磁盘/权限** 分类、大纲筛选 **防抖**、诊断包 **webviewMountMs**、CONTRIBUTING/issue 模板/PR 勾选 **messageGuards**、`EXPORT_GUIDE` 导出设置索引与安全/大图说明补强等。逐项 owner 与时间线仍以 **`ROADMAP_NEAR`** 表格为准。
+
+| 文档 | 说明 |
+|------|------|
+| **Rich vs Source** | **`docs/SOURCE_VS_RICH.md`** |
+| **Preview vs Export** | **`docs/EXPORT_PREVIEW_VS_EXPORT.md`** |
+| **Near templates** | **`docs/NEAR_KICKOFF_TEMPLATE.md`** / **`docs/NEAR_GONOGO_TEMPLATE.md`** |
+
 ---
 
 ## 六、最佳实践建议

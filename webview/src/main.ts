@@ -5,6 +5,15 @@ import './style.css';
 import './styles/decorators.css';
 import './styles/diagram.css';
 
+// M262：供诊断包估算 webview 脚本启动 → App 挂载耗时（不含扩展握手）
+if (typeof globalThis !== 'undefined' && typeof performance !== 'undefined') {
+  try {
+    (globalThis as any).__marklyWebviewBootT0 = performance.now();
+  } catch {
+    /* ignore */
+  }
+}
+
 function installGlobalErrorGuards(): void {
   const shouldSwallow = (errOrMsg: unknown): boolean => {
     let msg = '';

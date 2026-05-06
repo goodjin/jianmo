@@ -102,6 +102,24 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
     errors.push(`image.sameNameHandling 必须是 overwrite|rename|prompt，当前值: ${String(sn)}`);
   }
 
+  const ral = (config.image as ExtensionConfig['image']).remoteHttpsHostsAllowlist;
+  if (
+    ral !== undefined &&
+    (!Array.isArray(ral) || !ral.every((h) => typeof h === 'string' && String(h).trim().length))
+  ) {
+    errors.push('image.remoteHttpsHostsAllowlist 须为「非空 host 字符串」数组，未启用时请留空数组或删除键');
+  }
+
+  const ddr = config.editor.deferDiagramRenderInRich;
+  if (ddr !== undefined && typeof ddr !== 'boolean') {
+    errors.push(`editor.deferDiagramRenderInRich 必须是 boolean，当前值: ${String(ddr)}`);
+  }
+
+  const msb = config.export.diagram?.mermaidScriptBundling;
+  if (msb !== undefined && msb !== 'embedded' && msb !== 'external') {
+    errors.push(`export.diagram.mermaidScriptBundling 必须是 embedded|external，当前值: ${String(msb)}`);
+  }
+
   // 验证 export.pdf.format
   if (!['A4', 'A3', 'Letter', 'Legal'].includes(config.export.pdf.format)) {
     errors.push(`export.pdf.format 必须是 "A4", "A3", "Letter" 或 "Legal"，当前值: ${config.export.pdf.format}`);
@@ -203,6 +221,7 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     wrapPolicy: 'autoWrap',
     tableCellWrap: 'wrap',
     enableMermaid: true,
+    deferDiagramRenderInRich: false,
     enableShiki: false,
     richTableColumnResize: 'auto',
   },
@@ -211,6 +230,8 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     compressThreshold: 512000,
     compressQuality: 0.8,
     sameNameHandling: 'rename',
+    pasteImageBasenamePrefix: 'paste',
+    remoteHttpsHostsAllowlist: [],
   },
   export: {
     pdf: {
@@ -233,6 +254,9 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     preflight: {
       scope: 'full',
       blockOnIssues: false,
+    },
+    diagram: {
+      mermaidScriptBundling: 'embedded',
     },
   },
   ai: {
@@ -287,6 +311,17 @@ export class ConfigurationStore implements vscode.Disposable {
     const pfScope: 'off' | 'images' | 'full' =
       pfScopeRaw === 'off' || pfScopeRaw === 'images' || pfScopeRaw === 'full' ? pfScopeRaw : 'full';
     const pfBlock = vsConfig.get<boolean>('export.preflight.blockOnIssues', false);
+    const diagramBundlingRaw = vsConfig.get<string>('export.diagram.mermaidScriptBundling', 'embedded');
+    const diagramBundling =
+      diagramBundlingRaw === 'external' || diagramBundlingRaw === 'embedded' ? diagramBundlingRaw : 'embedded';
+    const deferDiagramRich = vsConfig.get<boolean>('editor.deferDiagramRenderInRich', false);
+    const remoteAllowRaw = vsConfig.get<string[]>('image.remoteHttpsHostsAllowlist', []);
+    const remoteAllow =
+      Array.isArray(remoteAllowRaw) && remoteAllowRaw.every((h) => typeof h === 'string')
+        ? remoteAllowRaw.map((h) => String(h).trim()).filter(Boolean)
+        : [];
+    const pastePrefixRaw = String(vsConfig.get<string>('image.pasteImageBasenamePrefix', 'paste') ?? 'paste').trim();
+    const pastePrefix = pastePrefixRaw || 'paste';
     const pdfIncludeToc = vsConfig.get<boolean>('export.pdf.includeToc', true);
     const pdfDisplayHeaderFooter = vsConfig.get<boolean>('export.pdf.displayHeaderFooter', true);
     const pdfTemplate = vsConfig.get<'default' | 'academic'>('export.pdf.template', 'default');
@@ -305,10 +340,21 @@ export class ConfigurationStore implements vscode.Disposable {
       templates: {
         userDirectory: templatesUserDirectory,
       },
-      editor: userEditor || {},
-      image: { ...(userImage || {}), sameNameHandling: imageSameNameHandling },
+      editor: { ...(userEditor || {}), deferDiagramRenderInRich: deferDiagramRich },
+      image: {
+        ...(userImage || {}),
+        sameNameHandling: imageSameNameHandling,
+        pasteImageBasenamePrefix: pastePrefix,
+        remoteHttpsHostsAllowlist: remoteAllow,
+      },
       export: {
         ...userExport,
+        diagram: {
+          mermaidScriptBundling: diagramBundling,
+          ...(typeof userExport === 'object' && userExport !== null && (userExport as any).diagram
+            ? ((userExport as any).diagram as object)
+            : {}),
+        },
         pdf: {
           ...userExportPdf,
           margin: userExportPdfMargin || {},

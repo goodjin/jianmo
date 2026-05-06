@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { buildDiagnosticsPackageText, buildIssueTemplateMarkdown, redactDiagnosticsJson } from '../diagnosticsPackage';
+import {
+  buildDiagnosticsPackageText,
+  buildIssueTemplateMarkdown,
+  diagnosticsTrackedEditorMode,
+  redactDiagnosticsJson,
+} from '../diagnosticsPackage';
 
 describe('diagnosticsPackage', () => {
+  it('maps editor modes for diagnostics tracking', () => {
+    expect(diagnosticsTrackedEditorMode('rich')).toBe('rich');
+    expect(diagnosticsTrackedEditorMode('source')).toBe('source');
+    expect(diagnosticsTrackedEditorMode('ir')).toBe('legacy-ir');
+    expect(diagnosticsTrackedEditorMode(undefined)).toBe('source');
+  });
+
   it('redacts absolute paths in strings', () => {
     const obj = redactDiagnosticsJson({
       a: '/Users/jin/secret/project/file.md',

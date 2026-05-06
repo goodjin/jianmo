@@ -57,7 +57,11 @@ const MUST_CONTAIN: Record<string, string[]> = {
     '| 7  |',
     '| 12 |',
   ],
-  'm9/05-footnotes.md': ['[^1]:', '脚注内容'],
+  // Milkdown 往返后 `<br />` 常规范为同段内连续文本；仍须保留格内两个语片不丢字
+  'm9/14-table-cell-linebreaks.md': ['格内换行', '上行', '下行'],
+  'm9/15-table-mixed-align-sparse.md': ['M58', ':-----', ':------:', '--------:', '**粗体居中**', '`code_ok`'],
+  'm9/16-table-math-code.md': ['| 名称 |', '$E=mc^2$', '`const x = 1`', '\\frac{a}{b}', '`a_b`'],
+  'm9/05-footnotes.md': ['[^1]', '[^1]:', '脚注内容', '同一个脚注再次引用'],
   'm9/06-math.md': ['$$', 'int'],
   'm9/07-mermaid.md': ['```mermaid', 'sequenceDiagram', 'flowchart TD'],
   'm9/08-images-and-links.md': ['![logo](./assets/logo.png)', 'file.zip?from=markly'],

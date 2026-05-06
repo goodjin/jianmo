@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import OutlinePanel from '../OutlinePanel.vue';
 
+async function flushOutlineFilterDebounce(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 150));
+}
+
 describe('OutlinePanel', () => {
   it('shows full heading text as tooltip and emits jump on click', async () => {
     const content = '# Very Long Heading For Tooltip {#custom}\n\nbody\n\n## Child';
@@ -72,6 +76,7 @@ describe('OutlinePanel', () => {
       },
     });
     await wrapper.get('.outline-filter-input').setValue('使用');
+    await flushOutlineFilterDebounce();
     expect(wrapper.findAll('.outline-item').map((w) => w.text())).toEqual(['导论', '使用']);
   });
 
@@ -80,6 +85,7 @@ describe('OutlinePanel', () => {
       props: { content: '# Only', currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
     });
     await wrapper.get('.outline-filter-input').setValue('zzz');
+    await flushOutlineFilterDebounce();
     expect(wrapper.find('.outline-filter-empty').exists()).toBe(true);
     expect(wrapper.findAll('.outline-item')).toHaveLength(0);
   });
@@ -109,6 +115,25 @@ describe('OutlinePanel', () => {
     await input.setValue('x');
     await input.trigger('keydown', { key: 'Escape' });
     expect((input.element as HTMLInputElement).value).toBe('');
+  });
+
+  it('M42: merges mermaid fences with headings by source order', () => {
+    const content = ['# Intro', '', '```mermaid', 'flowchart LR', '  A-->B', '```', '', '## Detail', ''].join('\n');
+    const wrapper = mount(OutlinePanel, {
+      props: { content, currentMode: 'rich', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    const texts = wrapper.findAll('.outline-item').map((w) => w.text());
+    expect(texts[0]).toBe('Intro');
+    expect(texts[1]).toContain('flowchart');
+    expect(texts[2]).toBe('Detail');
+  });
+
+  it('M42: diagram-only document still lists outline', () => {
+    const content = ['```mermaid', 'x', '```'].join('\n');
+    const wrapper = mount(OutlinePanel, {
+      props: { content, currentMode: 'source', activeHeadingId: '', collapsedHeadingIds: [] },
+    });
+    expect(wrapper.findAll('.outline-item')).toHaveLength(1);
   });
 });
 

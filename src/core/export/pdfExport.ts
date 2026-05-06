@@ -93,7 +93,7 @@ export async function exportToPdf(
   const puppeteerModule = await import('puppeteer');
   const puppeteer = (puppeteerModule as any).default ?? puppeteerModule;
 
-  // 启动 puppeteer
+  // 启动 puppeteer（finally 务必关闭；close 异常吞掉以免影响错误传播）
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -148,7 +148,7 @@ export async function exportToPdf(
       printBackground: true,
     });
   } finally {
-    await browser.close();
+    await browser.close().catch(() => undefined);
   }
 }
 

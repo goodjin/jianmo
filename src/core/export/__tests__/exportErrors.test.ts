@@ -16,4 +16,14 @@ describe('formatExportFailure', () => {
   it('falls back to raw message for html', () => {
     expect(formatExportFailure('html', new Error('write failed'))).toContain('HTML 导出失败');
   });
+
+  it('M223: treats export cancellation distinctly', () => {
+    expect(formatExportFailure('pdf', new Error('Export cancelled'))).toContain('取消');
+    expect(formatExportFailure('html', new Error('Export cancelled'))).toContain('取消');
+  });
+
+  it('M223: classifies permission errors for pdf/html', () => {
+    expect(formatExportFailure('pdf', new Error('EACCES: permission denied'))).toContain('权限');
+    expect(formatExportFailure('html', new Error('enospc no space left'))).toContain('空间');
+  });
 });

@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 
+/**
+ * CM6/IR 与未来「无 IR」构建策略的讨论见 docs/IR_REMOVAL_PHASE0.md（M10）。
+ * 如需试验条件编译，可通过 `define` + 分叉入口；当前不设默认 strip。
+ */
 export default defineConfig({
   plugins: [vue()],
   base: './',

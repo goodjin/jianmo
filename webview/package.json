@@ -1,6 +1,6 @@
 {
   "name": "md-editor-webview",
-  "version": "1.39.0",
+  "version": "1.39.14",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -21,7 +21,8 @@
     "@milkdown/utils": "^7.16.0",
     "katex": "^0.16.9",
     "marked": "^17.0.5",
-    "mermaid": "^11.12.3",
+    "mermaid": "11.12.3",
+    "prosemirror-gapcursor": "^1.4.1",
     "prosemirror-keymap": "^1.2.3",
     "prosemirror-tables": "^1.8.5",
     "refractor": "^5.0.0",

@@ -178,6 +178,25 @@ describe('useEditor', () => {
       await nextTick();
       expect(getContent()).toBe('**test**');
     });
+
+    it('M20：模式切换清空 CM6 简易撤销栈（非原生 history），切换后不可撤回切换前的编辑', async () => {
+      const { result: { createEditor, switchMode, canUndo, setContent, mode, getContent }, wrapper } =
+        withSetup(() => useEditor({ initialMode: 'ir', initialContent: 'z\n' }));
+
+      createEditor(container);
+      setContent('a\n');
+      await nextTick();
+      setContent('b\n');
+      await nextTick();
+      expect(canUndo.value).toBe(true);
+
+      switchMode('source');
+      await nextTick();
+
+      expect(mode.value).toBe('source');
+      expect(getContent()).toBe('b\n');
+      expect(canUndo.value).toBe(false);
+    });
   });
 
   describe('格式与插入操作', () => {

@@ -97,7 +97,7 @@ describe('createAssistModelOperations (M80)', () => {
     const r2 = await p2;
     expect(r2.ok).toBe(false);
     if (r2.ok) throw new Error('expected fail');
-    expect(r2.error).toContain('过于频繁');
+    expect(r2.error).toContain('尚未结束');
 
     resolveFetch?.();
     const r1 = await p1;

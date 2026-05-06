@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "Markly",
   "description": "A clean and intuitive WYSIWYG Markdown editor for VSCode",
-  "version": "1.39.11",
+  "version": "1.39.14",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -30,19 +30,19 @@
     "commands": [
       {
         "command": "markly.toggleMode",
-        "title": "Toggle Edit Mode",
+        "title": "Toggle Edit Mode (切换 Rich / Source)",
         "icon": "$(refresh)",
         "category": "Markly"
       },
       {
         "command": "markly.export.pdf",
-        "title": "Export as PDF",
+        "title": "Export as PDF (导出 PDF)",
         "icon": "$(file-pdf)",
         "category": "Markly"
       },
       {
         "command": "markly.export.html",
-        "title": "Export as HTML",
+        "title": "Export as HTML (导出 HTML)",
         "icon": "$(file-code)",
         "category": "Markly"
       },
@@ -72,7 +72,7 @@
       },
       {
         "command": "markly.toggleOutline",
-        "title": "Toggle Outline",
+        "title": "Toggle Outline (切换大纲)",
         "icon": "$(list-tree)",
         "category": "Markly"
       },
@@ -365,8 +365,8 @@
         "steps": [
           {
             "id": "markly.welcome.modes",
-            "title": "Rich 与 Source / 预览",
-            "description": "工具栏 **T** 进入 Rich（所见即所得），**{ }** 在源码与预览间切换。也可用命令 **Markly: Toggle Edit Mode**（默认快捷键 macOS `Cmd+\\`，Windows / Linux `Ctrl+\\`）。\n\n[打开键盘快捷方式](command:workbench.action.openGlobalKeybindings)",
+            "title": "Rich 与 Source",
+            "description": "**推荐主路径**：工具栏切换 **Rich**（所见即所得）与 **Source**（Markdown 源码）。命令面板：**Markly: Toggle Edit Mode (切换 Rich / Source)**（默认快捷键 macOS `Cmd+\\`，Windows / Linux `Ctrl+\\`）。\n\n历史 **IR（中间模式）** 已冻结、不向新场景投入；如需了解迁移与移除计划见仓库 **`docs/IR_REMOVAL_ROADMAP.md`**。\n\n[打开键盘快捷方式](command:workbench.action.openGlobalKeybindings)",
             "media": {
               "image": "images/icon.png",
               "altText": "Markly"
@@ -503,7 +503,7 @@
         "markly.editor.deferDiagramRenderInRich": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "为 `true` 时 Rich 模式 **完全不初始化 Mermaid**，图表保持 ```mermaid 源码块形态（省电/卡顿时可开）。导出 HTML/PDF 不受影响。"
+          "markdownDescription": "为 `true` 时 Rich 模式 **完全不初始化 Mermaid**，图表保持 ```mermaid 源码块形态（省电/弱机可先开）；与文档体量档位/看门狗降级正交。**导出 HTML/PDF 不受影响**。\n\n- 性能档位与启动说明：**`resources/PERFORMANCE_NOTES.md`**\n- **IR（decorator 中间模式）冻结**、不向新用户推荐使用：**`docs/IR_REMOVAL_ROADMAP.md`**；近期收口路线：**`docs/ROADMAP_NEAR.md`**（M201+）"
         },
         "markly.editor.defaultForMarkdown": {
           "type": "boolean",

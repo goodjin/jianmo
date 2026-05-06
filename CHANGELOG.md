@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.39.14] - 2026-05-06
+
+### Added
+
+- **M201 / M268 / M270 / M275**：新增近期阶段 **Kickoff / Go-NoGo** 可重复记录模板：`docs/NEAR_KICKOFF_TEMPLATE.md`、`docs/NEAR_GONOGO_TEMPLATE.md`。
+- **M259**：新增 `docs/EXPORT_PREVIEW_VS_EXPORT.md`，说明 Preview 导出与正式导出差异与排障建议。
+
+### Documentation
+
+- `docs/ROADMAP_NEAR.md`、`docs/MARKDOWN_CAPABILITIES.md`、`README.md` 增补上述模板与说明的链接入口。
+
+## [1.39.13] - 2026-05-06
+
+### Added
+
+- **M247（E2E Rich 冒烟进 CI）**：CI（GitHub Actions）增加 headless 运行 `npm run test:vscode`（xvfb）以覆盖自定义编辑器打开与基础命令链路；并将 e2e runner 改为跨平台：CI 不再依赖本机 VS Code 路径。
+- **M250（包体趋势）**：新增 `scripts/record-bundle-sizes.mjs` 输出 `tmp/bundle-sizes.json`，并提供 `resources/BUNDLE_SIZE_HISTORY.md` + `resources/bundle-size-history.jsonl` 作为趋势台账入口；CI 额外生成一次报告。
+- **M245 / M257**：新增 `docs/FLAKY_TESTS.md`（flaky 管控）与 `docs/REGRESSION_PLAYBOOK.md`（issue→fixture 回归流程）。
+
+## [1.39.12] - 2026-05-06
+
+### Added
+
+- **M201–M275（近期路线 · 工程落地）**：`CONTRIBUTING.md`、Issue 模板（`.github/ISSUE_TEMPLATE/bug_report.md`）、`docs/SOURCE_VS_RICH.md`；`EXPORT_GUIDE` 增补导出相关 `markly.*` 索引与大批量图片说明；`COMPATIBILITY_MATRIX` 增补 Remote/WSL 手记；`MARKDOWN_CAPABILITIES` **§5.8**；`docs/ROADMAP_NEAR.md` **§7** 执行快照。
+- **M224**：导出预检为每条 issue 附上 **源码行号（约）**；宿主侧预检 UI 支持 **打开文档并定位**（阻塞模式下会取消本次导出；非阻塞仍可继续）。
+- **M262**：诊断包增加 **`webviewMountMs`**（webview 脚本启动→App mounted 毫秒数，仅供排障）。
+- **M231**：大纲标题筛选输入 **100ms 防抖**，减轻超大纲连续键入开销。
+
+### Changed
+
+- **M223/M222**：导出失败归因补充 **Export cancelled / 权限 / 磁盘满**；PDF 导出 `browser.close()` **吞掉次要异常**，避免遮盖真实错误。
+- **M241**：命令面板部分标题增加中文检索后缀（导出 PDF/HTML、大纲、Toggle 模式）。
+- **M242**：Welcome walkthrough 第一步改为 **Rich + Source** 主路径描述，并链到 IR 冻结/移除路线图。
+- **DEPENDENCY_UPDATE_POLICY**：补充 **`npm audit` 高危 7 日**处理预期（**M249**）。
+
+### Documentation
+
+- `resources/TROUBLESHOOTING.md`：导出预检跳转、大图粘贴；`README`：**三步排障 + CONTRIBUTING**。
+- **`markly.editor.deferDiagramRenderInRich`** 的 markdown 描述：补充性能档位/看门狗与 IR roadmap 指针。
+
+### Housekeeping
+
+- **M246**：PR 模板勾选 **protocol / messageGuards**；**M235**：SVG sanitize **onload** 向量例。
+
 ## [1.39.11] - 2026-05-05
 
 ### Changed

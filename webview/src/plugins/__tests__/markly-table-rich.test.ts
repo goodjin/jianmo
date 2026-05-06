@@ -7,8 +7,10 @@ import { Schema, Slice } from '@milkdown/prose/model';
 import { EditorState, TextSelection } from '@milkdown/prose/state';
 import { EditorView } from '@milkdown/prose/view';
 import { CellSelection, TableMap } from 'prosemirror-tables';
+import { history, undo } from 'prosemirror-history';
 import { runRichTableOp } from '../../core/richTableCommands';
 import {
+  MARKLY_TABLE_HTML_CLIPBOARD_MAX_CHARS,
   MARKLY_TABLE_PASTE_MAX_COLS,
   MARKLY_TABLE_PASTE_MAX_ROWS,
   MARKLY_TABLE_PASTE_MAX_CELLS,
@@ -613,6 +615,54 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     host.remove();
   });
 
+  it('M27：剪贴板 text/html 超体积阈值时发 toast，仍可按纯文本 TSV 表格外建表', () => {
+    const schema = createTestSchema();
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, schema.text('hello')),
+    ]);
+    const p = doc.child(0);
+    const cursorPos = 1 + p.content.size;
+    const selection = TextSelection.create(doc, cursorPos);
+
+    const plugin = createMarklyTableGridPastePlugin();
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection,
+      plugins: [plugin],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    const filler = `<table><tr><td>${'x'.repeat(MARKLY_TABLE_HTML_CLIPBOARD_MAX_CHARS)}</td></tr></table>`;
+
+    const event = ({
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === 'text/html') return filler;
+          if (type === 'text/plain') return 'h1\th2\n1\t2\n';
+          return '';
+        },
+      },
+    } as unknown) as ClipboardEvent;
+
+    const handled = plugin.props.handlePaste?.(view, event, Slice.empty) ?? false;
+    expect(handled).toBe(true);
+    expect(docHasTable(schema, view.state.doc)).toBe(true);
+
+    const toastMsgs = dispatchSpy.mock.calls
+      .map((c) => (c[0] as CustomEvent)?.detail?.message as string | undefined)
+      .filter(Boolean);
+    expect(toastMsgs.some((m) => m.includes('体积过大'))).toBe(true);
+
+    dispatchSpy.mockRestore();
+    view.destroy();
+    host.remove();
+  });
+
   it('表格外建表：html table 与 plain 同时存在时，确实使用 html grid（首行内容来自 html）', () => {
     const schema = createTestSchema();
     const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);
@@ -735,6 +785,34 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     expect(docHasTable(schema, view.state.doc)).toBe(false);
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).type.name).toBe('paragraph');
+
+    view.destroy();
+    host.remove();
+  });
+
+  it('M142: addRowAfter 可撤销（undo 后表格行数回滚）', () => {
+    const schema = createTestSchema();
+    const doc = create2x2TableDoc(schema);
+    const table = firstTableNode(doc);
+    expect(table).not.toBeNull();
+    const map = TableMap.get(table);
+    const topLeftCell = 1 + map.positionAt(0, 0, table);
+    const selection = TextSelection.create(doc, topLeftCell + 2);
+    const state = EditorState.create({ schema, doc, selection, plugins: [history()] });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    const before = firstTableNode(view.state.doc)!;
+    expect(before.childCount).toBeGreaterThanOrEqual(2);
+
+    expect(runRichTableOp(view, 'addRowAfter')).toBe(true);
+    const after = firstTableNode(view.state.doc)!;
+    expect(after.childCount).toBe(before.childCount + 1);
+
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    const undone = firstTableNode(view.state.doc)!;
+    expect(undone.childCount).toBe(before.childCount);
 
     view.destroy();
     host.remove();

@@ -8,6 +8,7 @@ import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { EditorView } from '@codemirror/view';
 import { useVSCode } from './useVSCode';
+import { sanitizeSvgMarkup } from '../utils/svgSanitize';
 
 /**
  * 压缩选项
@@ -31,6 +32,8 @@ export interface UseImageHandlerOptions {
   onCompressingStart?: () => void;
   /** 接近 maxFileSize 上限时提示（M₃₁ 大文件） */
   onHeavyImageWarning?: (info: { mb: number; maxFileSizeMb: number }) => void;
+  /** M49：粘贴/保存前的文件名前缀（默认 `paste`） */
+  getPasteBasenamePrefix?: () => string;
   maxWidth?: number;
   maxHeight?: number;
   quality?: number;
@@ -68,6 +71,7 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     onError,
     onCompressingStart,
     onHeavyImageWarning,
+    getPasteBasenamePrefix,
   } = options;
 
   const { postMessage, onMessage } = useVSCode();
@@ -101,6 +105,28 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
       reader.readAsDataURL(file);
     });
   };
+
+  const readFileAsText = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+      reader.readAsText(file);
+    });
+
+  // M134：粘贴命名二期（序号递增），避免同秒内重复且便于排序
+  let pasteSequence = 0;
+
+  function buildUploadedImageFilename(extension: string): string {
+    const raw = getPasteBasenamePrefix?.() ?? 'paste';
+    const prefix = String(raw).trim() || 'paste';
+    const iso = new Date().toISOString();
+    const ymd = iso.slice(0, 10).replace(/-/g, '');
+    const hms = iso.slice(11, 19).replace(/:/g, '');
+    pasteSequence += 1;
+    const seq = String(pasteSequence).padStart(4, '0');
+    return `${prefix}-${ymd}-${hms}-${seq}.${extension}`;
+  }
 
   /**
    * 压缩图片
@@ -164,17 +190,22 @@ export const useImageHandler = (options: UseImageHandlerOptions): UseImageHandle
     lastError.value = '';
 
     try {
+      const extFromName = (file.name.split('.').pop() ?? '').toLowerCase();
+      const isSvg = file.type === 'image/svg+xml' || extFromName === 'svg';
       let dataUrl = await readFileAsDataURL(file);
       progress.value = 30;
 
-      if (file.size > compressThresholdBytes) {
+      if (isSvg) {
+        const raw = await readFileAsText(file);
+        dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitizeSvgMarkup(raw))}`;
+      } else if (file.size > compressThresholdBytes) {
         onCompressingStart?.();
         dataUrl = await compressImage(dataUrl);
       }
       progress.value = 60;
 
-      const ext = file.name.split('.').pop() ?? 'jpg';
-      const requestedFilename = `image-${Date.now()}.${ext}`;
+      const ext = isSvg ? 'svg' : extFromName || 'jpg';
+      const requestedFilename = buildUploadedImageFilename(ext);
       const requestId = newUploadRequestId();
 
       const payload = await new Promise<{ path: string; savedFilename: string }>((resolve, reject) => {

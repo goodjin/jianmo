@@ -153,9 +153,9 @@ export function registerCommands(
         {
           location: vscode.ProgressLocation.Notification,
           title: '导出 PDF...',
-          cancellable: false,
+          cancellable: true,
         },
-        async (progress) => {
+        async (progress, token) => {
           try {
             progress.report({ message: '正在准备内容...' });
             const content = editor.document.getText();
@@ -166,6 +166,13 @@ export function registerCommands(
             const vs = vscode.workspace.getConfiguration('markly');
             const pfScope = vs.get<'off' | 'images' | 'full'>('export.preflight.scope', 'full');
             const pfBlock = vs.get<boolean>('export.preflight.blockOnIssues', false);
+            const remoteAllowRaw = vs.get<string[]>('image.remoteHttpsHostsAllowlist', []);
+            const remoteAllow =
+              Array.isArray(remoteAllowRaw) && remoteAllowRaw.every((h) => typeof h === 'string')
+                ? remoteAllowRaw.map((h) => String(h).trim()).filter(Boolean)
+                : [];
+            const diagramBundlingRaw = vs.get<string>('export.diagram.mermaidScriptBundling', 'embedded');
+            const mermaidScriptBundling = diagramBundlingRaw === 'external' ? 'external' : 'embedded';
             if (
               !(await confirmContinueAfterExportPreflight({
                 markdown: content,
@@ -173,6 +180,7 @@ export function registerCommands(
                 scope: pfScope,
                 blockOnIssues: pfBlock,
                 formatLabel: 'PDF',
+                remoteHttpsHostsAllowlist: remoteAllow,
               }))
             ) {
               return;
@@ -195,7 +203,13 @@ export function registerCommands(
               displayHeaderFooter: vs.get<boolean>('export.pdf.displayHeaderFooter', true),
             };
             const baseHref = vscode.Uri.file(path.dirname(editor.document.fileName)).toString(true) + '/';
-            await exportToPdf(content, saveUri.fsPath, pdfExportOptionsFromPdfConfig(pdfCfg, baseHref));
+            const ac = new AbortController();
+            token.onCancellationRequested(() => ac.abort());
+            await exportToPdf(content, saveUri.fsPath, {
+              ...pdfExportOptionsFromPdfConfig(pdfCfg, baseHref),
+              mermaidScriptBundling,
+              abortSignal: ac.signal,
+            });
 
             // 验证文件是否生成
             const fs = require('fs');
@@ -253,9 +267,9 @@ export function registerCommands(
         {
           location: vscode.ProgressLocation.Notification,
           title: '导出 HTML...',
-          cancellable: false,
+          cancellable: true,
         },
-        async () => {
+        async (_progress, token) => {
           try {
             const content = editor.document.getText();
             // 从文件名前提取标题
@@ -263,6 +277,13 @@ export function registerCommands(
             const markly = vscode.workspace.getConfiguration('markly');
             const pfScope = markly.get<'off' | 'images' | 'full'>('export.preflight.scope', 'full');
             const pfBlock = markly.get<boolean>('export.preflight.blockOnIssues', false);
+            const remoteAllowRaw = markly.get<string[]>('image.remoteHttpsHostsAllowlist', []);
+            const remoteAllow =
+              Array.isArray(remoteAllowRaw) && remoteAllowRaw.every((h) => typeof h === 'string')
+                ? remoteAllowRaw.map((h) => String(h).trim()).filter(Boolean)
+                : [];
+            const diagramBundlingRaw = markly.get<string>('export.diagram.mermaidScriptBundling', 'embedded');
+            const mermaidScriptBundling = diagramBundlingRaw === 'external' ? 'external' : 'embedded';
             if (
               !(await confirmContinueAfterExportPreflight({
                 markdown: content,
@@ -270,6 +291,7 @@ export function registerCommands(
                 scope: pfScope,
                 blockOnIssues: pfBlock,
                 formatLabel: 'HTML',
+                remoteHttpsHostsAllowlist: remoteAllow,
               }))
             ) {
               return;
@@ -279,6 +301,8 @@ export function registerCommands(
             const copyLocalImages = markly.get<boolean>('export.html.copyLocalImages', false);
             const assetsSubdirectory =
               markly.get<string>('export.html.assetsSubdirectory', 'markly-html-assets').trim() || 'markly-html-assets';
+            const ac = new AbortController();
+            token.onCancellationRequested(() => ac.abort());
             await exportToHtml(content, saveUri.fsPath, {
               includeToc: true,
               title,
@@ -286,6 +310,8 @@ export function registerCommands(
               copyLocalImages,
               documentBaseDir: path.dirname(editor.document.fileName),
               assetsSubdirectory,
+              mermaidScriptBundling,
+              abortSignal: ac.signal,
             });
             vscode.window.showInformationMessage(`HTML 已导出: ${path.basename(saveUri.fsPath)}`);
           } catch (error) {
@@ -316,10 +342,13 @@ export function registerCommands(
     const markly = vscode.workspace.getConfiguration('markly');
     const htmlTheme =
       markly.get<'default' | 'print-friendly'>('export.html.theme', 'default') ?? 'default';
+    const diagramBundlingRaw = markly.get<string>('export.diagram.mermaidScriptBundling', 'embedded');
+    const mermaidScriptBundling = diagramBundlingRaw === 'external' ? 'external' : 'embedded';
     showExportHtmlPreviewPanel({
       markdown,
       documentUri: uri,
       htmlTheme,
+      mermaidScriptBundling,
     });
   });
 
