@@ -5,6 +5,7 @@
  * M40/M43：`mermaidScriptBundling`；围栏可选 `%% alt:` 无障碍标签。
  */
 import * as fs from 'fs';
+import * as path from 'path';
 
 import {
   orderedMermaidFenceAlts,
@@ -83,16 +84,42 @@ export function transformMermaidFencesForExport(html: string, markdown?: string)
 }
 
 export function readMermaidMinJsFromDisk(): string {
-  const rels = ['mermaid/dist/mermaid.min.js', 'mermaid/dist/mermaid.js'];
-  for (const rel of rels) {
+  // mermaid v11+ 在 Node 的 "exports" 场景下可能阻止 deep import（即使文件存在）。
+  // 为保证导出预览离线可用，我们优先从包根目录定位 dist 文件。
+  const relCandidates = ['mermaid/dist/mermaid.min.js', 'mermaid/dist/mermaid.js'];
+  for (const rel of relCandidates) {
     try {
       const p = require.resolve(rel);
       return fs.readFileSync(p, 'utf-8');
     } catch {
-      /* try next */
+      /* continue */
     }
   }
-  throw new Error('[Markly] 未找到 mermaid 发行文件（mermaid/dist/mermaid.min.js）');
+
+  // Fallback: resolve package root then probe dist files directly.
+  try {
+    const pkgJson = require.resolve('mermaid/package.json');
+    const pkgDir = path.dirname(pkgJson);
+    const distDir = path.join(pkgDir, 'dist');
+    const fileCandidates = [
+      'mermaid.min.js',
+      'mermaid.js',
+      // Some builds ship only module variants; try them last.
+      'mermaid.esm.min.mjs',
+      'mermaid.esm.mjs',
+    ];
+
+    for (const f of fileCandidates) {
+      const p = path.join(distDir, f);
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        return fs.readFileSync(p, 'utf-8');
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  throw new Error('[Markly] 未找到 mermaid 发行文件（mermaid/dist/mermaid.min.js）。请确认已安装依赖并重试（npm ci），或将 Mermaid 脚本注入方式改为 external（需联网）。');
 }
 
 const MERMAID_BOOT_INLINE = String.raw`
