@@ -1,0 +1,14 @@
+{
+  "ai.setApiKey.title": "Set AI API Key",
+  "ai.setApiKey.prompt": "API Key will be stored in VS Code SecretStorage (not settings.json).",
+  "ai.setApiKey.empty": "API Key cannot be empty.",
+  "ai.setApiKey.saved": "AI API Key saved.",
+  "ai.setApiKey.cleared": "AI API Key cleared.",
+
+  "export.failure.diagnosticsCopied": "Diagnostics copied to clipboard (redacted).",
+  "export.failure.lastDiagnosticsCopied": "Copied last export failure diagnostics (redacted).",
+  "export.preflight.openAndReveal": "Open document and reveal",
+  "export.preflight.exportAnyway": "Export anyway",
+  "export.preflight.cancel": "Cancel"
+}
+

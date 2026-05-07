@@ -35,6 +35,7 @@ const minimalConfig: ExtensionConfig = {
 
 describe('messageGuards — Extension → Webview', () => {
   const samples: ExtensionMessage[] = [
+    { type: 'INIT', protocolVersion: 1, payload: { content: '# x', config: minimalConfig, version: 3 } },
     { type: 'INIT', payload: { content: '# x', config: minimalConfig, version: 3 } },
     { type: 'INIT', payload: { content: '# x', config: minimalConfig } },
     {
@@ -83,6 +84,16 @@ describe('messageGuards — Extension → Webview', () => {
     },
     { type: 'ASSETS_IMAGE_FILES_RESULT', payload: { requestId: 'ast-1', relativePaths: ['assets/a.png'] } },
     { type: 'ASSETS_IMAGE_FILES_RESULT', payload: { requestId: 'ast-2', relativePaths: [], error: 'ENOENT' } },
+    { type: 'ASSETS_IMAGE_DELETE_RESULT', payload: { requestId: 'del-1', deletedRelativePaths: ['assets/a.png'], failed: [] } },
+    {
+      type: 'ASSETS_IMAGE_DELETE_RESULT',
+      payload: {
+        requestId: 'del-2',
+        cancelled: true,
+        deletedRelativePaths: [],
+        failed: [{ relativePath: 'assets/b.png', error: 'EACCES' }],
+      },
+    },
     {
       type: 'MARKDOWN_BACKLINKS_RESULT',
       payload: {
@@ -191,6 +202,11 @@ describe('messageGuards — Extension → Webview', () => {
     ).toBe(false);
   });
 
+  it('strict: rejects unknown top-level fields (M284)', () => {
+    expect(isExtensionMessage({ type: 'SAVE', extra: 1 } as any, { strict: true })).toBe(false);
+    expect(isExtensionMessage({ type: 'SAVE' } as any, { strict: true })).toBe(true);
+  });
+
   it('isExtensionConfig matches minimalConfig', () => {
     expect(isExtensionConfig(minimalConfig)).toBe(true);
     expect(isExtensionConfig({})).toBe(false);
@@ -255,6 +271,7 @@ describe('messageGuards — Extension → Webview', () => {
 
 describe('messageGuards — Webview → Extension', () => {
   const samples: WebViewMessage[] = [
+    { type: 'READY', protocolVersion: 1, minSupportedProtocolVersion: 1 },
     { type: 'READY' },
     { type: 'CONTENT_CHANGE', payload: { content: 'x', version: 1 } },
     {
@@ -268,6 +285,7 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'UPLOAD_IMAGE', payload: { base64: 'base64', filename: 'b.png', requestId: 'rid-8' } },
     { type: 'CHECK_LOCAL_IMAGE_REFS', payload: { requestId: 'img-1', refs: ['./a.png', '../b.png'] } },
     { type: 'LIST_ASSETS_IMAGE_FILES', payload: { requestId: 'ast-req-1' } },
+    { type: 'DELETE_ASSETS_IMAGE_FILES', payload: { requestId: 'del-req-1', relativePaths: ['./assets/a.png'] } },
     { type: 'FIND_MARKDOWN_BACKLINKS', payload: { requestId: 'bl-find-1' } },
     { type: 'OPEN_MARKDOWN_DOCUMENT', payload: { uri: 'file:///work/a.md' } },
     { type: 'MARKDOWN_HOVER_PREVIEW_REQUEST', payload: { requestId: 'hp-req-1', href: './a.md#t' } },
@@ -324,5 +342,10 @@ describe('messageGuards — Webview → Extension', () => {
       false
     );
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
+  });
+
+  it('strict: rejects unknown top-level fields (M284)', () => {
+    expect(isWebViewMessage({ type: 'READY', extra: 1 } as any, { strict: true })).toBe(false);
+    expect(isWebViewMessage({ type: 'READY' } as any, { strict: true })).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { buildExportFailureDiagnosticsMarkdown } from '@core/export/exportDiagnostics';
 import { formatExportFailure } from '@core/export/exportErrors';
+import { t } from '../l10n';
 
 let lastDiagnosticsMarkdown: string | null = null;
 
@@ -35,7 +36,7 @@ export async function showExportFailureWithDiagnostics(
   const pick = await vscode.window.showErrorMessage(userMsg, ...items);
   if (pick === '复制诊断包') {
     await vscode.env.clipboard.writeText(md);
-    void vscode.window.showInformationMessage('诊断包已复制到剪贴板（已脱敏）');
+    void vscode.window.showInformationMessage(t('export.failure.diagnosticsCopied'));
   } else if (pick === '查看日志') {
     void vscode.commands.executeCommand('workbench.action.toggleDevTools');
   }
@@ -50,5 +51,5 @@ export async function runCopyLastExportFailureDiagnostics(): Promise<void> {
     return;
   }
   await vscode.env.clipboard.writeText(md);
-  void vscode.window.showInformationMessage('已复制最近一次导出失败诊断包（已脱敏）');
+  void vscode.window.showInformationMessage(t('export.failure.lastDiagnosticsCopied'));
 }

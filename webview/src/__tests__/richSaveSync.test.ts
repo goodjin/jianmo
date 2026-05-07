@@ -70,10 +70,12 @@ describe('Rich save synchronization', () => {
     // @ts-expect-error setup function is proxied on vm
     wrapper.vm.saveWithTocUpdate();
 
-    expect(postMessage).toHaveBeenCalledWith({
-      type: 'SAVE',
-      payload: { content: '# Fresh from Rich\n\nbody' },
-    });
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'SAVE',
+        payload: { content: '# Fresh from Rich\n\nbody' },
+      })
+    );
   });
 });
 

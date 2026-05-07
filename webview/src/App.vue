@@ -42,7 +42,7 @@
       aria-labelledby="markly-table-help-title"
       @click.self="richTableHelpOpen = false"
     >
-      <div class="markly-table-help-panel">
+      <div ref="richTableHelpPanelRef" class="markly-table-help-panel">
         <h3 id="markly-table-help-title">Rich 表格快捷键</h3>
         <p class="markly-table-help-hint">
           在表格单元格内生效；按钮在光标进入表格后可用。插入 / 粘贴 / 命令面板 ID 等完整说明见扩展仓库
@@ -90,7 +90,7 @@
       aria-label="润色预览"
       @click.self="rewritePreviewVisible = false"
     >
-      <div class="markly-table-help-panel" style="max-width: 860px;">
+      <div ref="rewritePreviewPanelRef" class="markly-table-help-panel" style="max-width: 860px;">
         <h3>润色预览</h3>
         <p class="markly-table-help-hint">
           对比原文与润色结果；点击「替换选区」后才会真正改动文档。
@@ -123,7 +123,7 @@
       aria-label="表格转换预览"
       @click.self="tableConvertPreviewVisible = false"
     >
-      <div class="markly-table-help-panel" style="max-width: 860px;">
+      <div ref="tableConvertPreviewPanelRef" class="markly-table-help-panel" style="max-width: 860px;">
         <h3>GFM 表格预览</h3>
         <p class="markly-table-help-hint">
           对比原文与生成的 GFM 管道表；仅有在你点击「替换选区」后才会写入文档。
@@ -163,7 +163,7 @@
       aria-label="AI 操作回看"
       @click.self="aiHistoryReviewVisible = false"
     >
-      <div class="markly-table-help-panel" style="max-width: 860px;">
+      <div ref="aiHistoryReviewPanelRef" class="markly-table-help-panel" style="max-width: 860px;">
         <h3>{{ aiHistoryReviewTitle }}</h3>
         <div class="markly-rewrite-preview-grid">
           <div class="markly-rewrite-preview-col">
@@ -190,7 +190,7 @@
       aria-label="标题建议"
       @click.self="aiTitleSuggestVisible = false"
     >
-      <div class="markly-table-help-panel" style="max-width: 860px;">
+      <div ref="aiTitleSuggestPanelRef" class="markly-table-help-panel" style="max-width: 860px;">
         <h3>标题建议</h3>
         <p class="markly-table-help-hint">
           选择一个候选标题并应用到文档。若文档已有 <code>#</code> 一级标题，会替换第一条；否则会插入到顶部。
@@ -375,7 +375,7 @@
       data-testid="image-assets-panel"
       @click.self="imageAssetsPanelOpen = false"
     >
-      <div class="markly-table-help-panel markly-image-assets-panel">
+      <div ref="imageAssetsPanelRef" class="markly-table-help-panel markly-image-assets-panel">
         <h3 id="markly-image-assets-title">图片资产</h3>
         <p class="markly-table-help-hint">
           保存目录：<strong>{{ saveDirectoryDisplayed }}</strong>
@@ -420,6 +420,14 @@
 
         <button type="button" class="markly-table-help-close" data-testid="copy-unreferenced-panel-btn" @click="copyUnreferencedAssetImagesList">
           复制未引用清单
+        </button>
+        <button
+          type="button"
+          class="markly-table-help-close"
+          data-testid="delete-unreferenced-panel-btn"
+          @click="deleteUnreferencedAssetImages"
+        >
+          删除未引用（谨慎）
         </button>
         <button type="button" class="markly-table-help-close" @click="copyMissingImageRefs">复制缺失清单</button>
         <button type="button" class="markly-table-help-close" @click="repairFirstMissingImageRef">修复第一项</button>
@@ -688,6 +696,19 @@ declare global {
 const content = ref('');
 const config = ref<ExtensionConfig | null>(null);
 const hostDiagnostics = ref<any>(null);
+
+// M304：AI 用量/配额展示（轻量：仅记录本地会话内请求次数与成功/失败；不做计费/Token 估算）
+const aiUsageStats = ref<{
+  requests: number;
+  success: number;
+  failure: number;
+  lastError: string | null;
+  lastRequestAt: number | null;
+}>({ requests: 0, success: 0, failure: 0, lastError: null, lastRequestAt: null });
+const lastHostProtocol = ref<{ protocolVersion: number | null; minSupportedProtocolVersion: number | null }>({
+  protocolVersion: null,
+  minSupportedProtocolVersion: null,
+});
 const localImageRefCheckResults = ref<LocalImageRefCheckResult[]>([]);
 const localImageRefLastCheckedAt = ref<string | null>(null);
 const pendingLocalImageChecks = new Map<string, (results: LocalImageRefCheckResult[]) => void>();
@@ -808,6 +829,116 @@ const richTableHelpOpen = ref(false);
 const richTableMenuOpen = ref(false);
 const richTableMenuX = ref(0);
 const richTableMenuY = ref(0);
+
+// M308：A11y 基线（modal focus/keyboard trap）
+const richTableHelpPanelRef = ref<HTMLElement | null>(null);
+const rewritePreviewPanelRef = ref<HTMLElement | null>(null);
+const tableConvertPreviewPanelRef = ref<HTMLElement | null>(null);
+const aiHistoryReviewPanelRef = ref<HTMLElement | null>(null);
+const aiTitleSuggestPanelRef = ref<HTMLElement | null>(null);
+const imageAssetsPanelRef = ref<HTMLElement | null>(null);
+type ModalId =
+  | 'richTableHelp'
+  | 'rewritePreview'
+  | 'tableConvertPreview'
+  | 'aiHistoryReview'
+  | 'aiTitleSuggest'
+  | 'imageAssetsPanel';
+const modalStack = ref<ModalId[]>([]);
+const modalReturnFocus = new Map<ModalId, HTMLElement | null>();
+
+function getModalPanelEl(id: ModalId): HTMLElement | null {
+  switch (id) {
+    case 'richTableHelp':
+      return richTableHelpPanelRef.value;
+    case 'rewritePreview':
+      return rewritePreviewPanelRef.value;
+    case 'tableConvertPreview':
+      return tableConvertPreviewPanelRef.value;
+    case 'aiHistoryReview':
+      return aiHistoryReviewPanelRef.value;
+    case 'aiTitleSuggest':
+      return aiTitleSuggestPanelRef.value;
+    case 'imageAssetsPanel':
+      return imageAssetsPanelRef.value;
+  }
+}
+
+function pushModal(id: ModalId): void {
+  const active = (document.activeElement as HTMLElement | null) ?? null;
+  modalReturnFocus.set(id, active);
+  modalStack.value = [...modalStack.value.filter((x) => x !== id), id];
+  nextTick(() => {
+    const el = getModalPanelEl(id);
+    if (!el) return;
+    const focusable = el.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    (focusable ?? el).focus?.();
+  });
+}
+
+function popModal(id: ModalId): void {
+  modalStack.value = modalStack.value.filter((x) => x !== id);
+  const ret = modalReturnFocus.get(id) ?? null;
+  modalReturnFocus.delete(id);
+  nextTick(() => ret?.focus?.());
+}
+
+function topModal(): ModalId | null {
+  const s = modalStack.value;
+  return s.length ? s[s.length - 1] : null;
+}
+
+function closeModalById(id: ModalId): void {
+  switch (id) {
+    case 'richTableHelp':
+      richTableHelpOpen.value = false;
+      break;
+    case 'rewritePreview':
+      rewritePreviewVisible.value = false;
+      break;
+    case 'tableConvertPreview':
+      tableConvertPreviewVisible.value = false;
+      break;
+    case 'aiHistoryReview':
+      aiHistoryReviewVisible.value = false;
+      break;
+    case 'aiTitleSuggest':
+      aiTitleSuggestVisible.value = false;
+      break;
+    case 'imageAssetsPanel':
+      imageAssetsPanelOpen.value = false;
+      break;
+  }
+}
+
+function trapFocusInTopModal(e: KeyboardEvent): void {
+  const id = topModal();
+  if (!id) return;
+  const el = getModalPanelEl(id);
+  if (!el) return;
+  const focusables = Array.from(
+    el.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((x) => x.offsetParent !== null || x === document.activeElement);
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = (document.activeElement as HTMLElement | null) ?? null;
+  if (e.shiftKey) {
+    if (active === first || !el.contains(active)) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else {
+    if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+}
 
 const toastOpen = ref(false);
 const toastMessage = ref('');
@@ -1834,6 +1965,11 @@ function handleMessage(event: MessageEvent) {
   switch (message.type) {
     case 'INIT':
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
+      lastHostProtocol.value = {
+        protocolVersion: typeof (message as any).protocolVersion === 'number' ? (message as any).protocolVersion : null,
+        minSupportedProtocolVersion:
+          typeof (message as any).minSupportedProtocolVersion === 'number' ? (message as any).minSupportedProtocolVersion : null,
+      };
       content.value = message.payload.content;
       config.value = message.payload.config;
       recalcRichTableColumnResizeNow();
@@ -1920,7 +2056,8 @@ function handleMessage(event: MessageEvent) {
     case 'SWITCH_MODE': {
       const m = message.payload.mode;
       // preview 历史命名：在富文本路线下默认映射到 rich
-      switchMode(m === 'preview' ? 'rich' : m);
+      // M279：IR 运行路径收缩：收到 ir 统一降级为 source（兼容旧端/旧命令）
+      switchMode(m === 'preview' ? 'rich' : m === 'ir' ? 'source' : m);
       break;
     }
 
@@ -1951,6 +2088,23 @@ function handleMessage(event: MessageEvent) {
       lastAssetImageScanAt.value = Date.now();
       assetListError.value =
         typeof p.error === 'string' && p.error.trim().length > 0 ? p.error : null;
+      break;
+    }
+
+    case 'ASSETS_IMAGE_DELETE_RESULT': {
+      const p: any = message.payload;
+      const cancelled = Boolean(p.cancelled);
+      const deleted = Array.isArray(p.deletedRelativePaths) ? p.deletedRelativePaths : [];
+      const failed = Array.isArray(p.failed) ? p.failed : [];
+      if (cancelled) {
+        showToast('已取消删除。');
+      } else if (deleted.length === 0 && failed.length === 0) {
+        showToast('未执行删除（空清单）。');
+      } else {
+        showToast(`删除完成：成功 ${deleted.length}，失败 ${failed.length}。`);
+      }
+      // 重新扫描保存目录，刷新未引用列表
+      void requestAssetsImageFileList();
       break;
     }
 
@@ -2014,11 +2168,17 @@ function handleMessage(event: MessageEvent) {
       pendingRewriteSelection.value = null;
 
       if (message.payload.ok !== true) {
+        aiUsageStats.value = {
+          ...aiUsageStats.value,
+          failure: aiUsageStats.value.failure + 1,
+          lastError: String(message.payload.error ?? '润色失败'),
+        };
         rewritePreviewLoading.value = false;
         showToast(`润色失败：${message.payload.error}`);
         break;
       }
 
+      aiUsageStats.value = { ...aiUsageStats.value, success: aiUsageStats.value.success + 1, lastError: null };
       rewritePreviewLoading.value = false;
       rewritePreviewRewritten.value = String(message.payload.text ?? '');
       rewritePreviewVisible.value = true;
@@ -2034,11 +2194,17 @@ function handleMessage(event: MessageEvent) {
       pendingTableConvertSelection.value = null;
 
       if (p.ok !== true) {
+        aiUsageStats.value = {
+          ...aiUsageStats.value,
+          failure: aiUsageStats.value.failure + 1,
+          lastError: String(p.error ?? '表格转换失败'),
+        };
         tableConvertPreviewLoading.value = false;
         showToast(`表格转换失败：${p.error}`);
         break;
       }
 
+      aiUsageStats.value = { ...aiUsageStats.value, success: aiUsageStats.value.success + 1, lastError: null };
       tableConvertPreviewLoading.value = false;
       tableConvertPreviewMarkdown.value = String(p.markdown ?? '');
       tableConvertPreviewVisible.value = true;
@@ -2054,9 +2220,15 @@ function handleMessage(event: MessageEvent) {
       }
       aiSummaryLoading.value = false;
       if (p.ok !== true) {
+        aiUsageStats.value = {
+          ...aiUsageStats.value,
+          failure: aiUsageStats.value.failure + 1,
+          lastError: String(p.error ?? '生成失败'),
+        };
         aiSummaryErrorText.value = String(p.error ?? '生成失败');
         break;
       }
+      aiUsageStats.value = { ...aiUsageStats.value, success: aiUsageStats.value.success + 1, lastError: null };
       aiSummaryText.value = String(p.text ?? '');
       aiSummaryErrorText.value = '';
       break;
@@ -2067,10 +2239,16 @@ function handleMessage(event: MessageEvent) {
       finalizeAiTitleSuggestRequest(String(p.requestId ?? ''));
       aiTitleSuggestLoading.value = false;
       if (p.ok !== true) {
+        aiUsageStats.value = {
+          ...aiUsageStats.value,
+          failure: aiUsageStats.value.failure + 1,
+          lastError: String(p.error ?? '生成失败'),
+        };
         aiTitleSuggestErrorText.value = String(p.error ?? '生成失败');
         aiTitleSuggestItems.value = [];
         break;
       }
+      aiUsageStats.value = { ...aiUsageStats.value, success: aiUsageStats.value.success + 1, lastError: null };
       const items = Array.isArray(p.items) ? p.items : [];
       aiTitleSuggestItems.value = items
         .map((x: any) => ({
@@ -2101,7 +2279,25 @@ function handleMessage(event: MessageEvent) {
 }
 
 function sendMessage(message: any) {
-  postMessage(message);
+  // M304：本地会话统计（不做 token/计费估算）
+  const t = String(message?.type ?? '');
+  if (
+    t === 'AI_REWRITE_SELECTION_REQUEST' ||
+    t === 'AI_SUMMARY_REQUEST' ||
+    t === 'AI_SUGGEST_TITLES_REQUEST' ||
+    t === 'AI_CONVERT_TEXT_TO_TABLE_REQUEST'
+  ) {
+    aiUsageStats.value = {
+      ...aiUsageStats.value,
+      requests: aiUsageStats.value.requests + 1,
+      lastRequestAt: Date.now(),
+    };
+  }
+  postMessage({
+    ...message,
+    protocolVersion: 1,
+    minSupportedProtocolVersion: 1,
+  });
 }
 
 function onRichOpenExternalLink(url: string): void {
@@ -2251,6 +2447,17 @@ async function copyUnreferencedAssetImagesList(): Promise<void> {
   } catch {
     showToast('复制失败：浏览器不支持剪贴板写入。');
   }
+}
+
+async function deleteUnreferencedAssetImages(): Promise<void> {
+  await requestAssetsImageFileList();
+  const list = computeUnreferencedAssetImages(content.value ?? '', assetImageRelativePaths.value);
+  if (list.length === 0) {
+    showToast('未发现未引用图片。');
+    return;
+  }
+  const requestId = `del-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  sendMessage({ type: 'DELETE_ASSETS_IMAGE_FILES', payload: { requestId, relativePaths: list } });
 }
 
 async function copyMissingImageRefs(): Promise<void> {
@@ -3361,11 +3568,36 @@ watch(currentMode, () => {
 });
 
 watch(imageAssetsPanelOpen, (open) => {
-  if (!open) return;
-  assetListLoading.value = true;
-  assetListError.value = null;
-  void refreshLocalImageRefChecks(4000).catch(() => {});
-  void requestAssetsImageFileList();
+  if (open) {
+    assetListLoading.value = true;
+    assetListError.value = null;
+    void refreshLocalImageRefChecks(4000).catch(() => {});
+    void requestAssetsImageFileList();
+    pushModal('imageAssetsPanel');
+    return;
+  }
+  popModal('imageAssetsPanel');
+});
+
+watch(richTableHelpOpen, (open) => {
+  if (open) return void pushModal('richTableHelp');
+  popModal('richTableHelp');
+});
+watch(rewritePreviewVisible, (open) => {
+  if (open) return void pushModal('rewritePreview');
+  popModal('rewritePreview');
+});
+watch(tableConvertPreviewVisible, (open) => {
+  if (open) return void pushModal('tableConvertPreview');
+  popModal('tableConvertPreview');
+});
+watch(aiHistoryReviewVisible, (open) => {
+  if (open) return void pushModal('aiHistoryReview');
+  popModal('aiHistoryReview');
+});
+watch(aiTitleSuggestVisible, (open) => {
+  if (open) return void pushModal('aiTitleSuggest');
+  popModal('aiTitleSuggest');
 });
 
 function handleUndo() {
@@ -3557,6 +3789,10 @@ function buildDiagnosticsPayload() {
       base,
       extra: {
         host: hostDiagnostics.value,
+        protocol: {
+          webview: { protocolVersion: 1, minSupportedProtocolVersion: 1 },
+          host: lastHostProtocol.value,
+        },
         app: {
           webviewMountMs:
             typeof (globalThis as any).__marklyWebviewMountMs === 'number'
@@ -3585,6 +3821,9 @@ function buildDiagnosticsPayload() {
             tableHtmlSanitizeBeforeParse: true,
             clipboardReadText:
               typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function',
+          },
+          ai: {
+            usage: aiUsageStats.value,
           },
         },
         doc: {
@@ -3936,6 +4175,20 @@ function handleExport(format: 'pdf' | 'html' | 'preview') {
 function handleKeyDown(e: KeyboardEvent) {
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+  // M308：modal 优先处理（Esc 关闭 + Tab 焦点环）
+  if (modalStack.value.length) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      const top = topModal();
+      if (top) closeModalById(top);
+      return;
+    }
+    if (e.key === 'Tab') {
+      trapFocusInTopModal(e);
+      return;
+    }
+  }
 
   // Cmd/Ctrl + S: 保存并更新 TOC
   if (ctrlKey && e.key.toLowerCase() === 's') {

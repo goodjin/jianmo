@@ -24,6 +24,44 @@ function isNumber(x: unknown): x is number {
   return typeof x === 'number' && !Number.isNaN(x);
 }
 
+function isProtocolVersionEnvelope(x: Record<string, unknown>): boolean {
+  const pv = x.protocolVersion;
+  const min = x.minSupportedProtocolVersion;
+  if (pv !== undefined && !isNumber(pv)) return false;
+  if (min !== undefined && !isNumber(min)) return false;
+  return true;
+}
+
+function hasNoUnknownTopLevelKeys(
+  msg: Record<string, unknown>,
+  allowed: ReadonlySet<string>
+): boolean {
+  for (const k of Object.keys(msg)) {
+    if (!allowed.has(k)) return false;
+  }
+  return true;
+}
+
+const EXT_MSG_TOP_LEVEL_KEYS_STRICT: ReadonlySet<string> = new Set([
+  'type',
+  'payload',
+  'requestId',
+  'scrollTop',
+  'scrollLeft',
+  'protocolVersion',
+  'minSupportedProtocolVersion',
+]);
+
+const WEBVIEW_MSG_TOP_LEVEL_KEYS_STRICT: ReadonlySet<string> = new Set([
+  'type',
+  'payload',
+  'requestId',
+  'scrollTop',
+  'scrollLeft',
+  'protocolVersion',
+  'minSupportedProtocolVersion',
+]);
+
 const richTableCommandValues: ReadonlySet<RichTableCommandValue> = new Set([
   'addRowBefore',
   'addRowAfter',
@@ -157,8 +195,13 @@ function isHostDiagnostics(x: unknown): x is HostDiagnostics {
   return true;
 }
 
-export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
+export function isExtensionMessage(
+  msg: unknown,
+  opts?: { strict?: boolean }
+): msg is ExtensionMessage {
   if (!isRecord(msg) || !isString(msg.type)) return false;
+  if (!isProtocolVersionEnvelope(msg)) return false;
+  if (opts?.strict && !hasNoUnknownTopLevelKeys(msg, EXT_MSG_TOP_LEVEL_KEYS_STRICT)) return false;
 
   switch (msg.type) {
     case 'INIT': {
@@ -229,6 +272,21 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
       if (!p.relativePaths.every((x: unknown) => isString(x))) return false;
       if (p.error !== undefined && !isString(p.error)) return false;
       return true;
+    }
+    case 'ASSETS_IMAGE_DELETE_RESULT': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId)) return false;
+      if ((p as { cancelled?: unknown }).cancelled !== undefined && typeof (p as { cancelled?: unknown }).cancelled !== 'boolean')
+        return false;
+      const deleted = (p as { deletedRelativePaths?: unknown }).deletedRelativePaths;
+      const failed = (p as { failed?: unknown }).failed;
+      if (!Array.isArray(deleted) || !deleted.every((x: unknown) => isString(x))) return false;
+      if (!Array.isArray(failed)) return false;
+      return failed.every((x: unknown) => {
+        if (!isRecord(x)) return false;
+        const xr = x as Record<string, unknown>;
+        return isString(xr.relativePath) && isString(xr.error);
+      });
     }
     case 'AI_SUMMARY_RESULT': {
       const p = msg.payload;
@@ -369,8 +427,13 @@ export function isExtensionMessage(msg: unknown): msg is ExtensionMessage {
   }
 }
 
-export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
+export function isWebViewMessage(
+  msg: unknown,
+  opts?: { strict?: boolean }
+): msg is WebViewMessage {
   if (!isRecord(msg) || !isString(msg.type)) return false;
+  if (!isProtocolVersionEnvelope(msg)) return false;
+  if (opts?.strict && !hasNoUnknownTopLevelKeys(msg, WEBVIEW_MSG_TOP_LEVEL_KEYS_STRICT)) return false;
 
   switch (msg.type) {
     case 'CONTENT_CHANGE': {
@@ -413,6 +476,11 @@ export function isWebViewMessage(msg: unknown): msg is WebViewMessage {
       const p = msg.payload;
       const ks = Object.keys(p);
       return isRecord(p) && isString(p.requestId) && ks.length === 1 && ks[0] === 'requestId';
+    }
+    case 'DELETE_ASSETS_IMAGE_FILES': {
+      const p = msg.payload;
+      if (!isRecord(p) || !isString(p.requestId) || !Array.isArray(p.relativePaths)) return false;
+      return p.relativePaths.every((x: unknown) => isString(x));
     }
     case 'FIND_MARKDOWN_BACKLINKS': {
       const p = msg.payload;

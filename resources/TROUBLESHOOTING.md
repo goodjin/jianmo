@@ -2,6 +2,13 @@
 
 集中入口：命令面板搜索 **「Help: Open Recovery & Troubleshooting」**（`markly.help.recoveryCenter`）可重新打开本文。
 
+## 先做一件事：复制诊断信息
+
+- Webview 顶部横幅或自救中心里点 **「复制诊断信息」**（脱敏）
+- 导出失败时用命令 **Export: Copy Last Failure Diagnostics**
+
+这两段信息是排障时最省时间的“统一证据”。
+
 ## Rich 模式卡顿 / 空白 / 表格异常
 
 1. 若看到顶部提示条「Rich 启动失败/超时，已切换到 Source」，可直接点：
@@ -18,6 +25,16 @@
 2. **预检（M224）**：非阻塞提示里可点 **「打开文档并定位」**，在默认 Markdown 编辑器中跳到**首条问题的大概行号**；阻塞预检里选 **「打开文档并定位」** 会先打开文档并**取消本次导出**（修好后再导出一次即可）。
 3. 将 **`markly.export.preflight.scope`** 设为 `images` 或 `off` 试是否由预检项引起；检查 **`markly.export.pdf`** / **`markly.export.html`** 各项。
 4. PDF 依赖本机可用的 Chromium（Puppeteer）；企业网络或沙箱环境可能拦截浏览器下载或启动。进度通知上可 **取消导出**（best-effort）。
+
+## Profile / 企业策略导致“行为不一致”
+
+- 若你在使用 **VS Code Profiles**：不同 Profile 的 `markly.*` Settings 会不同（AI/导出预检/默认编辑器等都可能改变）。
+- 企业/团队若下发了 workspace 或受管 settings，也会覆盖个人设置。
+
+参考：
+
+- `docs/CONFIG_PROFILES_M305.md`
+- `docs/ENTERPRISE_POLICY_MANAGED_SETTINGS_M306.md`
 
 ## 大图粘贴 / 剪贴板很慢（M219）
 

@@ -824,8 +824,10 @@ function initMermaid(): void {
             startOnLoad: false,
             theme: theme,
             securityLevel: 'loose',
+            // Mermaid 11.13+：推荐使用根级 `htmlLabels`（flowchart.htmlLabels 已弃用）
+            htmlLabels: true,
             themeVariables: Object.keys(themeVariables).length ? themeVariables : undefined,
-            flowchart: { useMaxWidth: true, htmlLabels: true },
+            flowchart: { useMaxWidth: true },
             sequence: {
               useMaxWidth: true,
               diagramMarginX: 50,

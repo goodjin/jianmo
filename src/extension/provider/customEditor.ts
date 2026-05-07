@@ -14,6 +14,7 @@ import { summarizeViaProvider } from '@extension/ai/summarize';
 import { suggestTitlesViaProvider } from '@extension/ai/suggestTitles';
 import { textToGfmTableViaProvider } from '@extension/ai/textToGfmTable';
 import { rewriteSelectionViaProvider } from '@extension/ai/rewriteSelection';
+import { withExportRetry } from '@extension/export/exportRetry';
 import type { ImageSameNameHandling } from '@extension/image/imageFilenameCollision';
 import { pickNonConflictingFilenameAsync } from '@extension/image/imageFilenameCollision';
 import { confirmContinueAfterExportPreflight } from '@extension/export/exportPreflightUi';
@@ -23,6 +24,10 @@ import {
   classifyExportDocumentIntent,
   classifyOpenExternalNavigationTarget,
 } from './webviewInboundRouting';
+
+// M283：协议兼容层 PoC（第一步：握手/诊断字段）
+const EXT_PROTOCOL_VERSION = 1;
+const EXT_MIN_SUPPORTED_PROTOCOL_VERSION = 1;
 
 function isMarkdownFileUriAllowedInWorkspace(openUri: vscode.Uri): boolean {
   if (openUri.scheme !== 'file') return false;
@@ -148,7 +153,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     const doc = this.documentStore.getDocument(uri);
     const version = this.documentVersions.get(uri) || 1;
     if (doc) {
-      webviewPanel.webview.postMessage({
+      this.postMessage(uri, {
         type: 'INIT',
         payload: { content: doc.content, config: this.config, version, hostDiagnostics: this.buildHostDiagnostics() },
       });
@@ -191,6 +196,23 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     switch (message.type) {
       case 'READY':
         // WebView 准备就绪，发送初始内容（包括版本号）
+        {
+          const wvProtocol = message.protocolVersion ?? 0;
+          const wvMin = message.minSupportedProtocolVersion ?? 0;
+          const incompatible =
+            wvMin > EXT_PROTOCOL_VERSION || wvProtocol < EXT_MIN_SUPPORTED_PROTOCOL_VERSION;
+          if (incompatible) {
+            const reason =
+              wvMin > EXT_PROTOCOL_VERSION
+                ? `Webview 需要更高协议（webview min=${wvMin}, ext=${EXT_PROTOCOL_VERSION}）`
+                : `Webview 过旧（webview=${wvProtocol}, ext min=${EXT_MIN_SUPPORTED_PROTOCOL_VERSION}）`;
+            void vscode.window.showErrorMessage(
+              `Markly 协议不兼容，将自动降级到 Source。${reason}。建议 Reload Window 或升级扩展。`
+            );
+            // 体验优先：先确保可编辑（Source 兜底）
+            this.postMessage(uri, { type: 'SWITCH_MODE', payload: { mode: 'source' } });
+          }
+        }
         const doc = this.documentStore.getDocument(uri);
         const version = this.documentVersions.get(uri) || 1;
         if (doc) {
@@ -274,6 +296,67 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
             ...(listings.error ? { error: listings.error } : {}),
           },
         });
+        break;
+      }
+
+      case 'DELETE_ASSETS_IMAGE_FILES': {
+        const requestId = message.payload.requestId;
+        const rels = Array.isArray(message.payload.relativePaths) ? message.payload.relativePaths : [];
+        const relsUniq = Array.from(new Set(rels.map((x) => String(x ?? '').trim()).filter(Boolean)));
+
+        if (relsUniq.length === 0) {
+          this.postMessage(uri, {
+            type: 'ASSETS_IMAGE_DELETE_RESULT',
+            payload: { requestId, cancelled: false, deletedRelativePaths: [], failed: [] },
+          } as ExtensionMessage);
+          break;
+        }
+
+        const confirmed = await vscode.window.showWarningMessage(
+          `将删除保存目录中的未引用图片 ${relsUniq.length} 个。此操作可从回收站恢复（若支持）。是否继续？`,
+          { modal: true },
+          '删除'
+        );
+        if (confirmed !== '删除') {
+          this.postMessage(uri, {
+            type: 'ASSETS_IMAGE_DELETE_RESULT',
+            payload: { requestId, cancelled: true, deletedRelativePaths: [], failed: [] },
+          } as ExtensionMessage);
+          break;
+        }
+
+        const docUri = vscode.Uri.parse(uri);
+        const docDirUri = vscode.Uri.joinPath(docUri, '..');
+        const saveDirectory = String(this.config.image.saveDirectory || './assets').trim() || './assets';
+        const assetsDirUri = vscode.Uri.joinPath(docDirUri, saveDirectory);
+
+        const deletedRelativePaths: string[] = [];
+        const failed: Array<{ relativePath: string; error: string }> = [];
+
+        for (const rel of relsUniq) {
+          try {
+            const relPosix = rel.replace(/\\/g, '/');
+            // 只允许删除 saveDirectory 下的一层文件：防止 `../` 越界与误删
+            const norm = path.posix.normalize(relPosix);
+            if (norm.includes('..')) throw new Error('路径非法（包含 ..）');
+            const expectedPrefix = (saveDirectory.replace(/\\/g, '/').replace(/^\.\//, '') + '/').replace(/\/+$/, '/');
+            const normalizedNoDot = norm.replace(/^\.\//, '');
+            if (!normalizedNoDot.startsWith(expectedPrefix)) throw new Error('仅允许删除保存目录下的文件');
+            const basename = path.posix.basename(normalizedNoDot);
+            if (!basename || basename.includes('/')) throw new Error('仅允许删除保存目录一层内文件');
+
+            const target = vscode.Uri.joinPath(assetsDirUri, basename);
+            await vscode.workspace.fs.delete(target, { useTrash: true });
+            deletedRelativePaths.push(rel);
+          } catch (e) {
+            failed.push({ relativePath: rel, error: String((e as Error)?.message ?? e ?? 'delete_failed') });
+          }
+        }
+
+        this.postMessage(uri, {
+          type: 'ASSETS_IMAGE_DELETE_RESULT',
+          payload: { requestId, cancelled: false, deletedRelativePaths, failed },
+        } as ExtensionMessage);
         break;
       }
 
@@ -713,14 +796,16 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         ) {
           return;
         }
-        await exportToHtml(docForExport.content, saveUri.fsPath, {
-          includeToc: true,
-          title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
-          htmlTheme: this.config.export.html?.theme ?? 'default',
-          copyLocalImages: this.config.export.html?.copyLocalImages === true,
-          documentBaseDir: path.dirname(docUri.fsPath),
-          assetsSubdirectory: this.config.export.html?.assetsSubdirectory ?? 'markly-html-assets',
-          mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
+        await withExportRetry(async () => {
+          await exportToHtml(docForExport.content, saveUri.fsPath, {
+            includeToc: true,
+            title: docUri.fsPath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '') || '导出文档',
+            htmlTheme: this.config.export.html?.theme ?? 'default',
+            copyLocalImages: this.config.export.html?.copyLocalImages === true,
+            documentBaseDir: path.dirname(docUri.fsPath),
+            assetsSubdirectory: this.config.export.html?.assetsSubdirectory ?? 'markly-html-assets',
+            mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
+          });
         });
         vscode.window.showInformationMessage(`HTML 已导出: ${saveUri.fsPath}`);
         return;
@@ -740,14 +825,12 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
           return;
         }
         const baseHref = vscode.Uri.file(path.dirname(docUri.fsPath)).toString(true) + '/';
-        await exportToPdf(
-          docForExport.content,
-          saveUri.fsPath,
-          {
+        await withExportRetry(async () => {
+          await exportToPdf(docForExport.content, saveUri.fsPath, {
             ...pdfExportOptionsFromPdfConfig(this.config.export.pdf, baseHref),
             mermaidScriptBundling: this.config.export.diagram?.mermaidScriptBundling ?? 'embedded',
-          }
-        );
+          });
+        });
         vscode.window.showInformationMessage(`PDF 已导出: ${saveUri.fsPath}`);
         return;
       }
@@ -771,17 +854,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   postMessage(uri: string, message: ExtensionMessage): void {
     const webview = this.webviews.get(uri);
     if (webview) {
-      webview.webview.postMessage(message);
+      webview.webview.postMessage({
+        ...message,
+        protocolVersion: EXT_PROTOCOL_VERSION,
+        minSupportedProtocolVersion: EXT_MIN_SUPPORTED_PROTOCOL_VERSION,
+      });
     }
   }
 
   notifyConfigChange(config: ExtensionConfig): void {
     this.config = config;
-    this.webviews.forEach((webview) => {
-      webview.webview.postMessage({
-        type: 'CONFIG_CHANGE',
-        payload: { config },
-      });
+    this.webviews.forEach((_webview, uri) => {
+      this.postMessage(uri, { type: 'CONFIG_CHANGE', payload: { config } });
     });
   }
 
@@ -890,8 +974,17 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     console.log('getWebviewHtml - scriptUri:', scriptUri.toString());
     console.log('getWebviewHtml - styleUri:', styleUri.toString());
 
-    // 宽松的 CSP，允许所有必要的资源
-    const csp = `default-src 'self'; img-src 'self' ${webview.cspSource} https: data: blob:; script-src 'self' ${webview.cspSource} https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' ${webview.cspSource} https: 'unsafe-inline'; font-src 'self' ${webview.cspSource} https: data:; connect-src 'self' ${webview.cspSource} https:;`;
+    // M296：收紧 Webview CSP（仅允许扩展自身脚本；避免 https 外链 script / unsafe-eval）
+    const csp = [
+      `default-src 'none'`,
+      `img-src ${webview.cspSource} https: data: blob:`,
+      `script-src ${webview.cspSource}`,
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `font-src ${webview.cspSource} https: data:`,
+      `connect-src ${webview.cspSource} https:`,
+      `base-uri 'none'`,
+      `frame-ancestors 'none'`,
+    ].join('; ');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -899,11 +992,6 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <script>
-    window.onerror = function(msg, url, line, col, error) {
-      document.body.innerHTML = '<div style="color:red;padding:20px;"><h3>Error:</h3><p>' + msg + '</p><p>URL: ' + url + '</p><p>Line: ' + line + '</p></div>';
-    };
-  </script>
   <link href="${styleUri}" rel="stylesheet">
   <style>
     /* VSCode 默认样式 */

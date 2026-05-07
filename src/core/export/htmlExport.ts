@@ -132,12 +132,17 @@ export function generateToc(markdown: string): string {
 }
 
 export async function markdownToHtml(markdown: string): Promise<string> {
-  const markdownWithMath = renderMarkdownMath(markdown);
-  // 使用 marked 转换 Markdown，支持 GFM
-  const html = await marked.parse(markdownWithMath, {
-    gfm: true,
-    breaks: true,
-  });
+  const raw = String(markdown ?? '');
+  const md = renderMarkdownMath(raw);
+  // M290：大文档分段解析（避免 marked 一次吃下超长字符串导致峰值过高/卡顿）
+  const segments = splitMarkdownForExport(md, 256_000);
+  const htmlParts: string[] = [];
+  for (const seg of segments) {
+    // 使用 marked 转换 Markdown，支持 GFM
+    const part = await marked.parse(seg, { gfm: true, breaks: true });
+    htmlParts.push(String(part));
+  }
+  const html = htmlParts.join('\n');
 
   // 添加锚点到标题（修复：处理带属性的标题）
   const withAnchors = String(html).replace(/<h([1-6])([^>]*)>(.+?)<\/h[1-6]>/g, (match, level, attrs, text) => {
@@ -151,6 +156,44 @@ export async function markdownToHtml(markdown: string): Promise<string> {
   });
 
   return transformMermaidFencesForExport(withAnchors, markdown);
+}
+
+/**
+ * M290：按行分段导出用 Markdown（best-effort，不跨 fenced code block）。
+ * - 仅用于导出链路，避免极端大文档时单次解析峰值过高
+ * - 保证代码块结构不被打断
+ */
+export function splitMarkdownForExport(markdown: string, maxChunkChars: number): string[] {
+  const s = String(markdown ?? '');
+  if (s.length <= maxChunkChars) return [s];
+
+  const lines = s.split('\n');
+  const out: string[] = [];
+  let buf: string[] = [];
+  let bufLen = 0;
+  let inFence = false;
+
+  function flush() {
+    if (buf.length === 0) return;
+    out.push(buf.join('\n'));
+    buf = [];
+    bufLen = 0;
+  }
+
+  for (const line of lines) {
+    // 仅识别 ``` fence（与其它逻辑保持一致；不尝试处理 ~~~）
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+    }
+    // 只有不在 fence 内才允许切分
+    if (!inFence && bufLen >= maxChunkChars) {
+      flush();
+    }
+    buf.push(line);
+    bufLen += line.length + 1;
+  }
+  flush();
+  return out.length ? out : [s];
 }
 
 export function renderMarkdownMath(markdown: string): string {

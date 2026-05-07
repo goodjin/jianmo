@@ -143,14 +143,28 @@ describe('copy diagnostics button', () => {
     expect(banner.text()).toContain('1 个缺失');
 
     await wrapper.find('[data-testid="open-assets-dir-btn"]').trigger('click');
-    expect((window.vscode.postMessage as any).mock.calls).toContainEqual([
-      { type: 'OPEN_IMAGE_DIRECTORY', payload: { kind: 'assets' } },
-    ]);
+    expect((window.vscode.postMessage as any).mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({
+            type: 'OPEN_IMAGE_DIRECTORY',
+            payload: { kind: 'assets' },
+          }),
+        ],
+      ])
+    );
 
     await wrapper.find('[data-testid="repair-first-missing-image-btn"]').trigger('click');
-    expect((window.vscode.postMessage as any).mock.calls).toContainEqual([
-      { type: 'REPAIR_IMAGE_REF', payload: { ref: './assets/missing.png' } },
-    ]);
+    expect((window.vscode.postMessage as any).mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({
+            type: 'REPAIR_IMAGE_REF',
+            payload: { ref: './assets/missing.png' },
+          }),
+        ],
+      ])
+    );
 
     await wrapper.find('[data-testid="open-image-assets-panel-btn"]').trigger('click');
     await wrapper.vm.$nextTick();

@@ -1,0 +1,14 @@
+{
+  "ai.setApiKey.title": "设置 AI API Key",
+  "ai.setApiKey.prompt": "API Key 将保存在 VS Code SecretStorage（不会写入 settings.json）。",
+  "ai.setApiKey.empty": "API Key 不能为空。",
+  "ai.setApiKey.saved": "AI API Key 已保存。",
+  "ai.setApiKey.cleared": "AI API Key 已清除。",
+
+  "export.failure.diagnosticsCopied": "诊断包已复制到剪贴板（已脱敏）",
+  "export.failure.lastDiagnosticsCopied": "已复制最近一次导出失败诊断包（已脱敏）",
+  "export.preflight.openAndReveal": "打开文档并定位",
+  "export.preflight.exportAnyway": "仍要导出",
+  "export.preflight.cancel": "取消"
+}
+

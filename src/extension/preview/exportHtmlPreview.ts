@@ -29,7 +29,7 @@ export interface ShowExportHtmlPreviewOptions {
   markdown: string;
   documentUri: vscode.Uri;
   htmlTheme: 'default' | 'print-friendly';
-  /** 与导出 HTML 一致（Webview CSP 已允许 script `unsafe-inline` 与 HTTPS CDN） */
+  /** 预览为“离线/自包含优先”，不加载第三方 CDN 脚本（M302）。 */
   mermaidScriptBundling?: 'embedded' | 'external';
 }
 
@@ -55,7 +55,8 @@ export function showExportHtmlPreviewPanel(options: ShowExportHtmlPreviewOptions
         title: titleBase.replace(/\.\w+$/, '') || '文档',
         htmlTheme: options.htmlTheme,
         darkMode: false,
-        mermaidScriptBundling: options.mermaidScriptBundling ?? 'embedded',
+        // M302：预览不走第三方脚本；始终用 embedded，避免 CSP 与离线环境不一致
+        mermaidScriptBundling: 'embedded',
       });
       if (docDir && fs.existsSync(docDir)) {
         html = rewriteLocalImgSrcForPreview(html, docDir, (abs) =>

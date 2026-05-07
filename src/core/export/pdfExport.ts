@@ -189,8 +189,16 @@ export async function markdownToPdfHtml(markdown: string): Promise<string> {
     breaks: true,
   });
 
-  // 使用 marked 转换 Markdown
-  const html = await marked.parse(renderMarkdownMath(markdown));
+  // M290：大文档分段解析（与 HTML 导出一致，避免极端大文档峰值过高）
+  const md = renderMarkdownMath(String(markdown ?? ''));
+  const { splitMarkdownForExport } = await import('./htmlExport');
+  const segments = splitMarkdownForExport(md, 256_000);
+  const parts: string[] = [];
+  for (const seg of segments) {
+    const part = await marked.parse(seg);
+    parts.push(String(part));
+  }
+  const html = parts.join('\n');
 
   // 添加锚点到标题（使用统一函数生成锚点）
   const withAnchors = html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {

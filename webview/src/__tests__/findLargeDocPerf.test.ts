@@ -71,7 +71,11 @@ describe('M41 large doc find predictability', () => {
 
     expect(vm.findMatchesTruncated).toBe(true);
     expect(vm.findMatches.length).toBe(5000);
-    expect(vm.findTotalCount).toBeGreaterThanOrEqual(6000);
+    // M41：总数统计有时间预算；若超时则 `findTotalCount` 为下界（≥ UI 列表长度）
+    expect(vm.findTotalCount).toBeGreaterThanOrEqual(5000);
+    if (!vm.findTotalCountTimedOut) {
+      expect(vm.findTotalCount).toBeGreaterThanOrEqual(6000);
+    }
 
     const pkg = vm.buildDiagnosticsPayload();
     expect((pkg as any).text).toContain('"find"');

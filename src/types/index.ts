@@ -202,24 +202,45 @@ export interface LocalImageRefCheckResult {
   error?: string;
 }
 
-// 消息类型（Extension ⇄ Webview 自定义编辑器协议）
-//
-// Extension → Webview：INIT / CONTENT_UPDATE / CONFIG_CHANGE / SWITCH_MODE / SAVE / SAVE_SUCCESS /
-//   SAVE_FAILED / IMAGE_SAVED / IMAGE_SAVE_FAILED / LOCAL_IMAGE_REFS_RESULT / EDITOR_COMMAND /
-//   THEME_CHANGE（兼容 hook）/ getScrollPosition / setScrollPosition
-// Webview → Extension：READY / CONTENT_CHANGE / SAVE / SAVE_IMAGE / OPEN_* / EXPORT /
-//   UPLOAD_IMAGE / CHECK_LOCAL_IMAGE_REFS / FIND_MARKDOWN_BACKLINKS /
-//   OPEN_MARKDOWN_DOCUMENT / MARKDOWN_BACKLINKS_RESULT / scrollPositionResponse
-//
-// 注：`markly.toggleMode` 仍可能下发 `preview`（历史命名），Webview 侧与 `ir` 同义入口。
-export type ExtensionMessage =
-  | { type: 'INIT'; payload: { content: string; config: ExtensionConfig; version?: number; hostDiagnostics?: HostDiagnostics } }
+/**
+ * M282：协议版本化预备字段（不破坏）。
+ *
+ * - 老端可忽略未知字段
+ * - 新端可在握手/诊断中携带版本信息
+ */
+export interface ProtocolVersionEnvelope {
+  protocolVersion?: number;
+  minSupportedProtocolVersion?: number;
+}
+
+/**
+ * 消息类型（Extension ⇄ Webview 自定义编辑器协议）。
+ *
+ * - **兼容策略**：所有消息都允许携带 `ProtocolVersionEnvelope` 字段（见上方）。
+ * - **命名历史**：宿主侧仍可能下发 `preview`（来自 `markly.toggleMode` 的历史命名）。
+ *   Webview 侧会把 `preview` 映射到 `rich`（用户语义：预览/所见即所得）。
+ *
+ * 变更此处消息类型时，必须同步：
+ * - `src/types/messageGuards.ts`（运行时守卫）
+ * - `src/types/__tests__/messageContract.test.ts`（契约用例）
+ */
+export type ExtensionMessage = ProtocolVersionEnvelope & (
+  /** 初始化：首次打开或 READY 后的重发，携带全文内容与配置快照。 */
+  | {
+      type: 'INIT';
+      payload: { content: string; config: ExtensionConfig; version?: number; hostDiagnostics?: HostDiagnostics };
+    }
+  /** 外部内容更新（如 TextDocument 变化），Webview 应 best-effort 保留光标/滚动位置。 */
   | { type: 'CONTENT_UPDATE'; payload: { content: string; version?: number } }
+  /** 配置变更（设置项变化）。 */
   | { type: 'CONFIG_CHANGE'; payload: { config: Partial<ExtensionConfig> } }
+  /** 切换编辑模式。`preview` 为历史别名（Webview 侧映射）。 */
   | { type: 'SWITCH_MODE'; payload: { mode: EditorMode | 'preview' } }
   /** 宿主侧保存（如 workbench 保存）触发 Webview 同步 TOC 等 */
   | { type: 'SAVE' }
+  /** Webview 请求保存成功后的确认（用于版本号推进/状态提示）。 */
   | { type: 'SAVE_SUCCESS'; payload: { version: number } }
+  /** Webview 请求保存失败的确认（必须可诊断；避免静默丢保存）。 */
   | { type: 'SAVE_FAILED'; payload: { error: string } }
   | { type: 'IMAGE_SAVED'; payload: { path: string; filename: string; requestId?: string } }
   | { type: 'IMAGE_SAVE_FAILED'; payload: { filename: string; error: string; requestId?: string } }
@@ -231,6 +252,16 @@ export type ExtensionMessage =
   | {
       type: 'ASSETS_IMAGE_FILES_RESULT';
       payload: { requestId: string; relativePaths: string[]; error?: string };
+    }
+  /** M300：删除保存目录中未引用图片（结果回传） */
+  | {
+      type: 'ASSETS_IMAGE_DELETE_RESULT';
+      payload: {
+        requestId: string;
+        cancelled?: boolean;
+        deletedRelativePaths: string[];
+        failed: Array<{ relativePath: string; error: string }>;
+      };
     }
   /** M64：工作区内反向链接扫描结果（相对工作区根的 posix 路径 + file URI） */
   | {
@@ -283,7 +314,10 @@ export type ExtensionMessage =
               | 'convertTextToGfmTable';
           }
     }
-  /** 旧 Text Editor 路径曾下发；预览模式可不使用 */
+  /**
+   * 兼容：旧 Text Editor 路径曾下发；Rich/Source 路径一般不依赖此消息。
+   * 未来若清理该路径，请同步更新 guards 与 webview 处理逻辑。
+   */
   | { type: 'THEME_CHANGE'; payload: { theme: string } }
   | { type: 'getScrollPosition'; requestId: string }
   | { type: 'setScrollPosition'; scrollTop: number; scrollLeft: number }
@@ -314,20 +348,26 @@ export type ExtensionMessage =
       payload:
         | { requestId: string; ok: true; markdown: string }
         | { requestId: string; ok: false; error: string };
-    };
+    }
+);
 
-export type WebViewMessage =
+export type WebViewMessage = ProtocolVersionEnvelope & (
+  /** Webview 内容变化（编辑产生）。可携带 source 光标位置与版本号。 */
   | { type: 'CONTENT_CHANGE'; payload: { content: string; cursor?: SourceCursorPosition; version?: number } }
+  /** Webview 主动保存（Rich/Source 都走同一 SAVE 协议）。 */
   | { type: 'SAVE'; payload: { content: string } }
   | { type: 'SAVE_IMAGE'; payload: { data: string; filename: string; requestId?: string } }
   | { type: 'OPEN_IMAGE_PREVIEW'; payload: { src: string; images: string[]; index: number } }
   | { type: 'OPEN_IMAGE_EDITOR'; payload: { src: string } }
   | { type: 'OPEN_EXTERNAL_LINK'; payload: { url: string } }
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' | 'preview' } }
+  /** Webview 就绪（容器挂载完成、可接收 INIT）。 */
   | { type: 'READY'; payload?: undefined }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string; requestId?: string } }
   | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
   | { type: 'LIST_ASSETS_IMAGE_FILES'; payload: { requestId: string } }
+  /** M300：请求删除保存目录中“未引用”图片（由宿主二次确认后执行） */
+  | { type: 'DELETE_ASSETS_IMAGE_FILES'; payload: { requestId: string; relativePaths: string[] } }
   /** M64：请求扫描「链入当前文档」的工作区 Markdown 列表 */
   | { type: 'FIND_MARKDOWN_BACKLINKS'; payload: { requestId: string } }
   /** M64：在宿主中打开指定 file:// 文档（须位于当前工作区内） */
@@ -346,7 +386,8 @@ export type WebViewMessage =
   | { type: 'AI_SUGGEST_TITLES_REQUEST'; payload: { requestId: string; text: string } }
   /** M76：请求将选区转为 GFM 表格 */
   | { type: 'AI_CONVERT_TEXT_TO_TABLE_REQUEST'; payload: { requestId: string; text: string } }
-  | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number };
+  | { type: 'scrollPositionResponse'; requestId: string; scrollTop: number; scrollLeft: number }
+);
 
 // 导出结果 - 使用联合类型区分成功/失败
 export type ExportResult =

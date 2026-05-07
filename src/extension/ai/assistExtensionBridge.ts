@@ -5,9 +5,10 @@
 import type * as vscode from 'vscode';
 import type { ExtensionConfig } from '@types';
 import { assistFeatureSnapshotFromExtensionConfig } from './assistConfig';
-import { createAssistModelOperations, type AssistRuntimeDeps } from './assistModelOperations';
+import { type AssistRuntimeDeps } from './assistModelOperations';
 import { MARKLY_ASSIST_API_SECRET_KEY } from './assistSecretKey';
 import type { AssistModelOperations } from './assistTypes';
+import { getAssistProviderFactory } from './assistProviders';
 
 export function assistRuntimeDepsFromExtensionContext(
   context: vscode.ExtensionContext,
@@ -25,5 +26,7 @@ export function getAssistModelOperationsForExtension(
   fetchFn?: typeof fetch
 ): AssistModelOperations {
   const snap = assistFeatureSnapshotFromExtensionConfig(config);
-  return createAssistModelOperations(snap, assistRuntimeDepsFromExtensionContext(context, fetchFn));
+  const deps = assistRuntimeDepsFromExtensionContext(context, fetchFn);
+  const factory = getAssistProviderFactory(snap.provider);
+  return factory(snap, deps);
 }

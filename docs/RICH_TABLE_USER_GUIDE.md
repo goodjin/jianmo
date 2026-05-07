@@ -9,7 +9,7 @@
 | 场景 | 说明 |
 |------|------|
 | **Rich 模式** | 可视化表格：工具栏结构按钮、右键菜单、`Tab` / `Shift+Tab` 切格、`Mod+Alt` 结构快捷键、`markly.table.*` 命令。 |
-| **Source / IR** | 按普通 Markdown **源码**编辑管道表格（`|` 与对齐行）；无「格内 UI」，可用命令 **`Insert Table`** 插入骨架表（若宿主支持当前模式）。 |
+| **Source（含 legacy-IR 输入的兼容降级）** | 按普通 Markdown **源码**编辑管道表格（`|` 与对齐行）；无「格内 UI」，可用命令 **`Insert Table`** 插入骨架表（若宿主支持当前模式）。 |
 | **`Mod`** | macOS 为 ⌘，Windows / Linux 为 Ctrl。 |
 
 ---

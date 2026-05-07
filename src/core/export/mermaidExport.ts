@@ -41,7 +41,7 @@ export type ExportMermaidTheme = 'default' | 'dark' | 'forest' | 'neutral';
 export type MermaidScriptBundling = 'embedded' | 'external';
 
 export const MERMAID_CDN_MIN_JS =
-  'https://cdn.jsdelivr.net/npm/mermaid@11.12.3/dist/mermaid.min.js';
+  'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js';
 
 /** 注入到 `buildHtmlDocument` / `buildPdfHtmlDocument` 的 `<style>` 内 */
 export function getMermaidExportDocumentCss(): string {

@@ -7,6 +7,7 @@ import {
   generateToc,
   buildHtmlDocument,
   markdownToHtml,
+  splitMarkdownForExport,
   renderMarkdownMath,
   exportToHtml,
   buildExportHtmlString,
@@ -178,6 +179,14 @@ describe('buildHtmlDocument', () => {
     expect(html).toContain('max-width: 100%');
     expect(html).toContain('mermaid.initialize');
     expect(html).toContain('DOMContentLoaded');
+  });
+});
+
+describe('splitMarkdownForExport (M290)', () => {
+  it('does not split inside fenced code blocks', () => {
+    const md = ['```js', 'console.log("x")', '```', '', '# H1', 'text'].join('\n');
+    const chunks = splitMarkdownForExport(md, 10);
+    expect(chunks.some((c) => c.includes('```js') && c.includes('console.log("x")') && c.includes('```'))).toBe(true);
   });
 });
 

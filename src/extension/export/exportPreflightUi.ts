@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { analyzeMarkdownExportPreflight, type ExportPreflightIssue } from '@core/export/exportPreflight';
 import type { ExportPreflightScope } from '@types';
+import { t } from '../l10n';
 
 export function workspaceRootFsPathForExport(documentUri: vscode.Uri): string {
   const folder = vscode.workspace.getWorkspaceFolder(documentUri);
@@ -54,17 +55,21 @@ export async function confirmContinueAfterExportPreflight(options: {
   const body = `${options.formatLabel} 导出预检：发现 ${issues.length} 个问题\n${lines.join('\n')}${more}`;
 
   if (!options.blockOnIssues) {
-    void vscode.window.showWarningMessage(body, '打开文档并定位').then((pick) => {
-      if (pick === '打开文档并定位') void revealFirstPreflightIssueInEditor(options.documentUri, issues);
+    const openAndReveal = t('export.preflight.openAndReveal');
+    void vscode.window.showWarningMessage(body, openAndReveal).then((pick) => {
+      if (pick === openAndReveal) void revealFirstPreflightIssueInEditor(options.documentUri, issues);
     });
     return true;
   }
 
-  const choice = await vscode.window.showWarningMessage(body, { modal: true }, '仍要导出', '打开文档并定位', '取消');
-  if (choice === '打开文档并定位') {
+  const exportAnyway = t('export.preflight.exportAnyway');
+  const openAndReveal = t('export.preflight.openAndReveal');
+  const cancel = t('export.preflight.cancel');
+  const choice = await vscode.window.showWarningMessage(body, { modal: true }, exportAnyway, openAndReveal, cancel);
+  if (choice === openAndReveal) {
     await revealFirstPreflightIssueInEditor(options.documentUri, issues);
     return false;
   }
-  if (choice === '仍要导出') return true;
+  if (choice === exportAnyway) return true;
   return false;
 }
