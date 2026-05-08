@@ -3,8 +3,6 @@
     <Toolbar
       v-if="editorReady"
       :mode="currentMode"
-      :doc-baseline-tier-label="docBaselineTierLabel"
-      :perf-degrade-title="perfDegradeTitle"
       :show-outline="showOutline"
       :show-line-numbers="editor.showLineNumbers"
       :find-panel-open="findReplaceVisible"
@@ -795,6 +793,68 @@ const perfDegradeTitle = computed(() => {
   if (!items.length) return base;
   return `${base}\n降级项：\n- ${items.join('\n- ')}`;
 });
+
+// 空文档自动聚焦：确保一打开就能看到光标并直接输入
+let emptyDocAutoFocusSeq = 0;
+function isEffectivelyEmptyDoc(md: unknown): boolean {
+  const s = typeof md === 'string' ? md : '';
+  return s.trim().length === 0;
+}
+
+function focusSourceCaretAtStart(): void {
+  const v = editor.view.value;
+  if (!v) return;
+  try {
+    v.dispatch({ selection: { anchor: 0 } });
+  } catch {
+    // ignore
+  }
+  focusEditor();
+}
+
+function focusRichCaretAtStart(): void {
+  try {
+    (milkdownRef.value as any)?.setCursorPosition?.(0, null);
+  } catch {
+    // ignore
+  }
+  queueRichFocus();
+}
+
+function scheduleAutoFocusEmptyDoc(trigger: string): void {
+  if (!editorReady.value) return;
+  if (!isEffectivelyEmptyDoc(content.value)) return;
+  // 不要在 modal 打开时抢焦点（Esc/Tab trap 需要稳定）
+  if (modalStack.value.length) return;
+
+  const seq = ++emptyDocAutoFocusSeq;
+  // 延后到 DOM/编辑器稳定后再聚焦（避免 INIT 同步阶段 ref 未就绪）
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      if (seq !== emptyDocAutoFocusSeq) return;
+      if (!editorReady.value) return;
+      if (!isEffectivelyEmptyDoc(content.value)) return;
+      if (modalStack.value.length) return;
+
+      if (currentMode.value === 'rich') {
+        // 等可编辑区出现（空文档也应可编辑），避免 focus 丢失
+        const root = document.querySelector('.milkdown-editor') as HTMLElement | null;
+        const editable =
+          root?.querySelector('[role="textbox"]') ||
+          root?.querySelector('.ProseMirror') ||
+          root?.querySelector('[contenteditable="true"]');
+        if (!editable) {
+          // 再等一帧
+          requestAnimationFrame(() => scheduleAutoFocusEmptyDoc(`${trigger}:retry`));
+          return;
+        }
+        focusRichCaretAtStart();
+      } else {
+        focusSourceCaretAtStart();
+      }
+    });
+  });
+}
 
 /** M59：大表自动关列宽拖拽；稳定 ref 避免 content 每键都与 Milkdown 重建竞态 */
 const stableRichTableColumnResizeEnabled = ref(true);
@@ -1863,6 +1923,22 @@ function ensureEditorFromInit(): boolean {
         richStartupEvents: richStartupEvents.slice(-20),
       };
     },
+    getPostedMessages: () => {
+      try {
+        const arr = (globalThis as any).__marklyPostedMessages;
+        return Array.isArray(arr) ? arr.slice(-40) : [];
+      } catch {
+        return [];
+      }
+    },
+    clearPostedMessages: () => {
+      try {
+        (globalThis as any).__marklyPostedMessages = [];
+      } catch {
+        // ignore
+      }
+      return true;
+    },
     isRichDocumentPainted: (): boolean => {
       if (currentMode.value !== 'rich') return true;
       const c = content.value || '';
@@ -2023,6 +2099,8 @@ function handleMessage(event: MessageEvent) {
         hasHostDiagnostics: !!hostDiagnostics.value,
       });
       scheduleEnsureEditorFromInit();
+      // 空文档：INIT 后立即准备好光标（用户可以直接输入）
+      scheduleAutoFocusEmptyDoc('init');
       if (showOutline.value) {
         nextTick(() => requestMarkdownBacklinks());
       }
@@ -2279,6 +2357,28 @@ function handleMessage(event: MessageEvent) {
 }
 
 function sendMessage(message: any) {
+  // E2E：记录最近 postMessage（用于 UI 测试验证“按钮确实触发了 host 消息”）。
+  // 只保留小型快照，避免把大文档内容塞进 bridge。
+  try {
+    const t = String(message?.type ?? '');
+    if (typeof (globalThis as any).__marklyPostedMessages === 'undefined') {
+      (globalThis as any).__marklyPostedMessages = [];
+    }
+    const arr = (globalThis as any).__marklyPostedMessages as any[];
+    const snap = {
+      ts: Date.now(),
+      type: t,
+      payload:
+        t === 'CONTENT_CHANGE' || t === 'SAVE'
+          ? { contentLength: String(message?.payload?.content ?? '').length }
+          : message?.payload ?? null,
+    };
+    arr.push(snap);
+    if (arr.length > 40) arr.splice(0, arr.length - 40);
+  } catch {
+    // ignore
+  }
+
   // M304：本地会话统计（不做 token/计费估算）
   const t = String(message?.type ?? '');
   if (
@@ -2644,6 +2744,8 @@ function switchMode(mode: EditorMode) {
         }
       });
     });
+    // 空文档：确保 Rich 可见光标并可直接输入
+    scheduleAutoFocusEmptyDoc('switchMode:rich');
     return;
   }
 
@@ -2701,6 +2803,9 @@ function switchMode(mode: EditorMode) {
     }
     editor.view.value?.focus();
   }, 50);
+
+  // 空文档：切回 CM6 后也要确保光标可见
+  scheduleAutoFocusEmptyDoc('switchMode:cm6');
 }
 
 function retryRichFromFallback(): void {

@@ -20,6 +20,10 @@ export const MARKLY_E2E_BRIDGE_KEYS = [
   'isRichDocumentPainted',
   'getRichPmSelection',
 
+  // Host 消息观测（用于验证 toolbar -> postMessage 的“真实触发”）
+  'getPostedMessages',
+  'clearPostedMessages',
+
   // Rich 表格：关键且稳定性敏感（避免 stale element）
   'runRichTableOp',
   'simulateRichTablePaste',

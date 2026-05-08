@@ -818,6 +818,29 @@ describe('markly-table-rich marklyTableGridPastePlugin (N2-2)', () => {
     host.remove();
   });
 
+  it('toggleHeaderRow 会改变表格结构（doc JSON 发生变化）', () => {
+    const schema = createTestSchema();
+    const doc = create2x2TableDoc(schema);
+    const table = firstTableNode(doc);
+    expect(table).not.toBeNull();
+    const map = TableMap.get(table);
+    const topLeftCell = 1 + map.positionAt(0, 0, table);
+    const selection = TextSelection.create(doc, topLeftCell + 2);
+    const state = EditorState.create({ schema, doc, selection });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const view = new EditorView(host, { state });
+
+    const before = view.state.doc.toJSON();
+    expect(runRichTableOp(view, 'toggleHeaderRow')).toBe(true);
+    const after = view.state.doc.toJSON();
+    // 不依赖具体 schema 的 header 表达方式：只要能证明操作不是 no-op 即可。
+    expect(after).not.toEqual(before);
+
+    view.destroy();
+    host.remove();
+  });
+
   it('表格外粘贴超限矩阵且用户取消：toast「已取消」+ return true，且不会插入 table', () => {
     const schema = createTestSchema();
     const doc = schema.nodes.doc.create(null, [schema.nodes.paragraph.create(null, schema.text('hello'))]);

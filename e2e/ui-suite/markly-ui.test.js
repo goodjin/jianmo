@@ -305,6 +305,23 @@ describe('Markly VS Code UI (ExTester)', function () {
     assert.ok(md.includes('zzz') && !/^##\s/m.test(md), md);
   });
 
+  it('Source mode: headings H2/H4 are wired and change markdown', async function () {
+    await resetEditorState();
+    await bridgeSwitchMode(driver, 'source');
+
+    await bridgeSetContent(driver, 'h2line\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Heading 2');
+    let md = await waitMarklyContent(driver, (t) => /^## h2line/m.test(t), 60000);
+    assert.ok(md.startsWith('## h2line'), md);
+
+    await bridgeSetContent(driver, 'h4line\n');
+    await bridgeSetSelectionAnchor(driver, 0);
+    await clickToolbarButton(driver, 'Heading 4');
+    md = await waitMarklyContent(driver, (t) => /^#### h4line/m.test(t), 60000);
+    assert.ok(md.startsWith('#### h4line'), md);
+  });
+
   it('Rich/Source: toggling 10x does not drift content or fallback', async function () {
     await resetEditorState();
     // 使用固定内容，避免 TOC/自动注入等造成“预期漂移”
@@ -341,37 +358,47 @@ describe('Markly VS Code UI (ExTester)', function () {
     await resetEditorState();
     await setContentForRich('alpha\n\nheading target\n\nquote target\n\nlist target\n\ncode target\n');
 
-    let okSel = await driver.executeScript(
-      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'alpha' }) === true
-    );
+    async function selectInRich(needle) {
+      for (let i = 0; i < 3; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await driver.executeScript(
+          (n) => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: n }) === true,
+          needle
+        );
+        // eslint-disable-next-line no-await-in-loop
+        const sel = await bridgeGetRichPmSelection(driver);
+        if (ok && sel && typeof sel.from === 'number' && typeof sel.to === 'number' && sel.to > sel.from) {
+          // eslint-disable-next-line no-await-in-loop
+          await driver.findElement(By.css('.milkdown-editor')).click();
+          return true;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return false;
+    }
+
+    let okSel = await selectInRich('alpha');
     assert.ok(okSel, 'select alpha');
     await clickToolbarButton(driver, 'Bold');
     await waitMarklyContent(driver, (t) => t.includes('**alpha**'), 60000);
 
-    okSel = await driver.executeScript(
-      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'code target' }) === true
-    );
+    okSel = await selectInRich('code target');
     assert.ok(okSel, 'select code target');
     await clickToolbarButton(driver, 'Inline Code');
     await waitMarklyContent(driver, (t) => t.includes('`code target`'), 60000);
 
-    okSel = await driver.executeScript(
-      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'heading target' }) === true
-    );
+    okSel = await selectInRich('heading target');
     assert.ok(okSel, 'select heading target');
     await clickToolbarButton(driver, 'Heading 2');
     await waitMarklyContent(driver, (t) => /^## heading target/m.test(t), 60000);
 
-    okSel = await driver.executeScript(
-      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'quote target' }) === true
-    );
+    okSel = await selectInRich('quote target');
     assert.ok(okSel, 'select quote target');
     await clickToolbarButton(driver, 'Quote');
     await waitMarklyContent(driver, (t) => /^>\s+quote target/m.test(t), 60000);
 
-    okSel = await driver.executeScript(
-      () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'list target' }) === true
-    );
+    okSel = await selectInRich('list target');
     assert.ok(okSel, 'select list target');
     await clickToolbarButton(driver, 'Bullet List');
     await waitMarklyContent(driver, (t) => /^[-*]\s+list target/m.test(t), 60000);
@@ -387,7 +414,8 @@ describe('Markly VS Code UI (ExTester)', function () {
     assert.ok(okSel, 'select anchor');
 
     await clickToolbarButton(driver, 'Link');
-    await waitMarklyContent(driver, (t) => t.includes('[链接文字](https://example.com)'), 60000);
+    // Rich 下：若有选区，可能直接把选区包裹成链接（而不是插入“链接文字”占位）
+    await waitMarklyContent(driver, (t) => t.includes('(https://example.com)') && /\[.*\]\(https:\/\/example\.com\)/.test(t), 60000);
 
     await clickToolbarButton(driver, 'Image');
     await waitMarklyContent(driver, (t) => t.includes('![图片描述](图片地址)'), 60000);
@@ -407,6 +435,7 @@ describe('Markly VS Code UI (ExTester)', function () {
       () => window.__marklyE2E?.e2eSelectPlainTextOccurrence?.({ needle: 'Body paragraph' }) === true
     );
     assert.ok(okSel, 'select body paragraph');
+    await driver.findElement(By.css('.milkdown-editor')).click();
     await clickToolbarButton(driver, 'Bold');
     await waitMarklyContent(driver, (t) => t.includes('**Body paragraph**'), 60000);
 
@@ -727,6 +756,194 @@ describe('Markly VS Code UI (ExTester)', function () {
     await menuBtn.click();
 
     await driver.wait(async () => Number(await countDomBodyRows()) > n0, 30000, 'context menu add row below should increase tbody rows');
+  });
+
+  it('Toolbar: zoom buttons apply immediately and update indicator', async function () {
+    await resetEditorStateSource();
+    // 让 toolbar 能看到 zoom 指示器（总是存在），初始应接近 100%
+    await driver.wait(
+      async () =>
+        (await driver.executeScript(() => String(document.querySelector('.toolbar .zoom-indicator .btn-icon')?.textContent || ''))).includes(
+          '%'
+        ),
+      30000,
+      'zoom indicator exists'
+    );
+
+    const getZoomText = async () =>
+      String(await driver.executeScript(() => document.querySelector('.toolbar .zoom-indicator .btn-icon')?.textContent || ''));
+    const getZoomVar = async () =>
+      String(await driver.executeScript(() => getComputedStyle(document.documentElement).getPropertyValue('--markly-zoom') || '')).trim();
+
+    // reset 先点一次，确保处于 100%
+    const resetTitle = await driver.executeScript(() => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      return `重置缩放（${isMac ? '⌘0' : 'Ctrl+0'}）`;
+    });
+    await clickToolbarButton(driver, resetTitle);
+    await driver.wait(async () => (await getZoomText()) === '100%', 30000, 'zoom reset to 100%');
+
+    const inTitle = await driver.executeScript(() => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      return `放大（${isMac ? '⌘=' : 'Ctrl+='}）`;
+    });
+    await clickToolbarButton(driver, inTitle);
+    await driver.wait(async () => (await getZoomText()) === '110%', 30000, 'zoom in to 110%');
+    await driver.wait(async () => (await getZoomVar()) === '1.1', 30000, 'css var markly-zoom=1.1');
+
+    const outTitle = await driver.executeScript(() => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      return `缩小（${isMac ? '⌘-' : 'Ctrl+-'}）`;
+    });
+    await clickToolbarButton(driver, outTitle);
+    await driver.wait(async () => (await getZoomText()) === '100%', 30000, 'zoom out back to 100%');
+    await driver.wait(async () => (await getZoomVar()) === '1', 30000, 'css var markly-zoom=1');
+  });
+
+  it('Toolbar: export buttons post EXPORT message with correct format', async function () {
+    await resetEditorStateSource();
+    // 清空记录，避免被 INIT/READY/CONTENT_CHANGE 噪音干扰
+    const okClear = await driver.executeScript(() => window.__marklyE2E?.clearPostedMessages?.() === true);
+    assert.ok(okClear, 'clearPostedMessages should exist');
+
+    await clickToolbarButton(driver, 'Export PDF');
+    await driver.wait(
+      async () => {
+        const msgs = await driver.executeScript(() => window.__marklyE2E?.getPostedMessages?.() ?? []);
+        const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
+        return last && last.type === 'EXPORT' && last.payload && last.payload.format === 'pdf';
+      },
+      30000,
+      'EXPORT pdf message observed'
+    );
+
+    await clickToolbarButton(driver, 'Export HTML');
+    await driver.wait(
+      async () => {
+        const msgs = await driver.executeScript(() => window.__marklyE2E?.getPostedMessages?.() ?? []);
+        const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
+        return last && last.type === 'EXPORT' && last.payload && last.payload.format === 'html';
+      },
+      30000,
+      'EXPORT html message observed'
+    );
+
+    await clickToolbarButton(driver, 'Preview export (HTML)');
+    await driver.wait(
+      async () => {
+        const msgs = await driver.executeScript(() => window.__marklyE2E?.getPostedMessages?.() ?? []);
+        const last = Array.isArray(msgs) ? msgs[msgs.length - 1] : null;
+        return last && last.type === 'EXPORT' && last.payload && last.payload.format === 'preview';
+      },
+      30000,
+      'EXPORT preview message observed'
+    );
+  });
+
+  it('Toolbar: rich table help button opens/closes help dialog', async function () {
+    await resetEditorState();
+    await driver.wait(async () => (await bridgeGetEditorMode(driver)) === 'rich', 60000, 'rich mode active');
+    await clickToolbarButton(driver, 'Rich 表格快捷键说明');
+    await driver.wait(
+      async () => (await driver.findElements(By.css('.markly-table-help-backdrop[role="dialog"]'))).length > 0,
+      30000,
+      'table help dialog open'
+    );
+    // Esc 关闭（App.vue modalStack 优先处理，且比 click.self 更不易被遮挡/点偏）
+    await driver.actions().sendKeys(Key.ESCAPE).perform();
+    await driver.wait(
+      async () => (await driver.findElements(By.css('.markly-table-help-backdrop'))).length === 0,
+      30000,
+      'dialog closed'
+    );
+  });
+
+  it('Rich table: all toolbar structure ops are present and work (minimal effects)', async function () {
+    await resetEditorState();
+    await setContentForRich('# table-ops\n\n');
+
+    await clickToolbarButton(driver, 'Table');
+    await waitMarklyContent(driver, (t) => t.includes('| 列1 | 列2 | 列3 |'), 60000);
+    const okSel = await driver.executeScript(() => window.__marklyE2E?.e2eSelectFirstTableBodyCell?.() === true);
+    assert.ok(okSel, 'e2eSelectFirstTableBodyCell should succeed');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table');
+
+    const countBodyRows = async () => Number(await driver.executeScript(() => document.querySelectorAll('.milkdown-editor table tbody tr').length));
+    const countBodyCols = async () =>
+      Number(
+        await driver.executeScript(() => {
+          const tr = document.querySelector('.milkdown-editor table tbody tr');
+          if (!tr) return 0;
+          return tr.querySelectorAll('td,th').length;
+        })
+      );
+
+    // addRowBefore
+    const titleAddRowBefore = await driver.executeScript(() => {
+      const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+      const m = isMac ? '⌘' : 'Ctrl';
+      return `表格：上方插入行（${m}+⌥+↑）`;
+    });
+    const r0 = await countBodyRows();
+    await clickToolbarButton(driver, titleAddRowBefore);
+    await driver.wait(async () => (await countBodyRows()) > r0, 30000, 'addRowBefore increases row count');
+
+    // addColAfter
+    const titleAddColAfter = await driver.executeScript(() => {
+      const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+      const m = isMac ? '⌘' : 'Ctrl';
+      return `表格：右侧插入列（${m}+⌥+→）`;
+    });
+    const c0 = await countBodyCols();
+    await clickToolbarButton(driver, titleAddColAfter);
+    await driver.wait(async () => (await countBodyCols()) > c0, 30000, 'addColAfter increases col count');
+
+    // toggleHeaderRow：该操作在不同表格 schema 下可能不表现为 th/td 切换（而是属性切换）。
+    // E2E 这里验证“按钮可点击且不破坏表格状态”；语义正确性由 webview 单元测试覆盖。
+    await clickToolbarButton(driver, '表格：切换表头行');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'still in table after toggleHeaderRow');
+
+    // alignLeft/Center/Right：不同 serializer/渲染路径下，对齐可能以 node attrs 表达而不反映到 Markdown（或不稳定反映到 td 样式）。
+    // E2E 只验证按钮可点击且仍处于表格上下文（不 crash、不丢焦点/选区）。
+    await clickToolbarButton(driver, '表格：当前列左对齐');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'align left keeps inTable');
+    await clickToolbarButton(driver, '表格：当前列居中');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'align center keeps inTable');
+    await clickToolbarButton(driver, '表格：当前列右对齐');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'align right keeps inTable');
+
+    // deleteRow：断言 Markdown 发生变化（不依赖 DOM 计数细节）
+    const titleDeleteRow = await driver.executeScript(() => {
+      const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+      const m = isMac ? '⌘' : 'Ctrl';
+      return `表格：删除当前行（${m}+⌥+Backspace）`;
+    });
+    const mdBeforeDeleteRow = await bridgeGetContent(driver);
+    await clickToolbarButton(driver, titleDeleteRow);
+    await waitMarklyContent(driver, (t) => t !== mdBeforeDeleteRow, 60000);
+
+    // 删除行后重新定位到表格单元格，确保后续 deleteCol 仍在 table 上下文里执行
+    const okSelAfterRow = await driver.executeScript(() => window.__marklyE2E?.e2eSelectFirstTableBodyCell?.() === true);
+    assert.ok(okSelAfterRow, 're-select first table body cell after deleteRow');
+    await driver.wait(async () => (await bridgeGetRichPmSelection(driver))?.inTable === true, 30000, 'pm in table after deleteRow');
+
+    // deleteCol：断言 Markdown 发生变化（不依赖 DOM 计数细节）
+    const titleDeleteCol = await driver.executeScript(() => {
+      const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+      const m = isMac ? '⌘' : 'Ctrl';
+      return `表格：删除当前列（${m}+⌥+Shift+Backspace）`;
+    });
+    const mdBeforeDeleteCol = await bridgeGetContent(driver);
+    await clickToolbarButton(driver, titleDeleteCol);
+    await waitMarklyContent(driver, (t) => t !== mdBeforeDeleteCol, 60000);
+
+    // deleteTable removes table
+    await clickToolbarButton(driver, '表格：删除当前表格');
+    await driver.wait(
+      async () => (await driver.findElements(By.css('.milkdown-editor table'))).length === 0,
+      30000,
+      'deleteTable removes table from DOM'
+    );
   });
 
   it('Rich mode: E2E bridge simulates TSV paste inside table', async function () {

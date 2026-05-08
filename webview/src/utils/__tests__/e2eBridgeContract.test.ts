@@ -19,6 +19,8 @@ describe('M10-3 E2E bridge contract', () => {
       'getDiagnostics',
       'isRichDocumentPainted',
       'getRichPmSelection',
+      'getPostedMessages',
+      'clearPostedMessages',
       'runRichTableOp',
       'simulateRichTablePaste',
       'e2eSelectFirstTableBodyCell',
