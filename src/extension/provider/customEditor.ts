@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
-import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage } from '@types';
+import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage, EditorMode } from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { showExportFailureWithDiagnostics } from '@extension/export/exportFailureUi';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
@@ -18,7 +18,10 @@ import { withExportRetry } from '@extension/export/exportRetry';
 import type { ImageSameNameHandling } from '@extension/image/imageFilenameCollision';
 import { pickNonConflictingFilenameAsync } from '@extension/image/imageFilenameCollision';
 import { confirmContinueAfterExportPreflight } from '@extension/export/exportPreflightUi';
-import { showExportHtmlPreviewPanel } from '@extension/preview/exportHtmlPreview';
+import {
+  buildInlinePreviewHtmlForCustomWebview,
+  showExportHtmlPreviewPanel,
+} from '@extension/preview/exportHtmlPreview';
 import { getExportFilters } from './exportFilters';
 import {
   classifyExportDocumentIntent,
@@ -60,6 +63,34 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     private config: ExtensionConfig,
     private readonly modeController: ModeController
   ) {}
+
+  private static readonly LAST_MODE_BY_URI_STATE_KEY = 'markly.editorModeByDocumentUri';
+
+  private readLastModesMap(): Record<string, string> {
+    return (
+      this.context.workspaceState.get<Record<string, string>>(
+        MarkdownEditorProvider.LAST_MODE_BY_URI_STATE_KEY
+      ) ?? {}
+    );
+  }
+
+  private persistLastEditorMode(uriStr: string, mode: EditorMode): void {
+    const next = { ...this.readLastModesMap(), [uriStr]: mode };
+    void this.context.workspaceState.update(MarkdownEditorProvider.LAST_MODE_BY_URI_STATE_KEY, next);
+  }
+
+  private resolveInitialEditorMode(uriStr: string): EditorMode {
+    const policy = vscode.workspace.getConfiguration('markly').get<string>('editor.openMode', 'remember');
+    if (policy === 'rich' || policy === 'source' || policy === 'preview') {
+      return policy;
+    }
+    if (policy !== 'remember') {
+      return 'rich';
+    }
+    const last = this.readLastModesMap()[uriStr];
+    if (last === 'rich' || last === 'source' || last === 'preview') return last as EditorMode;
+    return 'rich';
+  }
 
   private buildHostDiagnostics(): HostDiagnostics {
     // 注意：这里不包含任何 workspace 路径（避免泄露用户信息）
@@ -125,13 +156,18 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     const uri = document.uri.toString();
     this.webviews.set(uri, webviewPanel);
 
-    // 设置 WebView 选项
+    // 允许加载：扩展内静态资源 + 工作区 + 当前文档目录（本地截图 ![](./assets/…) 依赖后两者）
+    const resourceRootSet = new Map<string, vscode.Uri>();
+    const addRoot = (u: vscode.Uri) => resourceRootSet.set(u.toString(), u);
+    addRoot(vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview'));
+    addRoot(vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'public'));
+    addRoot(vscode.Uri.file(path.dirname(document.uri.fsPath)));
+    for (const wf of vscode.workspace.workspaceFolders ?? []) {
+      addRoot(wf.uri);
+    }
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview'),
-        vscode.Uri.joinPath(this.context.extensionUri, 'webview', 'public'),
-      ],
+      localResourceRoots: [...resourceRootSet.values()],
     };
 
     // 获取 WebView HTML
@@ -149,16 +185,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     // 注册 WebView 到命令系统
     registerWebview(uri, webviewPanel.webview);
 
-    // 主动下发 INIT 消息（VS Code 会队列化，Webview 就绪后自动接收）
-    const doc = this.documentStore.getDocument(uri);
-    const version = this.documentVersions.get(uri) || 1;
-    if (doc) {
-      this.postMessage(uri, {
-        type: 'INIT',
-        payload: { content: doc.content, config: this.config, version, hostDiagnostics: this.buildHostDiagnostics() },
-      });
-      console.log('Proactively sent INIT for:', uri);
-    }
+    // 不在此阶段发 INIT：须等 Webview JS 挂载并发送 READY，否则首批消息可能在 message 监听注册前丢失，
+    // 且无法在 payload 中填入 document 目录的 webview URI。
 
     // 监听文档变化
     this.changeDisposable = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -213,13 +241,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
             this.postMessage(uri, { type: 'SWITCH_MODE', payload: { mode: 'source' } });
           }
         }
-        const doc = this.documentStore.getDocument(uri);
-        const version = this.documentVersions.get(uri) || 1;
-        if (doc) {
-          this.postMessage(uri, {
-            type: 'INIT',
-            payload: { content: doc.content, config: this.config, version, hostDiagnostics: this.buildHostDiagnostics() },
-          });
+        {
+          const initMsg = this.buildInitExtensionMessage(uri);
+          if (initMsg) this.postMessage(uri, initMsg);
         }
         break;
 
@@ -555,6 +579,35 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
       }
 
+      case 'TRACK_EDITOR_MODE': {
+        const mode = message.payload.mode;
+        this.persistLastEditorMode(uri, mode);
+        this.modeController.setSyncedEditorMode(mode);
+        break;
+      }
+
+      case 'REQUEST_PREVIEW_HTML': {
+        const panel = this.webviews.get(uri);
+        const docNow = this.documentStore.getDocument(uri);
+        if (!panel || !docNow) break;
+        const docUri = vscode.Uri.parse(uri);
+        const cfg = vscode.workspace.getConfiguration('markly');
+        const htmlThemeRaw = cfg.get<string>('export.html.theme', 'default');
+        const htmlTheme = htmlThemeRaw === 'print-friendly' ? 'print-friendly' : 'default';
+        const result = await buildInlinePreviewHtmlForCustomWebview(
+          docNow.content,
+          docUri,
+          panel.webview,
+          htmlTheme
+        );
+        if (result.error) {
+          this.postMessage(uri, { type: 'PREVIEW_HTML', payload: { error: result.error } });
+        } else {
+          this.postMessage(uri, { type: 'PREVIEW_HTML', payload: { html: result.html } });
+        }
+        break;
+      }
+
       case 'getScrollPosition':
         // 处理获取滚动位置的请求
         // WebView 会在另一侧处理此消息并返回响应
@@ -849,6 +902,42 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         );
       }
     }
+  }
+
+  /**
+   * 当前文档所在目录的 webview URI（尾斜杠），供 Rich 内解析相对路径图片。
+   */
+  private computeDocumentFolderWebviewUri(documentUriStr: string): string | undefined {
+    const panel = this.webviews.get(documentUriStr);
+    if (!panel) return undefined;
+    try {
+      const docUri = vscode.Uri.parse(documentUriStr);
+      const folderUri = vscode.Uri.file(path.dirname(docUri.fsPath));
+      const href = panel.webview.asWebviewUri(folderUri).toString();
+      return href.endsWith('/') ? href : `${href}/`;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** INIT 单一路径：统一附带 documentFolderWebviewUri，避免各处重复拼 payload。 */
+  private buildInitExtensionMessage(uri: string): ExtensionMessage | null {
+    const doc = this.documentStore.getDocument(uri);
+    const version = this.documentVersions.get(uri) || 1;
+    if (!doc) return null;
+    const documentFolderWebviewUri = this.computeDocumentFolderWebviewUri(uri);
+    const initialEditorMode = this.resolveInitialEditorMode(uri);
+    return {
+      type: 'INIT',
+      payload: {
+        content: doc.content,
+        config: this.config,
+        version,
+        hostDiagnostics: this.buildHostDiagnostics(),
+        ...(documentFolderWebviewUri ? { documentFolderWebviewUri } : {}),
+        initialEditorMode,
+      },
+    };
   }
 
   postMessage(uri: string, message: ExtensionMessage): void {

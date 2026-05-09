@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "1.39.15",
+  "version": "1.39.19",
   "publisher": "jianmo",
   "repository": {
     "type": "git",
@@ -458,6 +458,17 @@
           ],
           "description": "%config.markly.editor.theme.description%"
         },
+        "markly.editor.openMode": {
+          "type": "string",
+          "default": "remember",
+          "enum": [
+            "remember",
+            "rich",
+            "source",
+            "preview"
+          ],
+          "markdownDescription": "%config.markly.editor.openMode.markdownDescription%"
+        },
         "markly.editor.fontSize": {
           "type": "number",
           "default": 14,
@@ -671,7 +682,10 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "npm run build:extension && npm run build:webview",
+    "build": "npm run build:extension && npm run build:webview && npm run build:resources",
+    "build:resources": "node ./scripts/prepare-mermaid-runtime.mjs",
+    "manual:fixture": "node ./scripts/manual-fixture-open.mjs",
+    "manual:vscode": "npm run build:extension && npm run build:webview && node ./scripts/manual-ui-open-vscode.mjs",
     "build:extension": "esbuild ./src/extension/index.ts --bundle --outfile=dist/extension/index.js --external:vscode --external:puppeteer --format=cjs --platform=node --minify --alias:@core=./src/core --alias:@types=./src/types --alias:@extension=./src/extension --alias:@editor=./src/editor --alias:@plugins=./src/plugins --alias:@image=./src/image --alias:@services=./src/services",
     "build:webview": "cd webview && npm run build",
     "check:ir-freeze": "node ./scripts/check-ir-freeze.mjs",

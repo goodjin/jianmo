@@ -81,3 +81,35 @@ export function showExportHtmlPreviewPanel(options: ShowExportHtmlPreviewOptions
 function escapeHtmlAttrSafe(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+
+/**
+ * 自定义编辑器主 Webview 内嵌「预览」：与侧栏预览、导出 HTML 同源管线，并把本地图片改为当前 webview URI。
+ */
+export async function buildInlinePreviewHtmlForCustomWebview(
+  markdown: string,
+  documentUri: vscode.Uri,
+  webview: vscode.Webview,
+  htmlTheme: 'default' | 'print-friendly'
+): Promise<{ html?: string; error?: string }> {
+  try {
+    const titleBase = path.basename(documentUri.fsPath || 'document.md');
+    let html = await buildExportHtmlString(markdown, {
+      includeToc: true,
+      title: titleBase.replace(/\.\w+$/, '') || '文档',
+      htmlTheme,
+      darkMode: false,
+      mermaidScriptBundling: 'embedded',
+    });
+    const docDir = documentUri.scheme === 'file' ? path.dirname(documentUri.fsPath) : '';
+    if (docDir && fs.existsSync(docDir)) {
+      html = rewriteLocalImgSrcForPreview(html, docDir, (abs) =>
+        webview.asWebviewUri(vscode.Uri.file(abs)).toString()
+      );
+    }
+    html = injectWebviewCsp(html, webview.cspSource);
+    return { html };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: msg };
+  }
+}

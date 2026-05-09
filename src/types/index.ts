@@ -1,8 +1,9 @@
 // 编辑器模式
-// - ir: Markdown + CM6 decorators（冻结：不接新能力与体验投入，仅阻断性回归可修；后续计划移除）
+// - ir: Markdown + CM6 decorators（冻结）
 // - source: 纯 markdown 源码
-// - rich: 真富文本（ProseMirror/Milkdown），保存时序列化为 markdown — 产品与里程碑默认以此为主战场
-export type EditorMode = 'ir' | 'source' | 'rich';
+// - rich: 真富文本（ProseMirror/Milkdown）
+// - preview: 正文区内嵌「导出 HTML」同管线的只读预览（无工具栏）
+export type EditorMode = 'ir' | 'source' | 'rich' | 'preview';
 
 export type RichTableCommandValue =
   | 'addRowBefore'
@@ -217,8 +218,7 @@ export interface ProtocolVersionEnvelope {
  * 消息类型（Extension ⇄ Webview 自定义编辑器协议）。
  *
  * - **兼容策略**：所有消息都允许携带 `ProtocolVersionEnvelope` 字段（见上方）。
- * - **命名历史**：宿主侧仍可能下发 `preview`（来自 `markly.toggleMode` 的历史命名）。
- *   Webview 侧会把 `preview` 映射到 `rich`（用户语义：预览/所见即所得）。
+ * - **模式**：`rich` / `source` / `preview`（正文区内嵌 HTML 只读预览）等为独立模式；宿主可下发 `SWITCH_MODE` 或 `CYCLE_EDITOR_MODE`。
  *
  * 变更此处消息类型时，必须同步：
  * - `src/types/messageGuards.ts`（运行时守卫）
@@ -228,14 +228,27 @@ export type ExtensionMessage = ProtocolVersionEnvelope & (
   /** 初始化：首次打开或 READY 后的重发，携带全文内容与配置快照。 */
   | {
       type: 'INIT';
-      payload: { content: string; config: ExtensionConfig; version?: number; hostDiagnostics?: HostDiagnostics };
+      payload: {
+        content: string;
+        config: ExtensionConfig;
+        version?: number;
+        hostDiagnostics?: HostDiagnostics;
+        /** 当前 Markdown 所在目录的 webview 可加载 URI（尾斜杠），用于解析 `![](./assets/x.png)` */
+        documentFolderWebviewUri?: string;
+        /** 宿主根据设置 + 记忆的默认编辑模式（Webview INIT 后可立即切换） */
+        initialEditorMode?: EditorMode;
+      };
     }
   /** 外部内容更新（如 TextDocument 变化），Webview 应 best-effort 保留光标/滚动位置。 */
   | { type: 'CONTENT_UPDATE'; payload: { content: string; version?: number } }
   /** 配置变更（设置项变化）。 */
   | { type: 'CONFIG_CHANGE'; payload: { config: Partial<ExtensionConfig> } }
-  /** 切换编辑模式。`preview` 为历史别名（Webview 侧映射）。 */
-  | { type: 'SWITCH_MODE'; payload: { mode: EditorMode | 'preview' } }
+  /** 切换编辑模式。 */
+  | { type: 'SWITCH_MODE'; payload: { mode: EditorMode } }
+  /** Webview：按顺序循环 rich → source → preview（快捷键/命令绑定）。 */
+  | { type: 'CYCLE_EDITOR_MODE' }
+  /** 宿主：内嵌「预览模式」生成的完整 HTML（与导出预览同源）；失败时用 error */
+  | { type: 'PREVIEW_HTML'; payload: { html?: string; error?: string } }
   /** 宿主侧保存（如 workbench 保存）触发 Webview 同步 TOC 等 */
   | { type: 'SAVE' }
   /** Webview 请求保存成功后的确认（用于版本号推进/状态提示）。 */
@@ -349,6 +362,10 @@ export type ExtensionMessage = ProtocolVersionEnvelope & (
         | { requestId: string; ok: true; markdown: string }
         | { requestId: string; ok: false; error: string };
     }
+  /** Webview → 宿主：同步当前正文模式（用于命令/telemetry 与各文档记忆 reopen 模式）。 */
+  | { type: 'TRACK_EDITOR_MODE'; payload: { mode: EditorMode } }
+  /** 请求宿主以内嵌同源管线渲染当前文档为预览 HTML（与侧栏预览一致）。 */
+  | { type: 'REQUEST_PREVIEW_HTML'; payload?: Record<string, never> }
 );
 
 export type WebViewMessage = ProtocolVersionEnvelope & (

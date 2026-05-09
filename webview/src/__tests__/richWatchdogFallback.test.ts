@@ -161,6 +161,10 @@ describe('Rich watchdog fallback', () => {
       // @ts-expect-error setup function
       w.vm.switchMode('rich');
       await w.vm.$nextTick();
+      // ref 可能被 stub 组件实例覆盖；这里再写一次，确保 watchdog 能读到 getContent
+      // @ts-expect-error setup refs are proxied on vm
+      w.vm.milkdownRef = { setContent: () => {}, getContent: () => '# Manual\n\nbody\n' };
+      await w.vm.$nextTick();
 
       vi.advanceTimersByTime(5000);
       await w.vm.$nextTick();
@@ -243,5 +247,8 @@ describe('Rich watchdog fallback', () => {
       vi.useRealTimers();
     }
   });
+
+  // 注：Rich watchdog 的「ready 兜底」属于运行态修复（避免误判 timeout），
+  // jsdom 下较难稳定模拟 Milkdown 的真实 ready/序列化时序，因此不在此处做强断言。
 });
 

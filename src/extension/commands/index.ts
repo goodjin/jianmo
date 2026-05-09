@@ -95,15 +95,12 @@ export function registerCommands(
         const activeUri = editor?.document.uri.toString();
 
         if (activeUri && webviews.has(activeUri)) {
-          // 如果当前文档使用我们的编辑器，发送消息到 WebView
           const webview = webviews.get(activeUri)!;
-          const currentMode = modeController.getCurrentMode();
-          const newMode = currentMode === 'source' ? 'preview' : 'source';
-          webview.postMessage({
-            type: 'SWITCH_MODE',
-            payload: { mode: newMode },
+          void webview.postMessage({
+            type: 'CYCLE_EDITOR_MODE',
+            protocolVersion: 1,
+            minSupportedProtocolVersion: 1,
           } as ExtensionMessage);
-          modeController.switchTo(newMode);
         } else {
           // 如果使用的是 VSCode 默认编辑器，打开我们的预览编辑器
           if (editor && editor.document.languageId === 'markdown') {

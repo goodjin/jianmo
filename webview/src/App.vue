@@ -1,7 +1,56 @@
 <template>
   <div class="md-editor-app" :class="appClasses" role="application" aria-label="Markly Markdown 编辑器">
+    <!-- 模式条：预览模式仍显示，便于切回编辑（整块工具栏在预览时已隐藏） -->
+    <div
+      v-if="hostInitReceived"
+      class="markly-mode-rail"
+      role="tablist"
+      aria-label="编辑模式 Rich / Source / 预览"
+    >
+      <div class="toolbar-group mode-switch" role="group" aria-label="Editor Mode">
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: currentMode === 'rich' }"
+          title="Rich 所见即所得"
+          aria-label="Rich Mode"
+          type="button"
+          :tabindex="currentMode === 'rich' ? 0 : -1"
+          @keydown="onModeRailKeydown"
+          @click="switchModeFromRail('rich')"
+        >
+          <span class="btn-icon">T</span>
+          <span class="btn-label">Rich</span>
+        </button>
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: currentMode === 'source' }"
+          title="源码"
+          aria-label="Source Mode"
+          type="button"
+          :tabindex="currentMode === 'source' ? 0 : -1"
+          @keydown="onModeRailKeydown"
+          @click="switchModeFromRail('source')"
+        >
+          <span class="btn-icon">{ }</span>
+          <span class="btn-label">Source</span>
+        </button>
+        <button
+          class="toolbar-btn mode-btn"
+          :class="{ active: currentMode === 'preview' }"
+          title="预览（导出 HTML 同源管线，只读）"
+          aria-label="Preview Mode"
+          type="button"
+          :tabindex="currentMode === 'preview' ? 0 : -1"
+          @keydown="onModeRailKeydown"
+          @click="switchModeFromRail('preview')"
+        >
+          <span class="btn-icon">◉</span>
+          <span class="btn-label">预览</span>
+        </button>
+      </div>
+    </div>
     <Toolbar
-      v-if="editorReady"
+      v-if="hostInitReceived && currentMode !== 'preview'"
       :mode="currentMode"
       :show-outline="showOutline"
       :show-line-numbers="editor.showLineNumbers"
@@ -10,7 +59,6 @@
       :rich-table-active="richTableInTable"
       @format="handleFormat"
       @insert="handleInsert"
-      @switch-mode="switchMode"
       @undo="handleUndo"
       @redo="handleRedo"
       @find-replace="onToolbarFindReplace"
@@ -25,7 +73,7 @@
       @rich-table-help="richTableHelpOpen = true"
     />
     <!-- 字数统计 -->
-    <div class="word-count" v-if="editorReady">
+    <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
       <span>字数: {{ wordCount }}</span>
       <span>字符: {{ charCount }}</span>
       <span>行数: {{ lineCount }}</span>
@@ -63,6 +111,7 @@
     </div>
 
     <FindReplacePanel
+      v-if="currentMode !== 'preview'"
       :visible="findReplaceVisible"
       :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
       :match-count-truncated="findMatchesTruncated"
@@ -483,14 +532,34 @@
         <div
           ref="editorContainerRef"
           class="cm-editor-container"
-          v-show="editorReady && currentMode !== 'rich'"
+          v-show="editorReady && currentMode !== 'rich' && currentMode !== 'preview'"
         ></div>
+
+        <div
+          v-show="editorReady && currentMode === 'preview'"
+          class="markly-inline-preview-shell"
+          aria-label="Markdown 只读预览"
+        >
+          <iframe
+            v-if="inlinePreviewSrcdoc"
+            class="markly-inline-preview-frame"
+            title="预览"
+            sandbox="allow-scripts allow-same-origin"
+            referrerpolicy="no-referrer"
+            :srcdoc="inlinePreviewSrcdoc"
+          ></iframe>
+          <div v-else-if="inlinePreviewError" class="markly-inline-preview-fallback">
+            {{ inlinePreviewError }}
+          </div>
+          <div v-else class="markly-inline-preview-loading">正在生成预览…</div>
+        </div>
 
         <MilkdownEditor
           v-if="editorReady"
           v-show="currentMode === 'rich'"
           :content="content"
           :config="config!"
+          :base-url="markdownDocumentBaseUrl"
           :rich-perf-effective-tier="richPerfEffectiveTier"
           :enable-rich-table-column-resize="stableRichTableColumnResizeEnabled"
           @change="onRichContentChange"
@@ -513,7 +582,7 @@
       </div>
 
       <!-- 大纲 + 反向链接 -->
-      <div v-if="editorReady && showOutline" class="markly-side-column">
+      <div v-if="editorReady && showOutline && currentMode !== 'preview'" class="markly-side-column">
         <OutlinePanel
           :content="content"
           :current-mode="currentMode"
@@ -739,6 +808,15 @@ const showUnreferencedAssetsBanner = computed(
     unreferencedAssetImages.value.length > 0
 );
 const editorReady = ref(false);
+/** 已收到宿主 INIT（内容与配置快照）；用于尽早展示工具栏，独立于 CM6/Milkdown 是否已附着 */
+const hostInitReceived = ref(false);
+/** 文档所在目录的 webview URI（尾斜杠），Rich 内解析 ![](./assets/…) */
+const markdownDocumentBaseUrl = ref<string | undefined>(undefined);
+/** INIT 后待应用的首屏模式（须在 editorReady 之后 switch，避免容器未就绪） */
+const pendingInitialEditorMode = ref<EditorMode | null>(null);
+const inlinePreviewSrcdoc = ref('');
+const inlinePreviewError = ref<string | null>(null);
+let previewRefreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const currentMode = ref<EditorMode>('rich');
 const editorContainerStyle = computed(() => ({
   overflowX: 'auto',
@@ -2023,14 +2101,41 @@ function ensureEditorFromInit(): boolean {
   return true;
 }
 
+/**
+ * 首次打开偶尔会早于 Ref 挂载 / 宿主 INIT 早于首帧，
+ * sync + nextTick + rAF 仍失败时继续在短窗口内轮询，避免 Toolbar 永远不出现。
+ */
 function scheduleEnsureEditorFromInit() {
-  if (ensureEditorFromInit()) return;
-  nextTick(() => {
+  const t0 =
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : typeof Date !== 'undefined'
+        ? Date.now()
+        : 0;
+
+  const step = (): void => {
     if (ensureEditorFromInit()) return;
-    requestAnimationFrame(() => {
-      ensureEditorFromInit();
+    const elapsed =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now() - t0
+        : typeof Date !== 'undefined'
+          ? Date.now() - t0
+          : 0;
+    if (elapsed > 8000) {
+      console.error('[Webview] ensureEditorFromInit 超时：编辑器容器 ref 仍未就绪（请留意首屏永久 Loading）。');
+      return;
+    }
+
+    nextTick(() => {
+      if (ensureEditorFromInit()) return;
+      requestAnimationFrame(() => {
+        if (ensureEditorFromInit()) return;
+        setTimeout(step, 24);
+      });
     });
-  });
+  };
+
+  step();
 }
 
 // Message handling
@@ -2040,6 +2145,7 @@ function handleMessage(event: MessageEvent) {
 
   switch (message.type) {
     case 'INIT':
+      hostInitReceived.value = true;
       console.log('[Webview] INIT received, content length:', message.payload.content?.length);
       lastHostProtocol.value = {
         protocolVersion: typeof (message as any).protocolVersion === 'number' ? (message as any).protocolVersion : null,
@@ -2048,6 +2154,15 @@ function handleMessage(event: MessageEvent) {
       };
       content.value = message.payload.content;
       config.value = message.payload.config;
+      markdownDocumentBaseUrl.value =
+        typeof message.payload.documentFolderWebviewUri === 'string'
+          ? message.payload.documentFolderWebviewUri
+          : undefined;
+      {
+        const im = (message.payload as { initialEditorMode?: EditorMode }).initialEditorMode;
+        pendingInitialEditorMode.value =
+          im === 'rich' || im === 'source' || im === 'preview' ? im : null;
+      }
       recalcRichTableColumnResizeNow();
       assetImageRelativePaths.value = [];
       lastAssetImageScanAt.value = null;
@@ -2133,11 +2248,25 @@ function handleMessage(event: MessageEvent) {
 
     case 'SWITCH_MODE': {
       const m = message.payload.mode;
-      // preview 历史命名：在富文本路线下默认映射到 rich
       // M279：IR 运行路径收缩：收到 ir 统一降级为 source（兼容旧端/旧命令）
-      switchMode(m === 'preview' ? 'rich' : m === 'ir' ? 'source' : m);
+      switchMode(m === 'ir' ? 'source' : m);
       break;
     }
+
+    case 'CYCLE_EDITOR_MODE':
+      cycleEditorModes();
+      break;
+
+    case 'PREVIEW_HTML':
+      if (currentMode.value !== 'preview') break;
+      if (message.payload.error) {
+        inlinePreviewError.value = message.payload.error;
+        inlinePreviewSrcdoc.value = '';
+      } else {
+        inlinePreviewError.value = null;
+        inlinePreviewSrcdoc.value = message.payload.html ?? '';
+      }
+      break;
 
     case 'EDITOR_COMMAND':
       handleEditorCommand(message.payload);
@@ -2652,8 +2781,77 @@ function handleEditorReady(success: boolean) {
 }
 
 // Mode switching
+function scheduleInlinePreviewRefresh(): void {
+  if (currentMode.value !== 'preview' || !editorReady.value) return;
+  inlinePreviewError.value = null;
+  inlinePreviewSrcdoc.value = '';
+  sendMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} });
+}
+
+function cycleEditorModes(): void {
+  const order: EditorMode[] = ['rich', 'source', 'preview'];
+  const raw = currentMode.value === 'ir' ? 'source' : currentMode.value;
+  const cur = Math.max(0, order.indexOf(raw));
+  switchMode(order[(cur + 1) % order.length]!);
+}
+
+function switchModeFromRail(mode: EditorMode): void {
+  switchMode(mode);
+}
+
+function onModeRailKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const order: EditorMode[] = ['rich', 'source', 'preview'];
+  const raw = currentMode.value === 'ir' ? 'source' : currentMode.value;
+  const ix = Math.max(0, order.indexOf(raw));
+  const dir = e.key === 'ArrowRight' ? 1 : -1;
+  const next = order[(ix + dir + order.length) % order.length]!;
+  switchMode(next);
+}
+
 function switchMode(mode: EditorMode) {
-  if (mode === 'rich') {
+  const m: EditorMode = mode === 'ir' ? 'source' : mode;
+
+  if (currentMode.value === 'preview' && m !== 'preview') {
+    inlinePreviewSrcdoc.value = '';
+    inlinePreviewError.value = null;
+  }
+
+  if (m === 'preview') {
+    cancelPendingFindRecompute();
+    findReplaceVisible.value = false;
+    if (currentMode.value === 'preview') {
+      scheduleInlinePreviewRefresh();
+      return;
+    }
+    if (currentMode.value === 'rich') {
+      try {
+        const sel = milkdownRef.value?.getSelectionRange?.();
+        if (sel && typeof sel.anchor === 'number') {
+          richLastCursorAnchor.value = sel.anchor;
+          richLastCursorHead.value = typeof sel.head === 'number' ? sel.head : sel.anchor;
+        }
+        const st = milkdownRef.value?.getScrollTop?.();
+        if (typeof st === 'number' && Number.isFinite(st)) richLastScrollTop.value = st;
+      } catch {
+        /* ignore */
+      }
+      const latestRichContent = milkdownRef.value?.getContent?.();
+      if (typeof latestRichContent === 'string' && latestRichContent !== content.value) {
+        content.value = latestRichContent;
+        sendMessage({
+          type: 'CONTENT_CHANGE',
+          payload: { content: latestRichContent },
+        });
+      }
+    }
+    currentMode.value = 'preview';
+    scheduleInlinePreviewRefresh();
+    return;
+  }
+
+  if (m === 'rich') {
     currentMode.value = 'rich';
     recordRichStartupEvent('switchRich:start', { retryCount: richRetryCount.value });
     const hadReadyRichInstance = richReadySuccess.value === true;
@@ -2702,6 +2900,31 @@ function switchMode(mode: EditorMode) {
           armWatchdog(RICH_STARTUP_WATCHDOG_DEFER_MS);
           return;
         }
+
+        // 兜底：有时 Milkdown 已可编辑且内容已渲染，但 ready 事件未上报（或被丢失）。
+        // 此时不应误判为 timeout，避免把用户强制降级到 Source。
+        try {
+          // 兜底判定：只要“可编辑 DOM 已出现”且“能看到渲染文本”，就认为 Rich 已可用。
+          // 现实中 ready 事件可能因为时序/异常被丢失，但用户已经能编辑/看到内容了，不应误判 timeout。
+          const root = document.querySelector('.milkdown-editor') as HTMLElement | null;
+          const domText = String(root?.textContent ?? '').trim();
+          const latest = String(milkdownRef.value?.getContent?.() ?? '').trim();
+          if (latest.length > 0 || domText.length > 0) {
+            richReadySuccess.value = true;
+            richStartupWatchdogFired.value = false;
+            recordRichStartupEvent('watchdog:autopass', {
+              attemptId: attempt,
+              reason: latest.length > 0 ? 'getContent' : 'domText',
+              domTextLen: domText.length,
+              contentLen: latest.length,
+            });
+            clearRichStartupWatchdog('watchdog:cleared', { reason: 'autopass' });
+            return;
+          }
+        } catch {
+          // ignore
+        }
+
         richStartupWatchdogFired.value = true;
         richAutoFallbackOnce.value = true;
         richFallbackBannerVisible.value = true;
@@ -2751,7 +2974,7 @@ function switchMode(mode: EditorMode) {
 
   // 必须以 CM6 内实际 mode 为准；仅用 currentMode 会与 onModeChange 失步，导致「源码切不回 IR」时点 IR 被短路
   // 但当从 rich 切回 CM6 时，editor.mode 可能已经是目标值（历史残留），此时仍需更新 currentMode 并显示 CM6。
-  if (mode === editor.mode.value && currentMode.value === mode) return;
+  if (m === editor.mode.value && currentMode.value === m) return;
   // 切模式会重建 EditorView；必须取消 find 的延迟任务，避免扫描旧 view/doc
   cancelPendingFindRecompute();
 
@@ -2792,8 +3015,8 @@ function switchMode(mode: EditorMode) {
     editor.setContent(content.value);
   }
   // 通过 composable 切换 CM6 state（否则只是 UI 状态变化，编辑器本身不会换模式）
-  editor.switchMode(mode);
-  currentMode.value = mode;
+  editor.switchMode(m);
+  currentMode.value = m;
 
   // 恢复滚动位置
   setTimeout(() => {
@@ -2875,6 +3098,10 @@ function focusEditor() {
   // 使用 setTimeout 延迟 focus，避免与刚执行的 dispatch 冲突
   setTimeout(() => {
     try {
+      if (currentMode.value === 'rich') {
+        milkdownRef.value?.focus?.();
+        return;
+      }
       editor.view.value?.focus();
     } catch (e) {
       console.warn('[Editor] focus failed:', e);
@@ -2883,6 +3110,7 @@ function focusEditor() {
 }
 
 function handleFormat(format: string) {
+  if (!editorReady.value) return;
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.applyFormat?.(format);
@@ -2897,6 +3125,7 @@ function handleFormat(format: string) {
 }
 
 function handleInsert(type: string) {
+  if (!editorReady.value) return;
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.insertNode?.(type);
@@ -3249,6 +3478,7 @@ function onRichTableContextMenuOp(op: RichTableOp) {
 }
 
 function handleToggleLineNumbers() {
+  if (!editorReady.value) return;
   editor.toggleLineNumbers();
 }
 
@@ -3620,6 +3850,17 @@ watch(content, () => {
   // M7-3：大文档自动降级（重渲染按需关闭）
   recomputePerfDegradeUi();
   scheduleOutlineHeadingRefresh();
+
+  if (currentMode.value === 'preview') {
+    if (previewRefreshDebounceTimer !== null) {
+      window.clearTimeout(previewRefreshDebounceTimer);
+      previewRefreshDebounceTimer = null;
+    }
+    previewRefreshDebounceTimer = window.setTimeout(() => {
+      previewRefreshDebounceTimer = null;
+      scheduleInlinePreviewRefresh();
+    }, 480);
+  }
 });
 
 watch(richPerfDegradeUserFull, () => recomputePerfDegradeUi());
@@ -3639,6 +3880,20 @@ watch(showOutline, (on) => {
 watch(currentMode, () => {
   scheduleOutlineHeadingRefresh();
   hideMarkdownHoverPreview(0);
+  try {
+    sendMessage({ type: 'TRACK_EDITOR_MODE', payload: { mode: currentMode.value } });
+  } catch {
+    /* ignore */
+  }
+});
+
+watch(editorReady, (ready) => {
+  if (!ready) return;
+  const initM = pendingInitialEditorMode.value;
+  pendingInitialEditorMode.value = null;
+  if (!initM) return;
+  if (initM === currentMode.value) return;
+  void nextTick(() => switchMode(initM));
 });
 
 watch(outlineCollapsedIds, () => {
@@ -3706,9 +3961,11 @@ watch(aiTitleSuggestVisible, (open) => {
 });
 
 function handleUndo() {
+  if (!editorReady.value) return;
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.undo?.();
+      queueRichFocus();
       return;
     }
     editor.undo();
@@ -3719,9 +3976,11 @@ function handleUndo() {
 }
 
 function handleRedo() {
+  if (!editorReady.value) return;
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.redo?.();
+      queueRichFocus();
       return;
     }
     editor.redo();
@@ -4270,6 +4529,10 @@ function handleOutlineJump(pos: number, headingId: string) {
 
 // 导出处理函数
 function handleExport(format: 'pdf' | 'html' | 'preview') {
+  if (format === 'preview') {
+    switchMode('preview');
+    return;
+  }
   sendMessage({
     type: 'EXPORT',
     payload: { format },
@@ -4521,6 +4784,8 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 .markly-side-column {

@@ -43,6 +43,8 @@ describe('messageGuards — Extension → Webview', () => {
       payload: {
         content: '# x',
         config: minimalConfig,
+        documentFolderWebviewUri:
+          'https://file%2B.vscode-resource.vscode-cdn.net/Users/x/ws/notebook/',
         hostDiagnostics: {
           vscodeVersion: '1.99.0',
           extensionVersion: '1.5.4',
@@ -57,6 +59,7 @@ describe('messageGuards — Extension → Webview', () => {
             enableShiki: false,
           },
         },
+        initialEditorMode: 'preview',
       },
     },
     { type: 'CONTENT_UPDATE', payload: { content: 'a', version: 2 } },
@@ -65,6 +68,10 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'SWITCH_MODE', payload: { mode: 'ir' } },
     { type: 'SWITCH_MODE', payload: { mode: 'source' } },
     { type: 'SWITCH_MODE', payload: { mode: 'preview' } },
+    { type: 'CYCLE_EDITOR_MODE', protocolVersion: 1, minSupportedProtocolVersion: 1 },
+    { type: 'CYCLE_EDITOR_MODE' },
+    { type: 'PREVIEW_HTML', payload: { html: '<p>ok</p>' } },
+    { type: 'PREVIEW_HTML', payload: { error: 'boom' } },
     { type: 'SAVE' },
     { type: 'SAVE_SUCCESS', payload: { version: 9 } },
     { type: 'SAVE_FAILED', payload: { error: 'EACCES' } },
@@ -301,6 +308,10 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'OPEN_EXTERNAL_LINK', payload: { url: 'https://example.com' } },
     { type: 'EXPORT', payload: { format: 'pdf' } },
     { type: 'EXPORT', payload: { format: 'preview' } },
+    { type: 'TRACK_EDITOR_MODE', payload: { mode: 'rich' } },
+    { type: 'TRACK_EDITOR_MODE', payload: { mode: 'preview' } },
+    { type: 'REQUEST_PREVIEW_HTML' },
+    { type: 'REQUEST_PREVIEW_HTML', payload: {} },
     { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
     { type: 'AI_SUMMARY_REQUEST', payload: { requestId: 'sum-req-1', text: '# a', scope: 'document' } },
     { type: 'AI_SUGGEST_TITLES_REQUEST', payload: { requestId: 't-req-1', text: '# a\n\nb' } },

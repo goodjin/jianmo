@@ -71,7 +71,10 @@ suite("Markly Extension Integration Tests", () => {
     await vscode.commands.executeCommand("markly.toggleMode");
     await sleep(500);
     const mode = exportsAny?.modeController?.getCurrentMode?.();
-    assert.ok(mode === "source" || mode === "preview", `modeController.getCurrentMode() \u5E94\u8FD4\u56DE\u6709\u6548\u503C\uFF0C\u5B9E\u9645: ${String(mode)}`);
+    assert.ok(
+      mode === "rich" || mode === "source" || mode === "preview",
+      `modeController.getCurrentMode() \u5E94\u8FD4\u56DE\u6709\u6548\u503C\uFF0C\u5B9E\u9645: ${String(mode)}`
+    );
   }).timeout(TEST_TIMEOUT);
   test("All registered commands should be available", async () => {
     const commands2 = await vscode.commands.getCommands(true);

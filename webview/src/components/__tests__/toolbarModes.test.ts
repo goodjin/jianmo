@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Toolbar from '../Toolbar.vue';
 
-describe('Toolbar mode switch', () => {
-  it('hides IR mode button (rich + source only)', () => {
+describe('Toolbar structure', () => {
+  it('does not embed mode switch (modes live on App.vue mode rail)', () => {
     const w = mount(Toolbar as any, {
       props: {
         mode: 'rich',
@@ -19,12 +19,7 @@ describe('Toolbar mode switch', () => {
       },
     });
 
-    const modeBtns = w.findAll('.toolbar .mode-switch .mode-btn');
-    expect(modeBtns.length).toBe(2);
-    const titles = modeBtns.map((b) => String(b.attributes('title') || ''));
-    expect(titles.some((t) => t.includes('IR Mode'))).toBe(false);
-    expect(titles.some((t) => t.includes('Rich Mode'))).toBe(true);
-    expect(titles.some((t) => t.includes('Source Mode'))).toBe(true);
+    expect(w.find('.mode-switch').exists()).toBe(false);
   });
 
   it('exposes delete-table control when rich table is active', () => {
@@ -38,10 +33,9 @@ describe('Toolbar mode switch', () => {
         findPanelOpen: false,
       },
     });
-    const labels = w
-      .findAll('.toolbar-group[aria-label="Table structure"] .toolbar-btn')
-      .map((b) => String(b.attributes('title') || ''));
-    expect(labels.some((t) => t.includes('删除当前表格'))).toBe(true);
+    // 表格结构按钮已收敛为下拉菜单；这里验证按钮存在即可（具体操作由 UI E2E 覆盖）
+    const btn = w.find('.toolbar-group.table-dropdown .toolbar-btn[title="Table"]');
+    expect(btn.exists()).toBe(true);
   });
 
 });

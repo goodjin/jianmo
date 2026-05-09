@@ -216,3 +216,10 @@ body {
 .cm-editor {
   font-size: calc(var(--vscode-editor-font-size, 14px) * var(--markly-zoom, 1));
 }
+
+/* Rich（Milkdown/ProseMirror）缩放：与 Source 同步 */
+.milkdown-editor,
+.milkdown-editor .ProseMirror,
+.milkdown-editor [role='textbox'] {
+  font-size: calc(var(--vscode-editor-font-size, 14px) * var(--markly-zoom, 1));
+}

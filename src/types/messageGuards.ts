@@ -89,7 +89,7 @@ const imageAssetCommandValues: ReadonlySet<ImageAssetCommandValue> = new Set([
 ]);
 
 export function isEditorMode(x: unknown): x is EditorMode {
-  return x === 'ir' || x === 'source' || x === 'rich';
+  return x === 'ir' || x === 'source' || x === 'rich' || x === 'preview';
 }
 
 export function isExtensionConfig(x: unknown): x is ExtensionConfig {
@@ -209,6 +209,8 @@ export function isExtensionMessage(
       if (!isRecord(p) || !isString(p.content) || !isExtensionConfig(p.config)) return false;
       if (p.version !== undefined && !isNumber(p.version)) return false;
       if (p.hostDiagnostics !== undefined && !isHostDiagnostics(p.hostDiagnostics)) return false;
+      if (p.documentFolderWebviewUri !== undefined && !isString(p.documentFolderWebviewUri)) return false;
+      if (p.initialEditorMode !== undefined && !isEditorMode(p.initialEditorMode)) return false;
       return true;
     }
     case 'CONTENT_UPDATE': {
@@ -225,8 +227,16 @@ export function isExtensionMessage(
     case 'SWITCH_MODE': {
       const p = msg.payload;
       if (!isRecord(p)) return false;
-      const mode = p.mode;
-      return mode === 'preview' || isEditorMode(mode);
+      return isEditorMode(p.mode);
+    }
+    case 'CYCLE_EDITOR_MODE':
+      return msg.payload === undefined || msg.payload === null;
+    case 'PREVIEW_HTML': {
+      const p = msg.payload;
+      if (!isRecord(p)) return false;
+      const hk = typeof p.html === 'string';
+      const he = typeof p.error === 'string';
+      return hk || he;
     }
     case 'SAVE':
       return true;
@@ -554,6 +564,12 @@ export function isWebViewMessage(
         p.text.trim().length > 0
       );
     }
+    case 'TRACK_EDITOR_MODE': {
+      const p = msg.payload;
+      return isRecord(p) && isEditorMode((p as { mode?: unknown }).mode);
+    }
+    case 'REQUEST_PREVIEW_HTML':
+      return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);
     case 'OPEN_IMAGE_PREVIEW': {
       const p = msg.payload;
       if (!isRecord(p) || !isString(p.src) || !Array.isArray(p.images) || !isNumber(p.index)) {

@@ -1,0 +1,131 @@
+# Markly 手工验收文档
+
+生成时间：2026-05-09 11:52
+
+<br />
+
+[链接文字](https://example.com)
+
+：工具栏两排布局、按钮文字、Rich/Source 切换、格式化、缩放、导出预览、以及 Rich 表格的交互增强。
+
+***
+
+## 1. 段落 / 标题 / 引用 / 列表
+
+普通段落：alpha beta gamma。这里包含 **加粗**、*斜体*、~~删除线~~、`行内代码`。
+
+> 引用：这是一段 quote target，用于检查引用按钮。
+
+* 无序列表：list target
+
+* 第二项
+
+  * 子项 2.1
+
+  * 子项 2.2
+
+1. 有序列表：ordered item 1
+2. ordered item 2
+
+* [ ] 任务列表：task item 1
+
+* [x] 任务列表：task item 2
+
+***
+
+## 2. 链接与图片（占位）
+
+链接：[Markly Repo](https://github.com/goodjin/jianmo)
+
+图片：`assets/` 下脚本会生成彩色样张；`missing.png` 仍故意缺失以验证「缺失引用」提示。
+
+![样张 1 蓝底](./assets/exists.png)
+![样张 2 橙色](./assets/sample-orange.png)
+![样张 3 绿色条](./assets/sample-green.png)
+![缺失图片](./assets/missing.png)
+
+***
+
+## 3. 代码块
+
+```js
+function hello(name) {
+  console.log('hello', name)
+}
+hello("markly")
+```
+
+```python
+def add(a, b):
+    return a + b
+print(add(1, 2))
+```
+
+***
+
+## 4. 数学公式（KaTeX）
+
+行内：$E = mc^2$
+
+$$
+\int\_0^1 x^2 , dx = \frac{1}{3}
+$$
+
+***
+
+## 5. Mermaid（用于预览/导出预览）
+
+```mermaid
+flowchart TD
+  A[Start] --> B{Choice}
+  B -->|Yes| C[Do thing]
+  B -->|No| D[Do other]
+  C --> E[End]
+  D --> E
+```
+
+***
+
+## 6. 表格（重点：Rich 表格交互增强）
+
+### 6.1 普通表格（3列）
+
+| H1 | H2 | H3 |
+| -- | -- | -- |
+| a  | b  | c  |
+| d  | e  | f  |
+| g  | h  | i  |
+
+### 6.2 2x2 小表格（用于合并/拆分/粘贴）
+
+| A | B |
+| - | - |
+| 1 | 2 |
+| 3 | 4 |
+
+### 6.3 宽表格（用于横向滚动/列操作）
+
+| C1 | C2 | C3 | C4 | C5 | C6 |
+| -- | -- | -- | -- | -- | -- |
+| r1 | v2 | v3 | v4 | v5 | v6 |
+| r2 | v2 | v3 | v4 | v5 | v6 |
+
+***
+
+## 7. 手工验收清单（建议按顺序）
+
+* 工具栏：两排 + 每个按钮下方中文名称是否正确
+
+* Mode：Rich/Source 来回切换内容不漂移
+
+* 格式：加粗/斜体/删除线/行内代码（选中后点击应立即生效）
+
+* 缩放：放大/缩小/重置点击立即生效（Rich 与 Source 都变化）
+
+* Mermaid：预览导出（HTML Preview）不报错、可离线渲染
+
+* 表格下拉菜单：插入行/列支持数量输入、结构/删除项可用（Rich 且在表格内）
+
+* Rich 表格 UI：表格外框高亮、角标 ⊞、行/列把手可见
+
+* 角标 ⊞ + Delete/Backspace：删除整表

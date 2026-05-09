@@ -86,14 +86,16 @@ suite('Markly - 100% 功能覆盖测试', () => {
     const doc = await openWithMarklyPreview(TEST_FILE);
     const exportsAny = extension.exports as any;
     await waitForDocumentStoreToContainUri(exportsAny, doc.uri.toString());
-    
+
+    // 默认 Rich：快捷键循环 rich → source → preview
+    await vscode.commands.executeCommand('markly.toggleMode');
+    await sleep(400);
+    assert.strictEqual(exportsAny.modeController.getCurrentMode(), 'source');
     await vscode.commands.executeCommand('markly.toggleMode');
     await sleep(500);
 
-    // 关键断言：ModeController 状态变化可被观测（不再依赖“命令不报错”）
     const mode = exportsAny?.modeController?.getCurrentMode?.();
-    assert.ok(mode === 'preview' || mode === 'source', `modeController.getCurrentMode() 应该返回 preview/source，实际: ${String(mode)}`);
-    assert.strictEqual(mode, 'preview', '应切换到 preview');
+    assert.strictEqual(mode, 'preview', '两次切换后应为内嵌预览');
   }).timeout(TEST_TIMEOUT);
 
   test('1.2 切换到源码模式', async () => {
@@ -101,17 +103,12 @@ suite('Markly - 100% 功能覆盖测试', () => {
     const doc = await openWithMarklyPreview(TEST_FILE);
     const exportsAny = extension.exports as any;
     await waitForDocumentStoreToContainUri(exportsAny, doc.uri.toString());
-    
-    // 先切换到预览
+
     await vscode.commands.executeCommand('markly.toggleMode');
-    await sleep(300);
-    
-    // 再切换回源码
-    await vscode.commands.executeCommand('markly.toggleMode');
-    await sleep(300);
+    await sleep(400);
 
     const mode = exportsAny?.modeController?.getCurrentMode?.();
-    assert.strictEqual(mode, 'source', '应切换回 source');
+    assert.strictEqual(mode, 'source', '从 Rich 单次切换应为 Source');
   }).timeout(TEST_TIMEOUT);
 
   // ============================================================
@@ -352,17 +349,18 @@ suite('Markly - 100% 功能覆盖测试', () => {
     const doc = await openWithMarklyPreview(TEST_FILE);
     const exportsAny = extension.exports as any;
     await waitForDocumentStoreToContainUri(exportsAny, doc.uri.toString());
-    
-    // 2. 切换到预览
+
+    // 2. rich → source → preview → rich（循环）
     await vscode.commands.executeCommand('markly.toggleMode');
-    await sleep(300);
-    assert.strictEqual(exportsAny.modeController.getCurrentMode(), 'preview');
-    
-    // 3. 切换回源码
-    await vscode.commands.executeCommand('markly.toggleMode');
-    await sleep(300);
+    await sleep(400);
     assert.strictEqual(exportsAny.modeController.getCurrentMode(), 'source');
-    
+    await vscode.commands.executeCommand('markly.toggleMode');
+    await sleep(400);
+    assert.strictEqual(exportsAny.modeController.getCurrentMode(), 'preview');
+    await vscode.commands.executeCommand('markly.toggleMode');
+    await sleep(400);
+    assert.strictEqual(exportsAny.modeController.getCurrentMode(), 'rich');
+
     // 4. 保存
     await vscode.commands.executeCommand('workbench.action.save');
     await sleep(200);

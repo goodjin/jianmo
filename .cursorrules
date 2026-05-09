@@ -109,8 +109,12 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-- [X] M258–M266：路由/`getExportFilters` 单测、`SAVE_FAILED`、`webviewInitMs`、Rich 错误摘要可复制、预检大量本地图、pipe fixture、`PROTOCOL_COMPAT_SMOKE` / `ACTIVATION_EVENTS_AUDIT`；版本 **1.39.15**。
+- [X] 内嵌**预览模式**（Rich/Source/预览 顶栏）+ **`markly.editor.openMode`**（remember/rich/source/preview）与按 URI 的 `workspaceState` 记忆；契约单测与 ExTester 用例已对齐。**版本 1.39.19**。
+- [X] **手工验收链路**：`npm run manual:vscode` 会先 **build extension + webview**，避免看不到最新 UI；INIT 后轮询 `ensureEditorUntil` 修「首帧无工具栏」；脚本生成 `fixture-workspace/assets` 多张彩色 PNG。
+- [X] M258–M266…（历史）**1.39.15**。
 
 ## Lessons（项目）
 
+- **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
 - Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。
+- **`npm run manual:vscode`**（当前脚本）会先编译 **`dist/extension` + `dist/webview`**；验收前若跳过脚本直接开 VS Code，改动的 webview 可能不会进宿主（症状：Toolbar 文案/z-index 等「完全没变」）。

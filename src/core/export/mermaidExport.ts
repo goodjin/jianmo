@@ -84,6 +84,27 @@ export function transformMermaidFencesForExport(html: string, markdown?: string)
 }
 
 export function readMermaidMinJsFromDisk(): string {
+  // 优先使用扩展包内资源（安装态必然存在；不依赖用户机器上的 node_modules）
+  try {
+    // esbuild bundle 下 __dirname 仍可用；向上找 package.json 作为扩展根目录
+    let dir = __dirname;
+    for (let i = 0; i < 8; i++) {
+      const pkg = path.join(dir, 'package.json');
+      if (fs.existsSync(pkg) && fs.statSync(pkg).isFile()) {
+        const res = path.join(dir, 'resources', 'mermaid.min.js');
+        if (fs.existsSync(res) && fs.statSync(res).isFile()) {
+          return fs.readFileSync(res, 'utf-8');
+        }
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    /* ignore */
+  }
+
   // mermaid v11+ 在 Node 的 "exports" 场景下可能阻止 deep import（即使文件存在）。
   // 为保证导出预览离线可用，我们优先从包根目录定位 dist 文件。
   const relCandidates = ['mermaid/dist/mermaid.min.js', 'mermaid/dist/mermaid.js'];

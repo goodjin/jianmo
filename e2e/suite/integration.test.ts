@@ -64,7 +64,10 @@ suite('Markly Extension Integration Tests', () => {
     await sleep(500);
 
     const mode = exportsAny?.modeController?.getCurrentMode?.();
-    assert.ok(mode === 'source' || mode === 'preview', `modeController.getCurrentMode() 应返回有效值，实际: ${String(mode)}`);
+    assert.ok(
+      mode === 'rich' || mode === 'source' || mode === 'preview',
+      `modeController.getCurrentMode() 应返回有效值，实际: ${String(mode)}`
+    );
   }).timeout(TEST_TIMEOUT);
 
   test('All registered commands should be available', async () => {

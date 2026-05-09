@@ -13,7 +13,8 @@ const defaultWebviewProvider: WebviewProvider = {
 };
 
 export class ModeController implements vscode.Disposable {
-  private currentMode: EditorMode = 'source';
+  /** 仅作宿主侧粗略镜像：由 Webview `TRACK_EDITOR_MODE` / 就绪态同步（不可视为单一真源）。 */
+  private currentMode: EditorMode = 'rich';
   private isTransitioning = false;
   private toggleLock = false;
   private lastSwitchTime = 0;
@@ -105,6 +106,9 @@ export class ModeController implements vscode.Disposable {
       case 'AI_SUGGEST_TITLES_REQUEST':
       case 'AI_CONVERT_TEXT_TO_TABLE_REQUEST':
       case 'getScrollPosition':
+        break;
+      case 'TRACK_EDITOR_MODE':
+      case 'REQUEST_PREVIEW_HTML':
         break;
       default:
         console.log(`[ModeController] Unknown message type: ${message.type}`);
@@ -219,70 +223,26 @@ export class ModeController implements vscode.Disposable {
     return this.currentMode === 'preview';
   }
 
-  async switchTo(mode: EditorMode): Promise<void> {
-    // 输入验证
-    if (mode !== 'source' && mode !== 'preview') {
-      throw new Error(`Invalid mode: ${mode}. Expected 'source' or 'preview'.`);
-    }
-
-    if (this.currentMode === mode) {
-      return;
-    }
-
-    // 防抖检查
-    const now = Date.now();
-    if (now - this.lastSwitchTime < this.SWITCH_DEBOUNCE) {
-      return;
-    }
-
-    // 防止重复切换
-    if (this.isTransitioning) {
-      return;
-    }
-
-    this.isTransitioning = true;
-    this.lastSwitchTime = now;
-
-    // 保存当前模式以便失败时恢复
-    const previousMode = this.currentMode;
-
-    try {
-      // 保存当前模式状态
-      await this.saveCurrentState();
-
-      // 切换模式
+  /** 由 Webview 上报同步（宿主侧预览/快捷键状态；不做滚动光标恢复）。 */
+  setSyncedEditorMode(mode: EditorMode): void {
+    if (mode === 'ir' || mode === 'source' || mode === 'rich' || mode === 'preview') {
       this.currentMode = mode;
-
-      // 恢复目标模式状态
-      await this.restoreState();
-
-      // 触发事件
-      this.onModeChangeEmitter.fire(mode);
-
-      console.log(`Mode switched: ${previousMode} -> ${mode}`);
-    } catch (error) {
-      // 切换失败，恢复到之前的状态
-      console.error(`Mode switch failed: ${previousMode} -> ${mode}`, error);
-      this.currentMode = previousMode;
-      throw error;
-    } finally {
-      this.isTransitioning = false;
     }
   }
 
-  async toggle(): Promise<void> {
-    // 防止快速切换竞态条件
-    if (this.toggleLock) {
-      return;
+  /** @deprecated Rich/Source/预览 由内嵌 Webview 做主；宿主侧若仍调用，等价于粗略更新镜像。 */
+  async switchTo(mode: EditorMode): Promise<void> {
+    if (!(mode === 'source' || mode === 'preview' || mode === 'rich' || mode === 'ir')) {
+      throw new Error(`Invalid mode: ${mode}`);
     }
-    this.toggleLock = true;
+    this.currentMode = mode;
+    this.onModeChangeEmitter.fire(mode);
+  }
 
-    try {
-      const targetMode = this.currentMode === 'source' ? 'preview' : 'source';
-      await this.switchTo(targetMode);
-    } finally {
-      this.toggleLock = false;
-    }
+  async toggle(): Promise<void> {
+    const order: EditorMode[] = ['rich', 'source', 'preview'];
+    const ix = Math.max(0, order.indexOf(this.currentMode));
+    await this.switchTo(order[(ix + 1) % order.length]!);
   }
 
   private async saveCurrentState(): Promise<void> {

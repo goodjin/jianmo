@@ -38,6 +38,19 @@ async function openMarklyWebviewEditor() {
 
   writeSampleMd(defaultBaselineMd());
 
+  // 防御：某些 VS Code 测试实例会弹出 Welcome/onboarding overlay，导致点击被拦截
+  try {
+    await driver.switchTo().defaultContent();
+    const overlays = await driver.findElements(By.css('.onboarding-a-overlay.visible[role="dialog"]'));
+    if (overlays.length > 0) {
+      await driver.actions().sendKeys(Key.ESCAPE).perform();
+      await driver.actions().sendKeys(Key.ESCAPE).perform();
+      await driver.wait(async () => (await driver.findElements(By.css('.onboarding-a-overlay.visible'))).length === 0, 10000);
+    }
+  } catch {
+    // ignore
+  }
+
   const explorer = await new ActivityBar().getViewControl('Explorer');
   assert.ok(explorer, 'Explorer activity should exist');
   await explorer.openView();
@@ -53,6 +66,19 @@ async function openMarklyWebviewEditor() {
     const title = await sections[0].getTitle();
     tree = await sideContent.getSection(title, DefaultTreeSection);
   }
+
+  // 再次防御：overlay 可能在打开 Explorer 后出现
+  try {
+    const overlays = await driver.findElements(By.css('.onboarding-a-overlay.visible[role="dialog"]'));
+    if (overlays.length > 0) {
+      await driver.actions().sendKeys(Key.ESCAPE).perform();
+      await driver.actions().sendKeys(Key.ESCAPE).perform();
+      await driver.wait(async () => (await driver.findElements(By.css('.onboarding-a-overlay.visible'))).length === 0, 10000);
+    }
+  } catch {
+    // ignore
+  }
+
   await tree.openItem('sample.md');
 
   const editorView = new EditorView();
@@ -338,6 +364,24 @@ async function clickToolbarButton(driver, title) {
   }
 }
 
+/** 顶部模式条（Rich / Source / 预览），与 `.toolbar` 分离 */
+async function clickModeRailButton(driver, ariaLabel) {
+  const sel = `.markly-mode-rail button[aria-label="${ariaLabel}"]`;
+  for (let i = 0; i < 2; i++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const btn = await waitFor(driver, sel, 60000, `mode rail: ${ariaLabel}`);
+      // eslint-disable-next-line no-await-in-loop
+      await btn.click();
+      return;
+    } catch (e) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 250));
+      if (i === 1) throw e;
+    }
+  }
+}
+
 const OUTLINE_PANEL = '.outline-panel';
 const LINE_NUMBERS_HIDDEN = 'cm-hide-line-numbers';
 
@@ -361,6 +405,7 @@ module.exports = {
   waitRichDocumentPainted,
   waitMarklyContent,
   clickToolbarButton,
+  clickModeRailButton,
   OUTLINE_PANEL,
   LINE_NUMBERS_HIDDEN,
   Key,
