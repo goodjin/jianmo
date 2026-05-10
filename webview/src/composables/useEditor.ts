@@ -45,7 +45,7 @@ export const useEditor = (options: EditorOptions = {}): EditorInstance => {
 
   // ========== 状态 ==========
   const view: Ref<EditorView | null> = ref(null);
-  const mode: Ref<EditorMode> = ref(options.initialMode || 'ir');
+  const mode: Ref<EditorMode> = ref(options.initialMode || 'source');
   const containerRef: Ref<HTMLElement | null> = ref(null);
   const showLineNumbers: Ref<boolean> = ref(false);
 

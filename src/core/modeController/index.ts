@@ -225,14 +225,14 @@ export class ModeController implements vscode.Disposable {
 
   /** 由 Webview 上报同步（宿主侧预览/快捷键状态；不做滚动光标恢复）。 */
   setSyncedEditorMode(mode: EditorMode): void {
-    if (mode === 'ir' || mode === 'source' || mode === 'rich' || mode === 'preview') {
+    if (mode === 'source' || mode === 'rich' || mode === 'preview') {
       this.currentMode = mode;
     }
   }
 
   /** @deprecated Rich/Source/预览 由内嵌 Webview 做主；宿主侧若仍调用，等价于粗略更新镜像。 */
   async switchTo(mode: EditorMode): Promise<void> {
-    if (!(mode === 'source' || mode === 'preview' || mode === 'rich' || mode === 'ir')) {
+    if (!(mode === 'source' || mode === 'preview' || mode === 'rich')) {
       throw new Error(`Invalid mode: ${mode}`);
     }
     this.currentMode = mode;

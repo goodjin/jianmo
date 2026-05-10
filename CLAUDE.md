@@ -36,11 +36,11 @@ Communication between extension and webview uses `postMessage`/`onDidReceiveMess
 ### Editor Modes
 - **Rich mode** (`'rich'`): Primary WYSIWYG — Milkdown / ProseMirror; serializes to Markdown on save. New product work targets Rich first.
 - **Source mode** (`'source'`): Plain Markdown in CodeMirror (monospace).
-- **IR mode** (`'ir'`, CodeMirror + decorators): **Frozen** — no new features or UX investment; regressions may be fixed only when blocking users; scheduled for eventual removal once Rich/Source coverage is sufficient.
+- **Preview mode** (`'preview'`): Read-only inline HTML preview in the editor body (same pipeline as export HTML); toolbar hidden.
 
-Protocol and types may still mention `'ir'` for backward compatibility until the deprecation phase completes.
+**2.0** removed **IR mode** (`'ir'`). Legacy workspace state or old webview messages that still say `ir` are normalized to **Source** on the extension side; `SWITCH_MODE` with `ir` is rejected by message guards.
 
-Contributor-facing freeze policy (must-read for PRs): [`docs/IR_FREEZE_POLICY.md`](docs/IR_FREEZE_POLICY.md).
+Historical contributor note: IR freeze policy docs under `docs/IR_*` remain as archive; new work does not add IR paths.
 
 ## Build & Dev Commands
 

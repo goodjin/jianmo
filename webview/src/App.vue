@@ -1316,7 +1316,7 @@ const TABLE_FORMAT_DELAY = 500; // ms
 // Initialize useEditor hook
 const editor = useEditor({
   initialContent: '',
-  initialMode: currentMode.value,
+  initialMode: 'source',
   onChange: (newContent: string) => {
     content.value = newContent;
     sendMessage({
@@ -1324,12 +1324,12 @@ const editor = useEditor({
       payload: { content: newContent },
     });
   },
-  onModeChange: (newMode: EditorMode) => {
-    // rich 模式由外层 switchMode 管理（CM6 不认识 rich）
-    if (currentMode.value !== 'rich') {
-      currentMode.value = newMode;
+  onModeChange: () => {
+    // rich / preview 由外层 switchMode 管理；CM6 仅 Source 形态
+    if (currentMode.value !== 'rich' && currentMode.value !== 'preview') {
+      currentMode.value = 'source';
     }
-  }
+  },
 });
 
 function insertUploadedImageMarkdown(markdown: string): void {
@@ -1973,7 +1973,7 @@ function ensureEditorFromInit(): boolean {
       v.dispatch({ selection: { anchor: a, head: h } });
     },
     switchMode: (mode: EditorMode) => switchMode(mode),
-    /** 对外语义以 UI 模式为准（rich/ir/source） */
+    /** 对外语义以 UI 模式为准（rich / source / preview） */
     getEditorMode: (): EditorMode => currentMode.value,
     replaceAll: (findText, replaceText, options) =>
       handleReplaceAll(findText, replaceText, {
@@ -2247,9 +2247,7 @@ function handleMessage(event: MessageEvent) {
       break;
 
     case 'SWITCH_MODE': {
-      const m = message.payload.mode;
-      // M279：IR 运行路径收缩：收到 ir 统一降级为 source（兼容旧端/旧命令）
-      switchMode(m === 'ir' ? 'source' : m);
+      switchMode(message.payload.mode);
       break;
     }
 
@@ -2790,8 +2788,7 @@ function scheduleInlinePreviewRefresh(): void {
 
 function cycleEditorModes(): void {
   const order: EditorMode[] = ['rich', 'source', 'preview'];
-  const raw = currentMode.value === 'ir' ? 'source' : currentMode.value;
-  const cur = Math.max(0, order.indexOf(raw));
+  const cur = Math.max(0, order.indexOf(currentMode.value));
   switchMode(order[(cur + 1) % order.length]!);
 }
 
@@ -2803,15 +2800,14 @@ function onModeRailKeydown(e: KeyboardEvent): void {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   e.preventDefault();
   const order: EditorMode[] = ['rich', 'source', 'preview'];
-  const raw = currentMode.value === 'ir' ? 'source' : currentMode.value;
-  const ix = Math.max(0, order.indexOf(raw));
+  const ix = Math.max(0, order.indexOf(currentMode.value));
   const dir = e.key === 'ArrowRight' ? 1 : -1;
   const next = order[(ix + dir + order.length) % order.length]!;
   switchMode(next);
 }
 
 function switchMode(mode: EditorMode) {
-  const m: EditorMode = mode === 'ir' ? 'source' : mode;
+  const m: EditorMode = mode;
 
   if (currentMode.value === 'preview' && m !== 'preview') {
     inlinePreviewSrcdoc.value = '';
@@ -2972,7 +2968,7 @@ function switchMode(mode: EditorMode) {
     return;
   }
 
-  // 必须以 CM6 内实际 mode 为准；仅用 currentMode 会与 onModeChange 失步，导致「源码切不回 IR」时点 IR 被短路
+  // 必须以 CM6 内实际 mode 为准；仅用 currentMode 会与 onModeChange 失步。
   // 但当从 rich 切回 CM6 时，editor.mode 可能已经是目标值（历史残留），此时仍需更新 currentMode 并显示 CM6。
   if (m === editor.mode.value && currentMode.value === m) return;
   // 切模式会重建 EditorView；必须取消 find 的延迟任务，避免扫描旧 view/doc
@@ -3009,7 +3005,7 @@ function switchMode(mode: EditorMode) {
     scrollRatio = scroller.scrollHeight > 0 ? scroller.scrollTop / scroller.scrollHeight : 0;
   }
 
-  // 切换到 IR 或 Source 模式
+  // 切换到 Source 模式（CodeMirror）
   const currentEditorContent = editor.getContent();
   if (currentEditorContent !== content.value) {
     editor.setContent(content.value);

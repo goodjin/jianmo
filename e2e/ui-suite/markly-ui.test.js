@@ -534,28 +534,28 @@ describe('Markly VS Code UI (ExTester)', function () {
     let m = await bridgeGetEditorMode(driver);
     assert.strictEqual(m, 'rich', 'default Rich');
 
-    await clickToolbarButton(driver, 'Source Mode');
+    await clickModeRailButton(driver, 'Source Mode');
     await driver.wait(async () => (await bridgeGetEditorMode(driver)) === 'source', 30000, 'mode source');
     await driver.wait(async () => {
       const cls = await driver.executeScript(
-        () => document.querySelector('.toolbar-btn.mode-btn[title="Source Mode"]')?.className || ''
+        () => document.querySelector('.markly-mode-rail button[aria-label="Source Mode"]')?.className || ''
       );
       return cls.includes('active');
-    }, 30000, 'Source toolbar active');
+    }, 30000, 'Source mode rail active');
 
-    await clickToolbarButton(driver, 'Rich Mode (WYSIWYG)');
+    await clickModeRailButton(driver, 'Rich Mode');
     await driver.wait(async () => (await bridgeGetEditorMode(driver)) === 'rich', 30000, 'mode rich again');
     await driver.wait(async () => {
       const cls = await driver.executeScript(
-        () => document.querySelector('.toolbar-btn.mode-btn[title="Rich Mode (WYSIWYG)"]')?.className || ''
+        () => document.querySelector('.markly-mode-rail button[aria-label="Rich Mode"]')?.className || ''
       );
       return cls.includes('active');
-    }, 30000, 'Rich toolbar active');
+    }, 30000, 'Rich mode rail active');
   });
 
-  it('IR mode: heading from toolbar respects line cursor', async function () {
+  it('Source mode: heading from toolbar respects line cursor', async function () {
     await resetEditorState();
-    await bridgeSwitchMode(driver, 'ir');
+    await bridgeSwitchMode(driver, 'source');
     await bridgeSetContent(driver, 'plain line\nsecond\n');
     await bridgeSetSelectionAnchor(driver, 0);
     await clickToolbarButton(driver, 'Heading 2');

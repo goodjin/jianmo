@@ -1,9 +1,8 @@
-// 编辑器模式
-// - ir: Markdown + CM6 decorators（冻结）
-// - source: 纯 markdown 源码
-// - rich: 真富文本（ProseMirror/Milkdown）
+// 编辑器模式（2.0：已移除 IR；仅 Rich / Source / 内嵌预览）
+// - source: 纯 Markdown 源码（CodeMirror）
+// - rich: 富文本（ProseMirror/Milkdown）
 // - preview: 正文区内嵌「导出 HTML」同管线的只读预览（无工具栏）
-export type EditorMode = 'ir' | 'source' | 'rich' | 'preview';
+export type EditorMode = 'source' | 'rich' | 'preview';
 
 export type RichTableCommandValue =
   | 'addRowBefore'

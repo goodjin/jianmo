@@ -10,7 +10,8 @@ describe('diagnosticsPackage', () => {
   it('maps editor modes for diagnostics tracking', () => {
     expect(diagnosticsTrackedEditorMode('rich')).toBe('rich');
     expect(diagnosticsTrackedEditorMode('source')).toBe('source');
-    expect(diagnosticsTrackedEditorMode('ir')).toBe('legacy-ir');
+    expect(diagnosticsTrackedEditorMode('ir')).toBe('source');
+    expect(diagnosticsTrackedEditorMode('preview')).toBe('preview');
     expect(diagnosticsTrackedEditorMode(undefined)).toBe('source');
   });
 

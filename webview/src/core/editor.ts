@@ -50,7 +50,7 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
     }),
   ];
 
-  // M69：按标题折叠正文块（Source/IR）
+  // M69：按标题折叠正文块（Source）
   if (mode !== 'rich') {
     extensions.push(
       foldService.of((state, lineStart, _lineEnd) => computeMarkdownHeadingFoldRange(state, lineStart)),
@@ -70,7 +70,7 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
   // 行号通过 CSS 类切换（默认显示）
   // extensions.push(lineNumbers());
 
-  if (mode === 'source' || mode === 'ir') {
+  if (mode === 'source') {
     extensions.push(richClipboardCopyCm);
   }
 

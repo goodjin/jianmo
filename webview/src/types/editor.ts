@@ -8,12 +8,9 @@ import type { Ref, ComputedRef } from 'vue';
 import type { EditorView } from '@codemirror/view';
 
 /**
- * 编辑器模式类型
- * @description 支持两种编辑模式：
- * - ir: 即时渲染模式 (Instant Rendering) - WYSIWYG
- * - source: 源码编辑模式
+ * CodeMirror（Source）侧内部模式：2.0 起仅保留源码一种 CM6 形态。
  */
-export type EditorMode = 'ir' | 'source';
+export type EditorMode = 'source';
 
 /**
  * 编辑器选项接口

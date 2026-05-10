@@ -26,7 +26,7 @@ describe('editor focus on pointer down', () => {
     container.style.height = '120px';
     document.body.appendChild(container);
 
-    const state = createEditorState('hello', 'ir', []);
+    const state = createEditorState('hello', 'source', []);
     view = createEditorView(container, state);
 
     const focusSpy = vi.spyOn(view, 'focus');
@@ -38,8 +38,8 @@ describe('editor focus on pointer down', () => {
     expect(focusSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('IR 与 source 模式均注册同一聚焦行为（回归：勿只挂在单一 mode）', () => {
-    for (const mode of ['ir', 'source'] as const) {
+  it('Source 模式注册 pointerdown 聚焦行为', () => {
+    for (const mode of ['source'] as const) {
       const c = document.createElement('div');
       c.style.width = '100px';
       c.style.height = '80px';

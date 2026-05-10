@@ -79,6 +79,13 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     void this.context.workspaceState.update(MarkdownEditorProvider.LAST_MODE_BY_URI_STATE_KEY, next);
   }
 
+  /** 2.0：workspace / 旧上报中的 `ir` 与未知值落到合法 `EditorMode`。 */
+  private normalizeStoredEditorMode(raw: string | undefined): EditorMode {
+    if (raw === 'rich' || raw === 'source' || raw === 'preview') return raw;
+    if (raw === 'ir') return 'source';
+    return 'rich';
+  }
+
   private resolveInitialEditorMode(uriStr: string): EditorMode {
     const policy = vscode.workspace.getConfiguration('markly').get<string>('editor.openMode', 'remember');
     if (policy === 'rich' || policy === 'source' || policy === 'preview') {
@@ -88,7 +95,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       return 'rich';
     }
     const last = this.readLastModesMap()[uriStr];
-    if (last === 'rich' || last === 'source' || last === 'preview') return last as EditorMode;
+    if (last !== undefined) return this.normalizeStoredEditorMode(last);
     return 'rich';
   }
 
@@ -580,7 +587,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
       }
 
       case 'TRACK_EDITOR_MODE': {
-        const mode = message.payload.mode;
+        const raw = String((message as { payload: { mode: string } }).payload.mode);
+        const mode = this.normalizeStoredEditorMode(raw);
         this.persistLastEditorMode(uri, mode);
         this.modeController.setSyncedEditorMode(mode);
         break;

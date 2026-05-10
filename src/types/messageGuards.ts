@@ -89,7 +89,7 @@ const imageAssetCommandValues: ReadonlySet<ImageAssetCommandValue> = new Set([
 ]);
 
 export function isEditorMode(x: unknown): x is EditorMode {
-  return x === 'ir' || x === 'source' || x === 'rich' || x === 'preview';
+  return x === 'source' || x === 'rich' || x === 'preview';
 }
 
 export function isExtensionConfig(x: unknown): x is ExtensionConfig {
@@ -566,7 +566,9 @@ export function isWebViewMessage(
     }
     case 'TRACK_EDITOR_MODE': {
       const p = msg.payload;
-      return isRecord(p) && isEditorMode((p as { mode?: unknown }).mode);
+      const m = (p as { mode?: unknown }).mode;
+      // 2.0 起协议不含 `ir`；旧 webview 若仍上报则放行并由宿主规范化为 `source`
+      return isRecord(p) && (isEditorMode(m) || m === 'ir');
     }
     case 'REQUEST_PREVIEW_HTML':
       return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);

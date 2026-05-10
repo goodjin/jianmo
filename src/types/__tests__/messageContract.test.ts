@@ -65,7 +65,6 @@ describe('messageGuards — Extension → Webview', () => {
     { type: 'CONTENT_UPDATE', payload: { content: 'a', version: 2 } },
     { type: 'CONTENT_UPDATE', payload: { content: 'a' } },
     { type: 'CONFIG_CHANGE', payload: { config: { editor: { theme: 'dark' } } } },
-    { type: 'SWITCH_MODE', payload: { mode: 'ir' } },
     { type: 'SWITCH_MODE', payload: { mode: 'source' } },
     { type: 'SWITCH_MODE', payload: { mode: 'preview' } },
     { type: 'CYCLE_EDITOR_MODE', protocolVersion: 1, minSupportedProtocolVersion: 1 },
@@ -163,7 +162,8 @@ describe('messageGuards — Extension → Webview', () => {
     expect(isExtensionMessage({})).toBe(false);
     expect(isExtensionMessage({ type: 'INIT' })).toBe(false);
     expect(isExtensionMessage({ type: 'INIT', payload: { content: 1, config: minimalConfig } })).toBe(false);
-    expect(isExtensionMessage({ type: 'UNKNOWN' })).toBe(false);
+    expect(isExtensionMessage({ type: 'SWITCH_MODE', payload: { mode: 'ir' } })).toBe(false);
+    expect(isExtensionMessage({ type: 'SWITCH_MODE', payload: { mode: 'rich' } })).toBe(true);
     expect(isExtensionMessage({ type: 'SAVE_SUCCESS', payload: { version: 'x' } })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_FAILED', payload: { error: 1 } })).toBe(false);
     expect(isExtensionMessage({ type: 'SAVE_FAILED', payload: {} as any })).toBe(false);
@@ -353,6 +353,10 @@ describe('messageGuards — Webview → Extension', () => {
       false
     );
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
+  });
+
+  it('TRACK_EDITOR_MODE accepts legacy ir payload (ingestion only)', () => {
+    expect(isWebViewMessage({ type: 'TRACK_EDITOR_MODE', payload: { mode: 'ir' } } as unknown)).toBe(true);
   });
 
   it('strict: rejects unknown top-level fields (M284)', () => {

@@ -1,9 +1,9 @@
 import { isFormFieldKeyEventTarget, isMilkdownProseMirrorFocused } from './editorFocus';
 
-export type EditorMode = 'rich' | 'ir' | 'source' | string;
+export type EditorMode = 'rich' | 'source' | 'preview' | string;
 
 /**
- * App.vue 的全局 Tab 处理（IR/Source 缩进）不应在 Rich 下抢走 ProseMirror 的表格/列表 keymap。
+ * App.vue 的全局 Tab 处理（Source 缩进）不应在 Rich 下抢走 ProseMirror 的表格/列表 keymap。
  */
 export function shouldAppHandleTabIndent(args: {
   mode: EditorMode;

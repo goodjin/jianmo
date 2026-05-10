@@ -15,7 +15,7 @@ describe('richTabPolicy', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);
     input.focus();
-    expect(shouldAppHandleTabIndent({ mode: 'ir', key: 'Tab', target: input })).toBe(false);
+    expect(shouldAppHandleTabIndent({ mode: 'source', key: 'Tab', target: input })).toBe(false);
   });
 
   it('does not steal Tab when Milkdown ProseMirror is focused (even if mode is not rich)', () => {
@@ -28,7 +28,7 @@ describe('richTabPolicy', () => {
     document.body.appendChild(root);
     pm.focus();
 
-    expect(shouldAppHandleTabIndent({ mode: 'ir', key: 'Tab', target: pm })).toBe(false);
+    expect(shouldAppHandleTabIndent({ mode: 'source', key: 'Tab', target: pm })).toBe(false);
   });
 
   it('allows App Tab indent handling in IR when editor surface is focused', () => {
@@ -36,6 +36,6 @@ describe('richTabPolicy', () => {
     div.setAttribute('tabindex', '0');
     document.body.appendChild(div);
     div.focus();
-    expect(shouldAppHandleTabIndent({ mode: 'ir', key: 'Tab', target: div })).toBe(true);
+    expect(shouldAppHandleTabIndent({ mode: 'source', key: 'Tab', target: div })).toBe(true);
   });
 });

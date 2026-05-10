@@ -52,7 +52,7 @@ describe('useEditor', () => {
       expect(mode.value).toBe('source');
     });
 
-    it('应该触发模式变化回调', () => {
+    it('相同模式 switchMode 不触发 onModeChange（仅 Source CM6）', () => {
       const onModeChange = vi.fn();
       const { result: { createEditor, switchMode }, wrapper } = withSetup(() => useEditor({
         onModeChange,
@@ -61,28 +61,19 @@ describe('useEditor', () => {
       createEditor(container);
       switchMode('source');
 
-      expect(onModeChange).toHaveBeenCalledWith('source');
+      expect(onModeChange).not.toHaveBeenCalled();
     });
 
-    it('IR ↔ 源码 多次切换后 mode 与文档一致', () => {
+    it('Source 为默认 CM6 模式；switchMode(source) 幂等', () => {
       const { result: { createEditor, switchMode, mode, getContent }, wrapper } = withSetup(() =>
         useEditor({ initialContent: '# T\n' })
       );
 
       createEditor(container);
-      expect(mode.value).toBe('ir');
-
+      expect(mode.value).toBe('source');
       switchMode('source');
       expect(mode.value).toBe('source');
       expect(getContent()).toBe('# T\n');
-
-      switchMode('ir');
-      expect(mode.value).toBe('ir');
-      expect(getContent()).toBe('# T\n');
-
-      switchMode('source');
-      switchMode('ir');
-      expect(mode.value).toBe('ir');
     });
 
     it('相同模式不应该触发更新', () => {
@@ -179,9 +170,10 @@ describe('useEditor', () => {
       expect(getContent()).toBe('**test**');
     });
 
-    it('M20：模式切换清空 CM6 简易撤销栈（非原生 history），切换后不可撤回切换前的编辑', async () => {
-      const { result: { createEditor, switchMode, canUndo, setContent, mode, getContent }, wrapper } =
-        withSetup(() => useEditor({ initialMode: 'ir', initialContent: 'z\n' }));
+    it('M20：销毁并重建编辑器后简易撤销栈清空', async () => {
+      const { result: { createEditor, destroy, canUndo, setContent, mode, getContent }, wrapper } = withSetup(() =>
+        useEditor({ initialMode: 'source', initialContent: 'z\n' })
+      );
 
       createEditor(container);
       setContent('a\n');
@@ -190,11 +182,11 @@ describe('useEditor', () => {
       await nextTick();
       expect(canUndo.value).toBe(true);
 
-      switchMode('source');
-      await nextTick();
+      destroy();
+      createEditor(container);
 
       expect(mode.value).toBe('source');
-      expect(getContent()).toBe('b\n');
+      expect(getContent()).toBe('z\n');
       expect(canUndo.value).toBe(false);
     });
   });
