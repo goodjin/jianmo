@@ -4,6 +4,14 @@
 
 A WYSIWYG Markdown editor extension for VSCode — built for a seamless writing experience.
 
+## Contact
+
+- **Email**: [goodjin2@gmail.com](mailto:goodjin2@gmail.com)
+- **Website**: [https://agentlab.fun/](https://agentlab.fun/)
+- **Issues**: [GitHub Issues](https://github.com/goodjin/jianmo/issues)
+
+联系：同上邮箱与网站；功能建议与缺陷反馈也欢迎走 Issues。
+
 ## Highlights (Marketplace)
 
 - **Rich + Source**: Rich is the primary WYSIWYG experience; Source is a reliable fallback when needed.

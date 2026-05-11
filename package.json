@@ -11,6 +11,12 @@
   "bugs": {
     "url": "https://github.com/goodjin/jianmo/issues"
   },
+  "homepage": "https://agentlab.fun/",
+  "author": {
+    "name": "Markly",
+    "email": "goodjin2@gmail.com",
+    "url": "https://agentlab.fun/"
+  },
   "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.80.0"
