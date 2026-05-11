@@ -45,7 +45,7 @@ suite("Markly Extension Integration Tests", () => {
     }
   });
   test("Extension should be activated", async () => {
-    const extension = vscode.extensions.getExtension("jianmo.markly");
+    const extension = vscode.extensions.getExtension("jinshan.markly");
     assert.ok(extension, "Extension should be defined");
     if (!extension.isActive) {
       await extension.activate();
@@ -61,7 +61,7 @@ suite("Markly Extension Integration Tests", () => {
     assert.strictEqual(editor.document.uri.fsPath, doc.uri.fsPath, "Editor should show the correct document");
   }).timeout(TEST_TIMEOUT);
   test("Should toggle mode via modeController", async () => {
-    const extension = vscode.extensions.getExtension("jianmo.markly");
+    const extension = vscode.extensions.getExtension("jinshan.markly");
     if (!extension?.isActive)
       await extension?.activate();
     const exportsAny = extension?.exports;

@@ -62,7 +62,7 @@ suite('Smoke Test Suite', () => {
         }
     });
     test('Extension should be activated', async () => {
-        const extension = vscode.extensions.getExtension('jianmo.markly');
+        const extension = vscode.extensions.getExtension('jinshan.markly');
         assert.ok(extension, 'Extension should be installed');
         if (!extension.isActive) {
             await extension.activate();
@@ -84,7 +84,7 @@ suite('Smoke Test Suite', () => {
         assert.ok(true, 'Editor opened without error');
     }).timeout(TEST_TIMEOUT);
     test('Should toggle between source and preview mode', async () => {
-        const extension = vscode.extensions.getExtension('jianmo.markly');
+        const extension = vscode.extensions.getExtension('jinshan.markly');
         if (!extension?.isActive) {
             await extension?.activate();
         }

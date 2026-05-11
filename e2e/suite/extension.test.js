@@ -28,11 +28,11 @@ var vscode = __toESM(require("vscode"));
 suite("Extension Test Suite", () => {
   vscode.window.showInformationMessage("Start all tests.");
   test("Extension should be present", () => {
-    const extension = vscode.extensions.getExtension("jianmo.markly");
+    const extension = vscode.extensions.getExtension("jinshan.markly");
     assert.ok(extension, "Extension should be installed");
   });
   test("Extension should be activated", async () => {
-    const extension = vscode.extensions.getExtension("jianmo.markly");
+    const extension = vscode.extensions.getExtension("jinshan.markly");
     assert.ok(extension, "Extension should be installed");
     if (!extension.isActive) {
       await extension.activate();

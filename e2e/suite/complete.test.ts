@@ -23,8 +23,8 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function activateExtension(): Promise<vscode.Extension<any>> {
-  const extension = vscode.extensions.getExtension('jianmo.markly');
-  assert.ok(extension, 'Extension 应该已安装（jianmo.markly）');
+  const extension = vscode.extensions.getExtension('jinshan.markly');
+  assert.ok(extension, 'Extension 应该已安装（jinshan.markly）');
   if (!extension.isActive) {
     await extension.activate();
   }

@@ -3,7 +3,7 @@
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
   "version": "2.0.0",
-  "publisher": "jianmo",
+  "publisher": "jinshan",
   "repository": {
     "type": "git",
     "url": "https://github.com/goodjin/jianmo.git"
