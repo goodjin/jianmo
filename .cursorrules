@@ -109,7 +109,8 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-- [X] 内嵌**预览模式**（Rich/Source/预览 顶栏）+ **`markly.editor.openMode`**（remember/rich/source/preview）与按 URI 的 `workspaceState` 记忆；契约单测与 ExTester 用例已对齐。**版本 1.39.19**。
+- [X] **2.0**：移除 **`EditorMode='ir'`**；仅 **Rich / Source / Preview**；`workspaceState` 与 **TRACK** 将遗留 `ir` 规范为 `source`。**版本 2.0.0**。
+- [X] 内嵌**预览模式**（Rich/Source/预览 顶栏）+ **`markly.editor.openMode`**（remember/rich/source/preview）与按 URI 的 `workspaceState` 记忆；契约单测与 ExTester 用例已对齐。
 - [X] **手工验收链路**：`npm run manual:vscode` 会先 **build extension + webview**，避免看不到最新 UI；INIT 后轮询 `ensureEditorUntil` 修「首帧无工具栏」；脚本生成 `fixture-workspace/assets` 多张彩色 PNG。
 - [X] M258–M266…（历史）**1.39.15**。
 
