@@ -25,6 +25,10 @@ export interface UseToolbarReturn {
   toggleStrikethrough: () => void;
   toggleCode: () => void;
   toggleHeading: (level: number) => void;
+  toggleBulletList: () => void;
+  toggleOrderedList: () => void;
+  toggleTaskList: () => void;
+  toggleBlockquote: () => void;
   insertLink: () => void;
   insertImage: () => void;
   insertCodeBlock: () => void;
@@ -100,22 +104,64 @@ export const useToolbar = (options: UseToolbarOptions): UseToolbarReturn => {
     // 如果行已有相同级别的标题，移除它
     const existingMatch = line.text.match(/^(#{1,6})\s/);
     if (existingMatch && existingMatch[1].length === level) {
+      // 使用 existingMatch[0].length 正确计算前缀长度（包含空格）
       editorView.value.dispatch({
-        changes: { from: line.from, to: line.from + level + 1, insert: '' },
+        changes: { from: line.from, to: line.from + existingMatch[0].length, insert: '' },
       });
     } else if (existingMatch) {
       // 替换现有标题级别
-      const existingLen = existingMatch[1].length + 1;
       editorView.value.dispatch({
-        changes: { from: line.from, to: line.from + existingLen, insert: marks },
+        changes: { from: line.from, to: line.from + existingMatch[0].length, insert: marks },
       });
     } else {
+      // 添加新标题
       editorView.value.dispatch({
         changes: { from: line.from, to: line.from, insert: marks },
       });
     }
     editorView.value.focus();
   };
+
+  /**
+   * 切换行前缀列表
+   */
+  const toggleLinePrefix = (prefix: string): void => {
+    if (!editorView.value) return;
+
+    const state = editorView.value.state;
+    const line = state.doc.lineAt(state.selection.main.head);
+
+    if (line.text.startsWith(prefix)) {
+      // 移除前缀
+      editorView.value.dispatch({
+        changes: { from: line.from, to: line.from + prefix.length, insert: '' },
+      });
+    } else {
+      // 移除其他列表前缀（如果有）
+      const listPrefixes = ['- ', '* ', '+ ', '1. ', '2. ', '3. ', '- [ ] ', '- [x] ', '> '];
+      for (const p of listPrefixes) {
+        if (line.text.startsWith(p)) {
+          editorView.value.dispatch({
+            changes: { from: line.from, to: line.from + p.length, insert: '' },
+          });
+          break;
+        }
+      }
+      // 添加新前缀
+      editorView.value.dispatch({
+        changes: { from: line.from, to: line.from, insert: prefix },
+      });
+    }
+    editorView.value.focus();
+  };
+
+  const toggleBulletList = (): void => toggleLinePrefix('- ');
+
+  const toggleOrderedList = (): void => toggleLinePrefix('1. ');
+
+  const toggleTaskList = (): void => toggleLinePrefix('- [ ] ');
+
+  const toggleBlockquote = (): void => toggleLinePrefix('> ');
 
   const insertLink = (): void => {
     if (hasSelection.value) {
@@ -130,7 +176,7 @@ export const useToolbar = (options: UseToolbarOptions): UseToolbarReturn => {
   };
 
   const insertCodeBlock = (): void => {
-    insertAtCursor('```\n代码\n```');
+    insertAtCursor('\n```\n代码内容\n```\n');
   };
 
   const insertTable = (): void => {
@@ -152,6 +198,10 @@ export const useToolbar = (options: UseToolbarOptions): UseToolbarReturn => {
     toggleStrikethrough,
     toggleCode,
     toggleHeading,
+    toggleBulletList,
+    toggleOrderedList,
+    toggleTaskList,
+    toggleBlockquote,
     insertLink,
     insertImage,
     insertCodeBlock,

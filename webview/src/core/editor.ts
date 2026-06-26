@@ -67,8 +67,7 @@ export const createBaseExtensions = (mode: EditorMode): Extension[] => {
     }));
   }
 
-  // 行号通过 CSS 类切换（默认显示）
-  // extensions.push(lineNumbers());
+  // 行号：minimalSetup 已含 lineNumbers，默认通过 CSS 类隐藏
 
   if (mode === 'source') {
     extensions.push(richClipboardCopyCm);

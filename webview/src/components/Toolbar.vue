@@ -25,6 +25,7 @@
           v-for="btn in formatButtons"
           :key="btn.id"
           class="toolbar-btn"
+          :class="formatBtnClass(btn.id)"
           :title="btn.label"
           :aria-label="btn.label"
           @mousedown.prevent
@@ -186,6 +187,7 @@
       <div class="toolbar-group" role="group" aria-label="History">
         <button
           class="toolbar-btn"
+          :disabled="props.canUndo === false"
           title="Undo (Ctrl+Z)"
           aria-label="Undo (Ctrl+Z)"
           @mousedown.prevent
@@ -196,6 +198,7 @@
         </button>
         <button
           class="toolbar-btn"
+          :disabled="props.canRedo === false"
           title="Redo (Ctrl+Shift+Z)"
           aria-label="Redo (Ctrl+Shift+Z)"
           @mousedown.prevent
@@ -274,6 +277,7 @@
           <span class="btn-label">大纲</span>
         </button>
         <button
+          v-if="mode === 'source'"
           class="toolbar-btn"
           :class="{ active: showLineNumbers }"
           title="Toggle Line Numbers"
@@ -316,6 +320,10 @@ const props = defineProps<{
   zoomPercent?: number;
   /** Rich 下光标是否在表格内 */
   richTableActive?: boolean;
+  /** 能否撤销 */
+  canUndo?: boolean;
+  /** 能否重做 */
+  canRedo?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -340,6 +348,8 @@ const headingButtons = [
   { id: 'h2', icon: 'H2', shortLabel: 'H2', displayLabel: '标题2', label: 'Heading 2' },
   { id: 'h3', icon: 'H3', shortLabel: 'H3', displayLabel: '标题3', label: 'Heading 3' },
   { id: 'h4', icon: 'H4', shortLabel: 'H4', displayLabel: '标题4', label: 'Heading 4' },
+  { id: 'h5', icon: 'H5', shortLabel: 'H5', displayLabel: '标题5', label: 'Heading 5' },
+  { id: 'h6', icon: 'H6', shortLabel: 'H6', displayLabel: '标题6', label: 'Heading 6' },
 ];
 
 const formatButtons = [
@@ -347,15 +357,23 @@ const formatButtons = [
   { id: 'italic', icon: 'I', shortLabel: 'Italic', displayLabel: '斜体', label: 'Italic' },
   { id: 'strike', icon: 'S', shortLabel: 'Strike', displayLabel: '删除线', label: 'Strikethrough' },
   { id: 'code', icon: '</>', shortLabel: 'Code', displayLabel: '行内代码', label: 'Inline Code' },
-  { id: 'clear', icon: 'T', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
+  { id: 'quote', icon: '"', shortLabel: 'Quote', displayLabel: '引用', label: 'Blockquote' },
+  { id: 'clearFormat', icon: 'T', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
 ];
 
 const listButtons = [
   { id: 'bulletList', icon: '\u2022', shortLabel: 'List', displayLabel: '无序', label: 'Bullet List' },
   { id: 'orderedList', icon: '1.', shortLabel: 'Num', displayLabel: '有序', label: 'Ordered List' },
   { id: 'taskList', icon: '\u2610', shortLabel: 'Task', displayLabel: '任务', label: 'Task List' },
-  { id: 'quote', icon: '\u201C', shortLabel: 'Quote', displayLabel: '引用', label: 'Quote' },
 ];
+
+function formatBtnClass(id: string): Record<string, boolean> {
+  return {
+    'format-bold': id === 'bold',
+    'format-italic': id === 'italic',
+    'format-strike': id === 'strike',
+  };
+}
 
 const insertButtons = [
   { id: 'link', icon: '\uD83D\uDD17', shortLabel: 'Link', displayLabel: '链接', label: 'Link' },
@@ -447,7 +465,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
+  overflow: visible;
   max-width: 100%;
 }
 
@@ -503,7 +521,7 @@ onUnmounted(() => {
   position: absolute;
   top: 54px;
   left: 0;
-  z-index: 9999;
+  z-index: 26001;
   min-width: 320px;
   max-width: 420px;
   padding: 10px;
@@ -642,47 +660,24 @@ onUnmounted(() => {
   letter-spacing: 0.2px;
 }
 
-/* Mode switch buttons */
-.mode-switch {
-  gap: 0;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
-  border-radius: var(--markly-radius-md);
-  overflow: hidden;
-}
-
-.mode-btn {
-  flex-direction: row;
-  min-width: auto;
-  width: auto;
-  padding: 0 8px;
-  gap: 5px;
-  border-radius: 0;
-}
-
-.mode-btn + .mode-btn {
-  border-left: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
-}
-
-.mode-switch .mode-btn.active {
-  background: var(--vscode-tab-activeBackground, var(--vscode-button-secondaryBackground, var(--vscode-toolbar-hoverBackground)));
-  color: var(--vscode-foreground);
-  border-color: transparent;
-}
-
-/* focus ring：更像 VS Code 的 focus 边框感 */
-.mode-switch:focus-within {
-  border-color: var(--vscode-focusBorder, #007acc);
-  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
-}
-
-.mode-btn:focus-visible {
-  outline: none;
-}
-
 /* Heading buttons */
 .heading-btn .btn-icon {
   font-size: 14px;
   font-weight: 700;
+}
+
+.format-bold .btn-icon {
+  font-weight: 800;
+}
+
+.format-italic .btn-icon,
+.format-italic .btn-label {
+  font-style: italic;
+}
+
+.format-strike .btn-icon,
+.format-strike .btn-label {
+  text-decoration: line-through;
 }
 
 /* Export buttons */

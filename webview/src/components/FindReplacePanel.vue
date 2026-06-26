@@ -244,14 +244,14 @@ function emitWorkspaceSearch() {
 <style scoped>
 .find-replace-panel {
   position: absolute;
-  top: 42px;
-  right: 10px;
+  top: 154px;
+  left: 20px;
   width: 360px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-  border: var(--markly-border);
-  border-radius: var(--markly-radius-md);
-  box-shadow: var(--markly-shadow-elev);
-  z-index: 100;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+  border-radius: var(--markly-radius-md, 6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 26000;
 }
 
 .panel-header {

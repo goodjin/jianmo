@@ -1,6 +1,6 @@
 <template>
   <div class="milkdown-shell" :class="{ 'is-rich-empty-guide': showRichEmptyGuide }">
-    <div class="milkdown-editor" ref="editorRef"></div>
+    <div class="milkdown-editor" ref="editorRef" @scroll="handleEditorScroll"></div>
     <!-- Rich 表格：选中态与边缘快捷按钮（M-table-ui） -->
     <div
       v-if="tableUi.visible"
@@ -28,22 +28,22 @@
         v-if="tableUi.cellRect"
         class="markly-table-ui-cell"
         :style="{
-          left: `${tableUi.cellRect.x}px`,
-          top: `${tableUi.cellRect.y}px`,
+          left: `${tableUi.cellRect.x - tableUi.tableRect.x}px`,
+          top: `${tableUi.cellRect.y - tableUi.tableRect.y}px`,
           width: `${tableUi.cellRect.w}px`,
           height: `${tableUi.cellRect.h}px`,
         }"
       ></div>
 
       <template v-if="tableUi.cellRect">
-        <!-- 行/列选择把手 -->
+        <!-- 行/列选择把手 (吸附在单元格边缘) -->
         <button
           class="markly-table-handle row"
           type="button"
           title="选中当前行"
           :style="{
-            left: `${tableUi.cellRect.x - 12}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h / 2}px`,
+            left: `${tableUi.cellRect.x - tableUi.tableRect.x - 12}px`,
+            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2}px`,
           }"
           @mousedown.prevent
           @click="selectRowFromUi"
@@ -55,8 +55,8 @@
           type="button"
           title="选中当前列"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w / 2}px`,
-            top: `${tableUi.cellRect.y - 12}px`,
+            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2}px`,
+            top: `${tableUi.cellRect.y - tableUi.tableRect.y - 12}px`,
           }"
           @mousedown.prevent
           @click="selectColFromUi"
@@ -64,14 +64,14 @@
           列
         </button>
 
-        <!-- 行：右侧加列 / 删列 -->
+        <!-- 行：右侧加列 / 删列 (吸附在表格最右侧边框) -->
         <button
           class="markly-table-edge-btn"
           type="button"
           title="右侧插入列"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w - 10}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h / 2 - 18}px`,
+            left: `${tableUi.tableRect.w - 10}px`,
+            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 - 18}px`,
           }"
           @mousedown.prevent
           @click="runTableUiOp('addColAfter')"
@@ -83,8 +83,8 @@
           type="button"
           title="删除当前列"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w - 10}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h / 2 + 2}px`,
+            left: `${tableUi.tableRect.w - 10}px`,
+            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 + 2}px`,
           }"
           @mousedown.prevent
           @click="runTableUiOp('deleteCol')"
@@ -92,14 +92,14 @@
           －列
         </button>
 
-        <!-- 列：下方加行 / 删行 -->
+        <!-- 列：下方加行 / 删行 (吸附在表格最下方边框) -->
         <button
           class="markly-table-edge-btn"
           type="button"
           title="下方插入行"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w / 2 - 18}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h - 10}px`,
+            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 - 18}px`,
+            top: `${tableUi.tableRect.h - 10}px`,
           }"
           @mousedown.prevent
           @click="runTableUiOp('addRowAfter')"
@@ -111,8 +111,8 @@
           type="button"
           title="删除当前行"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w / 2 + 2}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h - 10}px`,
+            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 + 2}px`,
+            top: `${tableUi.tableRect.h - 10}px`,
           }"
           @mousedown.prevent
           @click="runTableUiOp('deleteRow')"
@@ -120,15 +120,15 @@
           －行
         </button>
 
-        <!-- 行/列选中时：补齐另一侧插入 -->
+        <!-- 行/列选中时：补齐另一侧插入 (吸附在表格最左侧 / 最上方边框) -->
         <button
           v-if="tableUi.colSelected"
           class="markly-table-edge-btn"
           type="button"
           title="左侧插入列"
           :style="{
-            left: `${tableUi.cellRect.x - 12}px`,
-            top: `${tableUi.cellRect.y + tableUi.cellRect.h / 2 - 18}px`,
+            left: `-12px`,
+            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 - 18}px`,
             transform: 'translate(-50%, -50%)',
           }"
           @mousedown.prevent
@@ -142,8 +142,8 @@
           type="button"
           title="上方插入行"
           :style="{
-            left: `${tableUi.cellRect.x + tableUi.cellRect.w / 2 - 18}px`,
-            top: `${tableUi.cellRect.y - 12}px`,
+            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 - 18}px`,
+            top: `-12px`,
             transform: 'translate(-50%, -50%)',
           }"
           @mousedown.prevent
@@ -190,6 +190,7 @@ import { Fragment, Slice, type Node as PMNode } from '@milkdown/prose/model';
 import { footnote } from '../plugins/footnote';
 import { callCommand } from '@milkdown/utils';
 import { undoCommand, redoCommand } from '@milkdown/plugin-history';
+import { undoDepth, redoDepth } from 'prosemirror-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import type { EditorView } from '@milkdown/prose/view';
@@ -508,8 +509,26 @@ function computeTableUiFromView(view: EditorView): void {
     return;
   }
   const cell = el?.closest?.('td,th') as HTMLElement | null;
-  const tableRect = rectRelativeToRoot(root, table.getBoundingClientRect());
-  const cellRect = cell ? rectRelativeToRoot(root, cell.getBoundingClientRect()) : null;
+
+  // 使用基于视口的边界矩形
+  // 并计算滚动容器( .milkdown-editor )的偏移量，让覆盖层和被覆盖元素在同一个坐标系
+  const rootRect = root.getBoundingClientRect();
+  const tRect = table.getBoundingClientRect();
+  const cRect = cell ? cell.getBoundingClientRect() : null;
+
+  // tableUi 容器是绝对定位在 .milkdown-shell (relative) 中，而 table 是在 .milkdown-editor 内部随滚动条移动的
+  const tableRect = {
+    x: tRect.left - rootRect.left,
+    y: tRect.top - rootRect.top,
+    w: tRect.width,
+    h: tRect.height,
+  };
+  const cellRect = cRect ? {
+    x: cRect.left - rootRect.left,
+    y: cRect.top - rootRect.top,
+    w: cRect.width,
+    h: cRect.height,
+  } : null;
 
   // 允许 UI 点击先行设置（随后用 selection 再校准）。避免偶发 map/rect 读取失败导致 UI 一闪即灭。
   let rowSelected = tableUi.value.rowSelected;
@@ -546,6 +565,14 @@ function computeTableUiFromView(view: EditorView): void {
     activeRow,
     activeCol,
   };
+}
+
+function handleEditorScroll() {
+  if (editor && tableUi.value.visible) {
+    // 当滚动时重新计算表格的位置信息，这样悬浮 UI 会一直跟着动
+    const view = editor.ctx.get(editorViewCtx);
+    computeTableUiFromView(view);
+  }
 }
 
 function runTableUiOp(op: RichTableOp): void {
@@ -1515,9 +1542,9 @@ function insertNode(type: string): void {
       const view = editor.ctx.get(editorViewCtx);
       const { from, to } = view.state.selection;
       if (from < to) {
-        const raw = view.state.doc.textBetween(from, to, ' ', ' ').trim();
+        const raw = view.state.doc.textBetween(from, to, '\n', '\n').trim();
         if (raw) {
-          const esc = raw.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+          const esc = raw.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
           md = `[${esc}](https://example.com)`;
         }
       }
@@ -1955,6 +1982,26 @@ function redo(): void {
     callCommand(redoCommand)(editor.ctx);
   } catch (e) {
     console.error('Failed to redo:', e);
+  }
+}
+
+function canUndo(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    return undoDepth(view.state) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function canRedo(): boolean {
+  if (!editor) return false;
+  try {
+    const view = editor.ctx.get(editorViewCtx);
+    return redoDepth(view.state) > 0;
+  } catch {
+    return false;
   }
 }
 
@@ -2479,6 +2526,8 @@ defineExpose({
   e2eOutdentListItem,
   undo,
   redo,
+  canUndo,
+  canRedo,
   // TOC 相关功能
   insertToc: () => insertNode('toc'),
   updateToc: () => {

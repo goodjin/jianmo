@@ -33,10 +33,273 @@ describe('Toolbar structure', () => {
         findPanelOpen: false,
       },
     });
-    // 表格结构按钮已收敛为下拉菜单；这里验证按钮存在即可（具体操作由 UI E2E 覆盖）
-    const btn = w.find('.toolbar-group.table-dropdown .toolbar-btn[title="Table"]');
+
+    const btn = w.find('.toolbar-btn[title="Table"]');
     expect(btn.exists()).toBe(true);
   });
-
 });
 
+describe('Toolbar buttons emit correct events', () => {
+  it('Italic button shows italic styling on icon', () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Italic"]');
+    expect(btn.classes()).toContain('format-italic');
+  });
+
+  it('Strikethrough button shows line-through styling', () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Strikethrough"]');
+    expect(btn.classes()).toContain('format-strike');
+  });
+
+  it('line numbers button only appears in source mode', () => {
+    const rich = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    expect(rich.find('.toolbar-btn[aria-label="Toggle Line Numbers"]').exists()).toBe(false);
+
+    const source = mount(Toolbar as any, {
+      props: {
+        mode: 'source',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: true,
+        findPanelOpen: false,
+      },
+    });
+    const btn = source.find('.toolbar-btn[aria-label="Toggle Line Numbers"]');
+    expect(btn.exists()).toBe(true);
+    expect(btn.classes()).toContain('active');
+  });
+
+  it('undo button is enabled when canUndo is true', () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+        canUndo: true,
+        canRedo: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[aria-label="Undo (Ctrl+Z)"]');
+    expect(btn.attributes('disabled')).toBeUndefined();
+  });
+
+  it('Bold button emits format event with id "bold"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Bold"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')!.length).toBe(1);
+    expect(wrapper.emitted('format')![0]).toEqual(['bold']);
+  });
+
+  it('Italic button emits format event with id "italic"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Italic"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['italic']);
+  });
+
+  it('Blockquote button emits format event with id "quote"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Blockquote"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['quote']);
+  });
+
+  it('Clear Format button emits format event with id "clearFormat"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Clear Format"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['clearFormat']);
+  });
+
+  it('Bullet List button emits format event with id "bulletList"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Bullet List"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['bulletList']);
+  });
+
+  it('Ordered List button emits format event with id "orderedList"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Ordered List"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['orderedList']);
+  });
+
+  it('Task List button emits format event with id "taskList"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Task List"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['taskList']);
+  });
+
+  it('Link button emits insert event with id "link"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Link"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('insert')![0]).toEqual(['link']);
+  });
+
+  it('Code Block button emits insert event with id "codeBlock"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Code Block"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('insert')![0]).toEqual(['codeBlock']);
+  });
+
+  it('H1 button emits format event with id "h1"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Heading 1"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['h1']);
+  });
+
+  it('H2 button emits format event with id "h2"', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    const btn = wrapper.find('.toolbar-btn[title="Heading 2"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(wrapper.emitted('format')![0]).toEqual(['h2']);
+  });
+});

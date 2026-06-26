@@ -53,10 +53,12 @@
       v-if="hostInitReceived && currentMode !== 'preview'"
       :mode="currentMode"
       :show-outline="showOutline"
-      :show-line-numbers="editor.showLineNumbers"
+      :show-line-numbers="toolbarShowLineNumbers"
       :find-panel-open="findReplaceVisible"
       :zoom-percent="zoomPercent"
       :rich-table-active="richTableInTable"
+      :can-undo="toolbarCanUndo"
+      :can-redo="toolbarCanRedo"
       @format="handleFormat"
       @insert="handleInsert"
       @undo="handleUndo"
@@ -1332,6 +1334,27 @@ const editor = useEditor({
   },
 });
 
+/** Rich 历史栈变化时刷新工具栏撤销/重做按钮状态 */
+const richHistoryTick = ref(0);
+
+const toolbarShowLineNumbers = computed(() => editor.showLineNumbers.value);
+
+const toolbarCanUndo = computed(() => {
+  if (currentMode.value === 'rich') {
+    richHistoryTick.value;
+    return Boolean(milkdownRef.value?.canUndo?.());
+  }
+  return editor.canUndo.value;
+});
+
+const toolbarCanRedo = computed(() => {
+  if (currentMode.value === 'rich') {
+    richHistoryTick.value;
+    return Boolean(milkdownRef.value?.canRedo?.());
+  }
+  return editor.canRedo.value;
+});
+
 function insertUploadedImageMarkdown(markdown: string): void {
   if (!markdown) return;
 
@@ -1382,6 +1405,7 @@ function onRichContentChange(newContent: string): void {
   // MilkdownEditor 常驻后（v-show 隐藏），其 markdownUpdated 仍会触发；
   // 在非 rich 模式下应忽略回传，避免把 content.value 冲掉，导致 E2E 的基准文档丢失。
   if (currentMode.value !== 'rich') return;
+  richHistoryTick.value++;
   content.value = newContent;
   sendMessage({
     type: 'CONTENT_CHANGE',
@@ -3110,6 +3134,7 @@ function handleFormat(format: string) {
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.applyFormat?.(format);
+      richHistoryTick.value++;
       queueRichFocus();
       return;
     }
@@ -3474,7 +3499,7 @@ function onRichTableContextMenuOp(op: RichTableOp) {
 }
 
 function handleToggleLineNumbers() {
-  if (!editorReady.value) return;
+  if (!editorReady.value || currentMode.value !== 'source') return;
   editor.toggleLineNumbers();
 }
 
@@ -3961,6 +3986,7 @@ function handleUndo() {
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.undo?.();
+      richHistoryTick.value++;
       queueRichFocus();
       return;
     }
@@ -3976,6 +4002,7 @@ function handleRedo() {
   try {
     if (currentMode.value === 'rich') {
       milkdownRef.value?.redo?.();
+      richHistoryTick.value++;
       queueRichFocus();
       return;
     }
@@ -4776,6 +4803,76 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* ==================== Mode Rail ==================== */
+.markly-mode-rail {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+}
+
+.mode-switch {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  border-radius: var(--markly-radius-md, 6px);
+  overflow: hidden;
+}
+
+.mode-switch:focus-within {
+  border-color: var(--vscode-focusBorder, #007acc);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 28px;
+  padding: 0 12px;
+  gap: 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color 0.15s;
+}
+
+.mode-btn:focus-visible {
+  outline: none;
+}
+
+.mode-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 90, 90, 0.31));
+}
+
+.mode-btn:active {
+  background: var(--vscode-toolbar-activeBackground, rgba(90, 90, 90, 0.5));
+}
+
+.mode-btn + .mode-btn {
+  border-left: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+}
+
+.mode-switch .mode-btn.active {
+  background: var(--vscode-tab-activeBackground, var(--vscode-button-secondaryBackground, rgba(130, 130, 130, 0.3)));
+  color: var(--vscode-foreground);
+}
+
+.mode-btn .btn-icon {
+  font-size: 13px;
+}
+
+.mode-btn .btn-label {
+  font-size: 12px;
+}
+
 .editor-main {
   flex: 1;
   display: flex;
@@ -4843,6 +4940,37 @@ onUnmounted(() => {
   justify-content: center;
   height: 100%;
   color: var(--vscode-descriptionForeground);
+}
+
+.markly-inline-preview-shell {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editor-background);
+}
+
+.markly-inline-preview-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+
+.markly-inline-preview-loading,
+.markly-inline-preview-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+}
+
+.markly-inline-preview-fallback {
+  color: var(--vscode-errorForeground);
 }
 
 .theme-dark {
