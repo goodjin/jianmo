@@ -109,6 +109,12 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **2.1.0 UI/UX 四轮优化**（分支 cursor/ui-ux-optimization-0718）：
+  - 工具栏**收起/展开**：`SET_TOOLBAR_COLLAPSED` + `globalState 'markly.toolbarCollapsed'`，INIT 回填；默认保持两行（用户要求）
+  - 瘦身：按钮 44×44 竖排 → 28px 横排；H1~H6 合并「标题」下拉；字数统计移底部状态栏；模式条压扁
+  - 视觉：**@vscode/codicons** 图标（emoji 全替换）；`--markly-*` 全部映射 `--vscode-*`（亮色主题代码块修复）；Rich 排版打磨（标题节奏/行高/代码块/表格/引用/hr）
+  - 交互：查找面板锚定编辑区右上（原 `top:154px` 硬编码）+ 过渡动画；工具栏/菜单进入动画；`prefers-reduced-motion` 兜底
+  - 清理：删除死代码 useTheme/themeConfig/useOutline/useFindReplace/useToolbar（仅被各自测试引用）
 - [X] **2.0**：移除 **`EditorMode='ir'`**；仅 **Rich / Source / Preview**；`workspaceState` 与 **TRACK** 将遗留 `ir` 规范为 `source`。**版本 2.0.0**。
 - [X] 内嵌**预览模式**（Rich/Source/预览 顶栏）+ **`markly.editor.openMode`**（remember/rich/source/preview）与按 URI 的 `workspaceState` 记忆；契约单测与 ExTester 用例已对齐。
 - [X] **手工验收链路**：`npm run manual:vscode` 会先 **build extension + webview**，避免看不到最新 UI；INIT 后轮询 `ensureEditorUntil` 修「首帧无工具栏」；脚本生成 `fixture-workspace/assets` 多张彩色 PNG。

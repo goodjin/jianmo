@@ -27,7 +27,7 @@ Communication between extension and webview uses `postMessage`/`onDidReceiveMess
 - `core/editor.ts` - Creates CodeMirror 6 EditorState/EditorView with markdown language and decorators
 - `core/decorators/` - CM6 ViewPlugins for IR mode: heading, emphasis, link, code, taskList, list
 - `composables/useEditor.ts` - Vue composable wrapping CM6: content management, mode switching, format/insert operations, undo/redo
-- `composables/` - Other composables: useVSCode (postMessage bridge), useOutline, useFindReplace, useToolbar, useTheme
+- `composables/` - Other composables: useVSCode (postMessage bridge), useImageHandler（2.1 清理：useOutline / useFindReplace / useToolbar / useTheme 为未接线死代码，已删除；主题跟随 --vscode-* 变量见 styles/theme.css）
 - `shared/` - Shared configs (toolbar items, theme, outline parsing)
 
 ### Shared Types
