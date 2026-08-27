@@ -568,6 +568,48 @@ onUnmounted(() => {
   gap: 0;
 }
 
+/* 展开/收起与下拉菜单：轻量进入动画（v-if 重建节点时触发） */
+.toolbar-row,
+.toolbar-collapsed-bar {
+  animation: markly-toolbar-in 0.16s ease;
+}
+
+.heading-menu,
+.table-menu {
+  animation: markly-menu-in 0.12s ease;
+}
+
+@keyframes markly-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes markly-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-row,
+  .toolbar-collapsed-bar,
+  .heading-menu,
+  .table-menu {
+    animation: none;
+  }
+}
+
 .toolbar-collapsed-bar {
   display: flex;
   align-items: center;

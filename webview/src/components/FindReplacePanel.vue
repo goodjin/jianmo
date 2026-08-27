@@ -1,4 +1,5 @@
 <template>
+  <Transition name="markly-panel">
   <div
     v-if="visible"
     class="find-replace-panel"
@@ -142,6 +143,7 @@
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -247,9 +249,10 @@ function emitWorkspaceSearch() {
 
 <style scoped>
 .find-replace-panel {
+  /* 锚定在 .editor-main（最近 positioned 祖先）右上角，与 VS Code 原生查找一致 */
   position: absolute;
-  top: 154px;
-  left: 20px;
+  top: 10px;
+  right: 20px;
   width: 360px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
@@ -464,5 +467,24 @@ function emitWorkspaceSearch() {
   height: 16px;
   background: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
   margin: 0 2px;
+}
+
+/* 面板出现/消失过渡 */
+.markly-panel-enter-active,
+.markly-panel-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.markly-panel-enter-from,
+.markly-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markly-panel-enter-active,
+  .markly-panel-leave-active {
+    transition: none;
+  }
 }
 </style>

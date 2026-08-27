@@ -108,24 +108,6 @@
       </div>
     </div>
 
-    <FindReplacePanel
-      v-if="currentMode !== 'preview'"
-      :visible="findReplaceVisible"
-      :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
-      :match-count-truncated="findMatchesTruncated"
-      :current-match-index="findActiveIdx"
-      :matches-preview="findMatchesPreview"
-      :pattern-warning="findPatternWarning"
-      @close="onFindPanelClose"
-      @query-change="onFindQueryChange"
-      @find-next="handleFindNext"
-      @find-prev="handleFindPrev"
-      @jump-to-match="handleFindJumpToMatch"
-      @workspace-search="handleWorkspaceSearch"
-      @replace="handleFindReplaceOnce"
-      @replace-all="handleReplaceAllFromPanel"
-    />
-
     <!-- M72：润色预览确认框 -->
     <div
       v-if="rewritePreviewVisible"
@@ -493,6 +475,24 @@
     />
 
     <div class="editor-main">
+      <!-- 查找替换面板：锚定编辑区右上角，不随工具栏高度变化漂移 -->
+      <FindReplacePanel
+        v-if="currentMode !== 'preview'"
+        :visible="findReplaceVisible"
+        :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
+        :match-count-truncated="findMatchesTruncated"
+        :current-match-index="findActiveIdx"
+        :matches-preview="findMatchesPreview"
+        :pattern-warning="findPatternWarning"
+        @close="onFindPanelClose"
+        @query-change="onFindQueryChange"
+        @find-next="handleFindNext"
+        @find-prev="handleFindPrev"
+        @jump-to-match="handleFindJumpToMatch"
+        @workspace-search="handleWorkspaceSearch"
+        @replace="handleFindReplaceOnce"
+        @replace-all="handleReplaceAllFromPanel"
+      />
       <div
         class="editor-container"
         :style="editorContainerStyle"
