@@ -18,7 +18,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('rich')"
         >
-          <span class="btn-icon">T</span>
+          <span class="btn-icon codicon codicon-edit" aria-hidden="true"></span>
           <span class="btn-label">Rich</span>
         </button>
         <button
@@ -31,7 +31,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('source')"
         >
-          <span class="btn-icon">{ }</span>
+          <span class="btn-icon codicon codicon-code" aria-hidden="true"></span>
           <span class="btn-label">Source</span>
         </button>
         <button
@@ -44,7 +44,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('preview')"
         >
-          <span class="btn-icon">◉</span>
+          <span class="btn-icon codicon codicon-open-preview" aria-hidden="true"></span>
           <span class="btn-label">预览</span>
         </button>
       </div>
@@ -4884,6 +4884,11 @@ onUnmounted(() => {
 
 .mode-btn .btn-icon {
   font-size: 13px;
+}
+
+.mode-btn .btn-icon.codicon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .mode-btn .btn-label {

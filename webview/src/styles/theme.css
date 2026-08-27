@@ -4,40 +4,24 @@
  * @description 定义 Markly 编辑器的主题 CSS 变量
  */
 
-/* ========== 基础变量（亮色主题） ========== */
+/* ========== 基础变量：全部跟随 VS Code 主题（亮/暗/高对比自动适配） ==========
+ * 回退值按亮色主题取；正常运行于 VS Code webview 时 --vscode-* 一定存在。
+ */
 :root {
-  --markly-background: #ffffff;
-  --markly-surface: #f5f5f5;
-  --markly-text: #333333;
-  --markly-textSecondary: #666666;
-  --markly-primary: #0066cc;
-  --markly-selection: #b3d7ff;
-  --markly-heading: #1a1a1a;
-  --markly-link: #0066cc;
-  --markly-linkHover: #0052a3;
-  --markly-code: #d32f2f;
-  --markly-codeBackground: #f5f5f5;
-  --markly-border-color: #e0e0e0;
-  --markly-error: #d32f2f;
-  --markly-surfaceHover: rgba(0, 0, 0, 0.04);
-}
-
-/* ========== 暗色主题 ========== */
-[data-theme="dark"] {
-  --markly-background: #1e1e1e;
-  --markly-surface: #252526;
-  --markly-text: #d4d4d4;
-  --markly-textSecondary: #a0a0a0;
-  --markly-primary: #007acc;
-  --markly-selection: #264f78;
-  --markly-heading: #e0e0e0;
-  --markly-link: #4daafc;
-  --markly-linkHover: #6cb8ff;
-  --markly-code: #f44747;
-  --markly-codeBackground: #2d2d2d;
-  --markly-border-color: #3e3e42;
-  --markly-error: #f44747;
-  --markly-surfaceHover: rgba(255, 255, 255, 0.04);
+  --markly-background: var(--vscode-editor-background, #ffffff);
+  --markly-surface: var(--vscode-editorWidget-background, #f5f5f5);
+  --markly-text: var(--vscode-editor-foreground, #333333);
+  --markly-textSecondary: var(--vscode-descriptionForeground, #666666);
+  --markly-primary: var(--vscode-focusBorder, #0066cc);
+  --markly-selection: var(--vscode-editor-selectionBackground, #b3d7ff);
+  --markly-heading: var(--vscode-editor-foreground, #1a1a1a);
+  --markly-link: var(--vscode-textLink-foreground, #0066cc);
+  --markly-linkHover: var(--vscode-textLink-activeForeground, #0052a3);
+  --markly-code: var(--vscode-textPreformat-foreground, #d32f2f);
+  --markly-codeBackground: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.12));
+  --markly-border-color: var(--vscode-editorWidget-border, #e0e0e0);
+  --markly-error: var(--vscode-errorForeground, #d32f2f);
+  --markly-surfaceHover: var(--vscode-toolbar-hoverBackground, rgba(0, 0, 0, 0.04));
 }
 
 /* ========== 编辑器基础样式 ========== */

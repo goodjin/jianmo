@@ -10,7 +10,7 @@
         @mousedown.prevent
         @click="$emit('toggle-collapse')"
       >
-        <span class="btn-icon">▾</span>
+        <span class="btn-icon codicon codicon-chevron-down" aria-hidden="true"></span>
         <span class="btn-label">展开</span>
       </button>
     </div>
@@ -33,7 +33,7 @@
         >
           <span class="btn-icon">H</span>
           <span class="btn-label">标题</span>
-          <span class="btn-caret" aria-hidden="true">▾</span>
+          <span class="btn-caret codicon codicon-chevron-down" aria-hidden="true"></span>
         </button>
         <div
           v-if="headingMenuOpen"
@@ -74,7 +74,8 @@
           @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -92,7 +93,8 @@
           @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -110,7 +112,8 @@
           @mousedown.prevent
           @click="$emit('insert', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -127,7 +130,7 @@
           @mousedown.prevent
           @click="$emit('insert', 'table')"
         >
-          <span class="btn-icon">⊞</span>
+          <span class="btn-icon codicon codicon-table" aria-hidden="true"></span>
           <span class="btn-label">表格</span>
         </button>
         <button
@@ -139,7 +142,7 @@
           @mousedown.prevent
           @click="toggleTableMenu()"
         >
-          <span class="btn-icon">▾</span>
+          <span class="btn-icon codicon codicon-chevron-down" aria-hidden="true"></span>
           <span class="btn-label">更多</span>
         </button>
 
@@ -236,7 +239,7 @@
           @mousedown.prevent
           @click="$emit('undo')"
         >
-          <span class="btn-icon">&#x21A9;</span>
+          <span class="btn-icon codicon codicon-discard" aria-hidden="true"></span>
           <span class="btn-label">撤销</span>
         </button>
         <button
@@ -247,7 +250,7 @@
           @mousedown.prevent
           @click="$emit('redo')"
         >
-          <span class="btn-icon">&#x21AA;</span>
+          <span class="btn-icon codicon codicon-redo" aria-hidden="true"></span>
           <span class="btn-label">重做</span>
         </button>
       </div>
@@ -265,7 +268,7 @@
           @mousedown.prevent
           @click="$emit('find-replace')"
         >
-          <span class="btn-icon">&#x2315;</span>
+          <span class="btn-icon codicon codicon-search" aria-hidden="true"></span>
           <span class="btn-label">查找</span>
         </button>
       </div>
@@ -280,7 +283,7 @@
           @mousedown.prevent
           @click="emit('zoom-out')"
         >
-          <span class="btn-icon">🔍−</span>
+          <span class="btn-icon codicon codicon-zoom-out" aria-hidden="true"></span>
           <span class="btn-label">缩小</span>
         </button>
         <button
@@ -302,7 +305,7 @@
           @mousedown.prevent
           @click="emit('zoom-in')"
         >
-          <span class="btn-icon">🔍＋</span>
+          <span class="btn-icon codicon codicon-zoom-in" aria-hidden="true"></span>
           <span class="btn-label">放大</span>
         </button>
       </div>
@@ -316,7 +319,7 @@
           aria-label="Toggle Outline"
           @click="$emit('toggle-outline')"
         >
-          <span class="btn-icon">&#x2630;</span>
+          <span class="btn-icon codicon codicon-list-tree" aria-hidden="true"></span>
           <span class="btn-label">大纲</span>
         </button>
         <button
@@ -327,7 +330,7 @@
           aria-label="Toggle Line Numbers"
           @click="$emit('toggle-line-numbers')"
         >
-          <span class="btn-icon">#</span>
+          <span class="btn-icon codicon codicon-list-selection" aria-hidden="true"></span>
           <span class="btn-label">行号</span>
         </button>
       </div>
@@ -337,11 +340,11 @@
       <!-- 导出 -->
       <div class="toolbar-group" role="group" aria-label="Export">
         <button class="toolbar-btn export-btn" title="Export PDF" aria-label="Export PDF" @click="$emit('export', 'pdf')">
-          <span class="btn-icon">&#x1F4C4;</span>
+          <span class="btn-icon codicon codicon-file-pdf" aria-hidden="true"></span>
           <span class="btn-label">PDF</span>
         </button>
         <button class="toolbar-btn export-btn" title="Export HTML" aria-label="Export HTML" @click="$emit('export', 'html')">
-          <span class="btn-icon">&#x1F310;</span>
+          <span class="btn-icon codicon codicon-globe" aria-hidden="true"></span>
           <span class="btn-label">HTML</span>
         </button>
       </div>
@@ -355,7 +358,7 @@
         @mousedown.prevent
         @click="$emit('toggle-collapse')"
       >
-        <span class="btn-icon">▴</span>
+        <span class="btn-icon codicon codicon-chevron-up" aria-hidden="true"></span>
         <span class="btn-label">收起</span>
       </button>
     </div>
@@ -403,7 +406,17 @@ const emit = defineEmits<{
   (e: 'toggle-collapse'): void;
 }>();
 
-const headingButtons = [
+interface ToolbarBtnDef {
+  id: string;
+  icon: string;
+  /** codicon 图标名（不含 codicon- 前缀）；缺省则回退渲染 icon 文本 */
+  codicon?: string;
+  shortLabel: string;
+  displayLabel: string;
+  label: string;
+}
+
+const headingButtons: ToolbarBtnDef[] = [
   { id: 'h1', icon: 'H1', shortLabel: 'H1', displayLabel: '标题1', label: 'Heading 1' },
   { id: 'h2', icon: 'H2', shortLabel: 'H2', displayLabel: '标题2', label: 'Heading 2' },
   { id: 'h3', icon: 'H3', shortLabel: 'H3', displayLabel: '标题3', label: 'Heading 3' },
@@ -412,19 +425,20 @@ const headingButtons = [
   { id: 'h6', icon: 'H6', shortLabel: 'H6', displayLabel: '标题6', label: 'Heading 6' },
 ];
 
-const formatButtons = [
-  { id: 'bold', icon: 'B', shortLabel: 'Bold', displayLabel: '加粗', label: 'Bold' },
-  { id: 'italic', icon: 'I', shortLabel: 'Italic', displayLabel: '斜体', label: 'Italic' },
+const formatButtons: ToolbarBtnDef[] = [
+  { id: 'bold', icon: 'B', codicon: 'bold', shortLabel: 'Bold', displayLabel: '加粗', label: 'Bold' },
+  { id: 'italic', icon: 'I', codicon: 'italic', shortLabel: 'Italic', displayLabel: '斜体', label: 'Italic' },
+  // codicon 无删除线图标：保留文本 S，靠 .format-strike 画删除线
   { id: 'strike', icon: 'S', shortLabel: 'Strike', displayLabel: '删除线', label: 'Strikethrough' },
-  { id: 'code', icon: '</>', shortLabel: 'Code', displayLabel: '行内代码', label: 'Inline Code' },
-  { id: 'quote', icon: '"', shortLabel: 'Quote', displayLabel: '引用', label: 'Blockquote' },
-  { id: 'clearFormat', icon: 'T', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
+  { id: 'code', icon: '</>', codicon: 'code', shortLabel: 'Code', displayLabel: '行内代码', label: 'Inline Code' },
+  { id: 'quote', icon: '"', codicon: 'quote', shortLabel: 'Quote', displayLabel: '引用', label: 'Blockquote' },
+  { id: 'clearFormat', icon: 'T', codicon: 'clear-all', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
 ];
 
-const listButtons = [
-  { id: 'bulletList', icon: '\u2022', shortLabel: 'List', displayLabel: '无序', label: 'Bullet List' },
-  { id: 'orderedList', icon: '1.', shortLabel: 'Num', displayLabel: '有序', label: 'Ordered List' },
-  { id: 'taskList', icon: '\u2610', shortLabel: 'Task', displayLabel: '任务', label: 'Task List' },
+const listButtons: ToolbarBtnDef[] = [
+  { id: 'bulletList', icon: '\u2022', codicon: 'list-unordered', shortLabel: 'List', displayLabel: '无序', label: 'Bullet List' },
+  { id: 'orderedList', icon: '1.', codicon: 'list-ordered', shortLabel: 'Num', displayLabel: '有序', label: 'Ordered List' },
+  { id: 'taskList', icon: '\u2610', codicon: 'tasklist', shortLabel: 'Task', displayLabel: '任务', label: 'Task List' },
 ];
 
 function formatBtnClass(id: string): Record<string, boolean> {
@@ -435,12 +449,12 @@ function formatBtnClass(id: string): Record<string, boolean> {
   };
 }
 
-const insertButtons = [
-  { id: 'link', icon: '\uD83D\uDD17', shortLabel: 'Link', displayLabel: '链接', label: 'Link' },
-  { id: 'image', icon: '\uD83D\uDDBC', shortLabel: 'Image', displayLabel: '图片', label: 'Image' },
-  { id: 'codeBlock', icon: '{ }', shortLabel: 'Block', displayLabel: '代码块', label: 'Code Block' },
-  { id: 'hr', icon: '\u2014', shortLabel: 'Line', displayLabel: '分割线', label: 'Horizontal Rule' },
-  { id: 'math', icon: '\u2211', shortLabel: 'Math', displayLabel: '公式', label: 'Math Formula' },
+const insertButtons: ToolbarBtnDef[] = [
+  { id: 'link', icon: '\uD83D\uDD17', codicon: 'link', shortLabel: 'Link', displayLabel: '链接', label: 'Link' },
+  { id: 'image', icon: '\uD83D\uDDBC', codicon: 'file-media', shortLabel: 'Image', displayLabel: '图片', label: 'Image' },
+  { id: 'codeBlock', icon: '{ }', codicon: 'file-code', shortLabel: 'Block', displayLabel: '代码块', label: 'Code Block' },
+  { id: 'hr', icon: '\u2014', codicon: 'horizontal-rule', shortLabel: 'Line', displayLabel: '分割线', label: 'Horizontal Rule' },
+  { id: 'math', icon: '\u2211', codicon: 'symbol-operator', shortLabel: 'Math', displayLabel: '公式', label: 'Math Formula' },
 ];
 
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
@@ -763,6 +777,15 @@ onUnmounted(() => {
 .btn-icon {
   font-size: 13px;
   line-height: 1.2;
+}
+
+.btn-icon.codicon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.btn-caret.codicon {
+  font-size: 10px;
 }
 
 .btn-label {

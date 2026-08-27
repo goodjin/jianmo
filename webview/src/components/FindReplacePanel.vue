@@ -7,7 +7,9 @@
   >
     <div class="panel-header">
       <span class="panel-title">查找和替换</span>
-      <button class="close-btn" type="button" aria-label="关闭查找和替换" @click="close">×</button>
+      <button class="close-btn" type="button" aria-label="关闭查找和替换" @click="close">
+        <span class="codicon codicon-close" aria-hidden="true"></span>
+      </button>
     </div>
 
     <div class="panel-body">
@@ -30,10 +32,10 @@
 
         <div class="icon-actions" role="group" aria-label="查找操作">
           <button class="icon-btn" type="button" title="查找上一个" aria-label="查找上一个" @click="emitFindPrev">
-            ↑
+            <span class="codicon codicon-arrow-up" aria-hidden="true"></span>
           </button>
           <button class="icon-btn" type="button" title="查找下一个" aria-label="查找下一个" @click="emitFindNext">
-            ↓
+            <span class="codicon codicon-arrow-down" aria-hidden="true"></span>
           </button>
           <button
             class="icon-btn"
@@ -42,7 +44,7 @@
             aria-label="在工作区中搜索"
             @click="emitWorkspaceSearch"
           >
-            🔎
+            <span class="codicon codicon-search-fuzzy" aria-hidden="true"></span>
           </button>
         </div>
       </div>
@@ -59,9 +61,11 @@
         </div>
 
         <div class="icon-actions" role="group" aria-label="替换操作">
-          <button class="icon-btn" type="button" title="替换" aria-label="替换" @click="emitReplace">⤶</button>
+          <button class="icon-btn" type="button" title="替换" aria-label="替换" @click="emitReplace">
+            <span class="codicon codicon-replace" aria-hidden="true"></span>
+          </button>
           <button class="icon-btn primary" type="button" title="全部替换" aria-label="全部替换" @click="emitReplaceAll">
-            ⤶⤶
+            <span class="codicon codicon-replace-all" aria-hidden="true"></span>
           </button>
         </div>
       </div>
@@ -75,7 +79,7 @@
           aria-label="区分大小写"
           @click="caseSensitive = !caseSensitive"
         >
-          Aa
+          <span class="codicon codicon-case-sensitive" aria-hidden="true"></span>
         </button>
         <button
           class="toggle-btn"
@@ -85,7 +89,7 @@
           aria-label="全字匹配"
           @click="wholeWord = !wholeWord"
         >
-          W
+          <span class="codicon codicon-whole-word" aria-hidden="true"></span>
         </button>
 
         <div class="toggle-divider" aria-hidden="true"></div>
@@ -118,7 +122,7 @@
           aria-label="正则表达式"
           @click="patternMode = 'regex'"
         >
-          .*
+          <span class="codicon codicon-regex" aria-hidden="true"></span>
         </button>
       </div>
 
@@ -395,6 +399,16 @@ function emitWorkspaceSearch() {
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn .codicon,
+.toggle-btn .codicon,
+.close-btn .codicon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .icon-btn:hover {
@@ -420,6 +434,9 @@ function emitWorkspaceSearch() {
 }
 
 .toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 24px;
   min-width: 28px;
   padding: 0 6px;
