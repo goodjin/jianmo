@@ -236,6 +236,8 @@ export type ExtensionMessage = ProtocolVersionEnvelope & (
         documentFolderWebviewUri?: string;
         /** 宿主根据设置 + 记忆的默认编辑模式（Webview INIT 后可立即切换） */
         initialEditorMode?: EditorMode;
+        /** 工具栏是否收起（globalState 记忆，跨文档/会话） */
+        toolbarCollapsed?: boolean;
       };
     }
   /** 外部内容更新（如 TextDocument 变化），Webview 应 best-effort 保留光标/滚动位置。 */
@@ -363,6 +365,8 @@ export type ExtensionMessage = ProtocolVersionEnvelope & (
     }
   /** Webview → 宿主：同步当前正文模式（用于命令/telemetry 与各文档记忆 reopen 模式）。 */
   | { type: 'TRACK_EDITOR_MODE'; payload: { mode: EditorMode } }
+  /** Webview → 宿主：工具栏收起/展开状态（globalState 持久化，跨文档/会话记忆）。 */
+  | { type: 'SET_TOOLBAR_COLLAPSED'; payload: { collapsed: boolean } }
   /** 请求宿主以内嵌同源管线渲染当前文档为预览 HTML（与侧栏预览一致）。 */
   | { type: 'REQUEST_PREVIEW_HTML'; payload?: Record<string, never> }
 );

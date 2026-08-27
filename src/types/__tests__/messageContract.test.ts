@@ -60,6 +60,7 @@ describe('messageGuards — Extension → Webview', () => {
           },
         },
         initialEditorMode: 'preview',
+        toolbarCollapsed: true,
       },
     },
     { type: 'CONTENT_UPDATE', payload: { content: 'a', version: 2 } },
@@ -310,6 +311,8 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'EXPORT', payload: { format: 'preview' } },
     { type: 'TRACK_EDITOR_MODE', payload: { mode: 'rich' } },
     { type: 'TRACK_EDITOR_MODE', payload: { mode: 'preview' } },
+    { type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: true } },
+    { type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: false } },
     { type: 'REQUEST_PREVIEW_HTML' },
     { type: 'REQUEST_PREVIEW_HTML', payload: {} },
     { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
@@ -357,6 +360,12 @@ describe('messageGuards — Webview → Extension', () => {
 
   it('TRACK_EDITOR_MODE accepts legacy ir payload (ingestion only)', () => {
     expect(isWebViewMessage({ type: 'TRACK_EDITOR_MODE', payload: { mode: 'ir' } } as unknown)).toBe(true);
+  });
+
+  it('SET_TOOLBAR_COLLAPSED rejects non-boolean or extra payload keys', () => {
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: 'yes' } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: true, x: 1 } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_COLLAPSED', payload: {} })).toBe(false);
   });
 
   it('strict: rejects unknown top-level fields (M284)', () => {

@@ -52,6 +52,7 @@
     <Toolbar
       v-if="hostInitReceived && currentMode !== 'preview'"
       :mode="currentMode"
+      :collapsed="toolbarCollapsed"
       :show-outline="showOutline"
       :show-line-numbers="toolbarShowLineNumbers"
       :find-panel-open="findReplaceVisible"
@@ -73,6 +74,7 @@
       @export="handleExport"
       @rich-table-op="handleRichTableOp"
       @rich-table-help="richTableHelpOpen = true"
+      @toggle-collapse="toggleToolbarCollapsed"
     />
     <!-- 字数统计 -->
     <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
@@ -812,6 +814,16 @@ const showUnreferencedAssetsBanner = computed(
 const editorReady = ref(false);
 /** 已收到宿主 INIT（内容与配置快照）；用于尽早展示工具栏，独立于 CM6/Milkdown 是否已附着 */
 const hostInitReceived = ref(false);
+/** 工具栏收起状态（INIT 恢复；变更时经 SET_TOOLBAR_COLLAPSED 持久化到宿主 globalState） */
+const toolbarCollapsed = ref(false);
+
+function toggleToolbarCollapsed(): void {
+  toolbarCollapsed.value = !toolbarCollapsed.value;
+  sendMessage({
+    type: 'SET_TOOLBAR_COLLAPSED',
+    payload: { collapsed: toolbarCollapsed.value },
+  });
+}
 /** 文档所在目录的 webview URI（尾斜杠），Rich 内解析 ![](./assets/…) */
 const markdownDocumentBaseUrl = ref<string | undefined>(undefined);
 /** INIT 后待应用的首屏模式（须在 editorReady 之后 switch，避免容器未就绪） */
@@ -2186,6 +2198,10 @@ function handleMessage(event: MessageEvent) {
         const im = (message.payload as { initialEditorMode?: EditorMode }).initialEditorMode;
         pendingInitialEditorMode.value =
           im === 'rich' || im === 'source' || im === 'preview' ? im : null;
+      }
+      {
+        const tc = (message.payload as { toolbarCollapsed?: boolean }).toolbarCollapsed;
+        if (typeof tc === 'boolean') toolbarCollapsed.value = tc;
       }
       recalcRichTableColumnResizeNow();
       assetImageRelativePaths.value = [];

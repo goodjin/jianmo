@@ -1,5 +1,21 @@
 <template>
-  <div class="toolbar" role="toolbar" aria-label="Markly 格式与插入工具栏">
+  <div class="toolbar" :class="{ 'toolbar--collapsed': collapsed }" role="toolbar" aria-label="Markly 格式与插入工具栏">
+    <div v-if="collapsed" class="toolbar-collapsed-bar">
+      <button
+        class="toolbar-btn toolbar-collapse-btn"
+        type="button"
+        title="展开工具栏"
+        aria-label="展开工具栏"
+        aria-expanded="false"
+        @mousedown.prevent
+        @click="$emit('toggle-collapse')"
+      >
+        <span class="btn-icon">▾</span>
+        <span class="btn-label">展开</span>
+      </button>
+    </div>
+
+    <template v-else>
     <div class="toolbar-row toolbar-row-primary">
       <!-- 标题 -->
       <div class="toolbar-group" role="group" aria-label="Headings">
@@ -302,16 +318,32 @@
           <span class="btn-label">HTML</span>
         </button>
       </div>
+
+      <button
+        class="toolbar-btn toolbar-collapse-btn toolbar-collapse-btn--end"
+        type="button"
+        title="收起工具栏"
+        aria-label="收起工具栏"
+        aria-expanded="true"
+        @mousedown.prevent
+        @click="$emit('toggle-collapse')"
+      >
+        <span class="btn-icon">▴</span>
+        <span class="btn-label">收起</span>
+      </button>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { EditorMode } from '../../../src/types';
 
 const props = defineProps<{
   mode: EditorMode;
+  /** 工具栏是否收起 */
+  collapsed?: boolean;
   showOutline?: boolean;
   showLineNumbers?: boolean;
   /** 查找面板是否打开（工具栏高亮） */
@@ -341,6 +373,7 @@ const emit = defineEmits<{
   (e: 'export', format: 'pdf' | 'html'): void;
   (e: 'rich-table-op', op: string): void;
   (e: 'rich-table-help'): void;
+  (e: 'toggle-collapse'): void;
 }>();
 
 const headingButtons = [
@@ -409,6 +442,13 @@ function closeTableMenu(): void {
   tableMenuOpen.value = false;
 }
 
+watch(
+  () => props.collapsed,
+  (isCollapsed) => {
+    if (isCollapsed) closeTableMenu();
+  }
+);
+
 function emitTableOpN(op: string, count: number): void {
   const n = Math.max(1, Math.min(99, Number(count) || 1));
   for (let i = 0; i < n; i++) emit('rich-table-op', op);
@@ -457,6 +497,22 @@ onUnmounted(() => {
   z-index: 25000;
   overflow: visible;
   min-height: auto;
+}
+
+.toolbar--collapsed {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  gap: 0;
+}
+
+.toolbar-collapsed-bar {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.toolbar-collapse-btn--end {
+  margin-left: auto;
 }
 
 .toolbar-row {

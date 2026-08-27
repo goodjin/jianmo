@@ -65,6 +65,8 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   ) {}
 
   private static readonly LAST_MODE_BY_URI_STATE_KEY = 'markly.editorModeByDocumentUri';
+  /** 工具栏收起偏好（globalState：跨文档/跨会话） */
+  private static readonly TOOLBAR_COLLAPSED_STATE_KEY = 'markly.toolbarCollapsed';
 
   private readLastModesMap(): Record<string, string> {
     return (
@@ -594,6 +596,15 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
       }
 
+      case 'SET_TOOLBAR_COLLAPSED': {
+        // 跨文档/会话记忆：工具栏收起是用户的全局使用偏好，故用 globalState
+        void this.context.globalState.update(
+          MarkdownEditorProvider.TOOLBAR_COLLAPSED_STATE_KEY,
+          message.payload.collapsed === true
+        );
+        break;
+      }
+
       case 'REQUEST_PREVIEW_HTML': {
         const panel = this.webviews.get(uri);
         const docNow = this.documentStore.getDocument(uri);
@@ -935,6 +946,10 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
     if (!doc) return null;
     const documentFolderWebviewUri = this.computeDocumentFolderWebviewUri(uri);
     const initialEditorMode = this.resolveInitialEditorMode(uri);
+    const toolbarCollapsed = this.context.globalState.get<boolean>(
+      MarkdownEditorProvider.TOOLBAR_COLLAPSED_STATE_KEY,
+      false
+    );
     return {
       type: 'INIT',
       payload: {
@@ -944,6 +959,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         hostDiagnostics: this.buildHostDiagnostics(),
         ...(documentFolderWebviewUri ? { documentFolderWebviewUri } : {}),
         initialEditorMode,
+        toolbarCollapsed,
       },
     };
   }
