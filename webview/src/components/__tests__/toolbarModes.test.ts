@@ -322,7 +322,7 @@ describe('Toolbar buttons emit correct events', () => {
     expect(wrapper.emitted('insert')![0]).toEqual(['codeBlock']);
   });
 
-  it('H1 button emits format event with id "h1"', async () => {
+  it('heading dropdown is closed by default and opens on trigger click', async () => {
     const wrapper = mount(Toolbar as any, {
       props: {
         mode: 'rich',
@@ -333,13 +333,32 @@ describe('Toolbar buttons emit correct events', () => {
         findPanelOpen: false,
       },
     });
-    const btn = wrapper.find('.toolbar-btn[title="Heading 1"]');
+    expect(wrapper.find('.heading-menu').exists()).toBe(false);
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    expect(wrapper.find('.heading-menu').exists()).toBe(true);
+    expect(wrapper.findAll('.heading-menu-btn').length).toBe(6);
+  });
+
+  it('H1 menu item emits format event with id "h1" and closes menu', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    const btn = wrapper.find('.heading-menu-btn[title="Heading 1"]');
     expect(btn.exists()).toBe(true);
     await btn.trigger('click');
     expect(wrapper.emitted('format')![0]).toEqual(['h1']);
+    expect(wrapper.find('.heading-menu').exists()).toBe(false);
   });
 
-  it('H2 button emits format event with id "h2"', async () => {
+  it('H2 menu item emits format event with id "h2"', async () => {
     const wrapper = mount(Toolbar as any, {
       props: {
         mode: 'rich',
@@ -350,7 +369,8 @@ describe('Toolbar buttons emit correct events', () => {
         findPanelOpen: false,
       },
     });
-    const btn = wrapper.find('.toolbar-btn[title="Heading 2"]');
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    const btn = wrapper.find('.heading-menu-btn[title="Heading 2"]');
     expect(btn.exists()).toBe(true);
     await btn.trigger('click');
     expect(wrapper.emitted('format')![0]).toEqual(['h2']);

@@ -347,10 +347,20 @@ async function waitMarklyContent(driver, predicate, timeoutMs = 60000) {
 }
 
 async function clickToolbarButton(driver, title) {
-  const sel = `.toolbar .toolbar-btn[title="${title}"]`;
+  // 标题 H1~H6 收进「标题」下拉：先开菜单再点菜单项
+  const isHeading = /^Heading [1-6]$/.test(title);
+  const sel = isHeading
+    ? `.toolbar .heading-menu-btn[title="${title}"]`
+    : `.toolbar .toolbar-btn[title="${title}"]`;
   // 避免 stale element：每次现查现点，失败则重试一次
   for (let i = 0; i < 2; i++) {
     try {
+      if (isHeading) {
+        // eslint-disable-next-line no-await-in-loop
+        const trigger = await waitFor(driver, '.toolbar .toolbar-btn[title="标题"]', 60000, 'heading dropdown trigger');
+        // eslint-disable-next-line no-await-in-loop
+        await trigger.click();
+      }
       // eslint-disable-next-line no-await-in-loop
       const btn = await waitFor(driver, sel, 60000, `toolbar button: ${title}`);
       // eslint-disable-next-line no-await-in-loop

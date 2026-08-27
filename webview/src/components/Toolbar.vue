@@ -17,20 +17,47 @@
 
     <template v-else>
     <div class="toolbar-row toolbar-row-primary">
-      <!-- 标题 -->
-      <div class="toolbar-group" role="group" aria-label="Headings">
+      <!-- 标题：下拉选择 H1~H6 -->
+      <div class="toolbar-group heading-dropdown" role="group" aria-label="Headings">
         <button
-          v-for="btn in headingButtons"
-          :key="btn.id"
+          ref="headingMenuBtnRef"
           class="toolbar-btn heading-btn"
-          :title="btn.label"
-          :aria-label="btn.label"
+          :class="{ active: headingMenuOpen }"
+          type="button"
+          title="标题"
+          aria-label="标题"
+          aria-haspopup="menu"
+          :aria-expanded="headingMenuOpen"
           @mousedown.prevent
-          @click="$emit('format', btn.id)"
+          @click="toggleHeadingMenu()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
-          <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
+          <span class="btn-icon">H</span>
+          <span class="btn-label">标题</span>
+          <span class="btn-caret" aria-hidden="true">▾</span>
         </button>
+        <div
+          v-if="headingMenuOpen"
+          ref="headingMenuRef"
+          class="heading-menu"
+          role="menu"
+          aria-label="标题级别"
+        >
+          <button
+            v-for="btn in headingButtons"
+            :key="btn.id"
+            class="heading-menu-btn"
+            :class="'heading-menu-' + btn.id"
+            role="menuitem"
+            type="button"
+            :title="btn.label"
+            :aria-label="btn.label"
+            @mousedown.prevent
+            @click="onHeadingPick(btn.id)"
+          >
+            <span class="heading-menu-tag">{{ btn.icon }}</span>
+            <span class="heading-menu-label">{{ btn.displayLabel }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="toolbar-divider" aria-hidden="true"></div>
@@ -422,6 +449,22 @@ const tableHelpTitle = 'Rich 表格快捷键说明';
 const tableMenuOpen = ref(false);
 const tableMenuBtnRef = ref<HTMLButtonElement | null>(null);
 const tableMenuRef = ref<HTMLDivElement | null>(null);
+const headingMenuOpen = ref(false);
+const headingMenuBtnRef = ref<HTMLButtonElement | null>(null);
+const headingMenuRef = ref<HTMLDivElement | null>(null);
+
+function toggleHeadingMenu(): void {
+  headingMenuOpen.value = !headingMenuOpen.value;
+}
+
+function closeHeadingMenu(): void {
+  headingMenuOpen.value = false;
+}
+
+function onHeadingPick(id: string): void {
+  emit('format', id);
+  closeHeadingMenu();
+}
 const rowCountText = ref('1');
 const colCountText = ref('1');
 
@@ -445,7 +488,10 @@ function closeTableMenu(): void {
 watch(
   () => props.collapsed,
   (isCollapsed) => {
-    if (isCollapsed) closeTableMenu();
+    if (isCollapsed) {
+      closeTableMenu();
+      closeHeadingMenu();
+    }
   }
 );
 
@@ -455,17 +501,20 @@ function emitTableOpN(op: string, count: number): void {
 }
 
 function onWindowPointerDown(e: PointerEvent): void {
-  if (!tableMenuOpen.value) return;
   const t = e.target as Node | null;
   if (!t) return;
-  if (tableMenuRef.value?.contains(t)) return;
-  if (tableMenuBtnRef.value?.contains(t)) return;
-  closeTableMenu();
+  if (tableMenuOpen.value && !tableMenuRef.value?.contains(t) && !tableMenuBtnRef.value?.contains(t)) {
+    closeTableMenu();
+  }
+  if (headingMenuOpen.value && !headingMenuRef.value?.contains(t) && !headingMenuBtnRef.value?.contains(t)) {
+    closeHeadingMenu();
+  }
 }
 
 function onWindowKeyDown(e: KeyboardEvent): void {
-  if (!tableMenuOpen.value) return;
-  if (e.key === 'Escape') closeTableMenu();
+  if (e.key !== 'Escape') return;
+  if (tableMenuOpen.value) closeTableMenu();
+  if (headingMenuOpen.value) closeHeadingMenu();
 }
 
 const zoomInHint = isMac ? '⌘=' : 'Ctrl+=';
@@ -491,7 +540,7 @@ onUnmounted(() => {
   padding: var(--markly-pad-sm) var(--markly-pad-md);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
-  gap: 8px;
+  gap: 4px;
   /* 必须高于 .editor-main：否则下拉菜单会被后同级编辑区盖住；勿用 overflow-x:hidden 裁切菜单 */
   position: relative;
   z-index: 25000;
@@ -520,7 +569,7 @@ onUnmounted(() => {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   overflow: visible;
   max-width: 100%;
 }
@@ -536,46 +585,102 @@ onUnmounted(() => {
 
 .toolbar-divider {
   width: 1px;
-  height: 40px;
+  height: 18px;
   background: var(--vscode-editorWidget-border);
-  margin: 0 6px;
+  margin: 0 4px;
   flex-shrink: 0;
 }
 
-/* 基础按钮：增大 20% (32 -> 38) */
+/* 紧凑按钮：横排图标 + 小字，高度 28px */
 .toolbar-btn {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  width: 44px;
-  height: 44px;
-  padding: 4px 3px;
+  min-width: 28px;
+  width: auto;
+  height: 28px;
+  padding: 0 7px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--vscode-foreground);
   border-radius: var(--markly-radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   transition: background-color 0.15s;
   flex-shrink: 0;
-  gap: 2px;
+  gap: 5px;
 }
 
 .toolbar-btn-mini {
-  min-width: 44px;
-  width: 44px;
+  min-width: 24px;
+  padding: 0 5px;
+}
+
+.btn-caret {
+  font-size: 9px;
+  opacity: 0.75;
+  line-height: 1;
 }
 
 .table-dropdown {
   position: relative;
 }
 
+.heading-dropdown {
+  position: relative;
+}
+
+.heading-menu {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 26001;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-editorWidget-background, #252526);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.heading-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.heading-menu-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 90, 90, 0.5));
+}
+
+.heading-menu-tag {
+  font-weight: 700;
+  font-size: 11px;
+  opacity: 0.85;
+  min-width: 20px;
+}
+
+.heading-menu-h1 .heading-menu-label { font-size: 15px; font-weight: 700; }
+.heading-menu-h2 .heading-menu-label { font-size: 14px; font-weight: 700; }
+.heading-menu-h3 .heading-menu-label { font-size: 13px; font-weight: 600; }
+
 .table-menu {
   position: absolute;
-  top: 54px;
+  top: 32px;
   left: 0;
   z-index: 26001;
   min-width: 320px;
@@ -665,9 +770,6 @@ onUnmounted(() => {
   font-weight: 600;
   opacity: 0.9;
   line-height: 1;
-  max-width: 44px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -738,7 +840,6 @@ onUnmounted(() => {
 
 /* Export buttons */
 .export-btn {
-  min-width: 54px;
-  width: 54px;
+  min-width: 44px;
 }
 </style>

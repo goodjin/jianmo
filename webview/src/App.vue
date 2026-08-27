@@ -76,12 +76,6 @@
       @rich-table-help="richTableHelpOpen = true"
       @toggle-collapse="toggleToolbarCollapsed"
     />
-    <!-- 字数统计 -->
-    <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
-      <span>字数: {{ wordCount }}</span>
-      <span>字符: {{ charCount }}</span>
-      <span>行数: {{ lineCount }}</span>
-    </div>
 
     <!-- 查找替换面板 -->
     <div
@@ -621,6 +615,13 @@
           @clear="clearAiApplyHistory"
         />
       </div>
+    </div>
+
+    <!-- 底部状态栏：字数统计 -->
+    <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
+      <span>字数: {{ wordCount }}</span>
+      <span>字符: {{ charCount }}</span>
+      <span>行数: {{ lineCount }}</span>
     </div>
   </div>
 </template>
@@ -4823,7 +4824,7 @@ onUnmounted(() => {
 .markly-mode-rail {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 3px 10px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
 }
@@ -4847,9 +4848,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   width: auto;
-  height: 28px;
-  padding: 0 12px;
-  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  gap: 5px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -5306,12 +5307,15 @@ onUnmounted(() => {
 
 .word-count {
   display: flex;
-  gap: 16px;
-  padding: 6px 16px;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 2px 12px;
   background: var(--vscode-editorWidget-background);
   border-top: 1px solid var(--vscode-editorWidget-border);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 16px;
   color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
 }
 
 .word-count span {
