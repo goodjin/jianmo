@@ -18,7 +18,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('rich')"
         >
-          <span class="btn-icon">T</span>
+          <span class="btn-icon codicon codicon-edit" aria-hidden="true"></span>
           <span class="btn-label">Rich</span>
         </button>
         <button
@@ -31,7 +31,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('source')"
         >
-          <span class="btn-icon">{ }</span>
+          <span class="btn-icon codicon codicon-code" aria-hidden="true"></span>
           <span class="btn-label">Source</span>
         </button>
         <button
@@ -44,7 +44,7 @@
           @keydown="onModeRailKeydown"
           @click="switchModeFromRail('preview')"
         >
-          <span class="btn-icon">◉</span>
+          <span class="btn-icon codicon codicon-open-preview" aria-hidden="true"></span>
           <span class="btn-label">预览</span>
         </button>
       </div>
@@ -52,6 +52,7 @@
     <Toolbar
       v-if="hostInitReceived && currentMode !== 'preview'"
       :mode="currentMode"
+      :collapsed="toolbarCollapsed"
       :show-outline="showOutline"
       :show-line-numbers="toolbarShowLineNumbers"
       :find-panel-open="findReplaceVisible"
@@ -73,13 +74,8 @@
       @export="handleExport"
       @rich-table-op="handleRichTableOp"
       @rich-table-help="richTableHelpOpen = true"
+      @toggle-collapse="toggleToolbarCollapsed"
     />
-    <!-- 字数统计 -->
-    <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
-      <span>字数: {{ wordCount }}</span>
-      <span>字符: {{ charCount }}</span>
-      <span>行数: {{ lineCount }}</span>
-    </div>
 
     <!-- 查找替换面板 -->
     <div
@@ -111,24 +107,6 @@
         <button type="button" class="markly-table-help-close" @click="richTableHelpOpen = false">关闭</button>
       </div>
     </div>
-
-    <FindReplacePanel
-      v-if="currentMode !== 'preview'"
-      :visible="findReplaceVisible"
-      :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
-      :match-count-truncated="findMatchesTruncated"
-      :current-match-index="findActiveIdx"
-      :matches-preview="findMatchesPreview"
-      :pattern-warning="findPatternWarning"
-      @close="onFindPanelClose"
-      @query-change="onFindQueryChange"
-      @find-next="handleFindNext"
-      @find-prev="handleFindPrev"
-      @jump-to-match="handleFindJumpToMatch"
-      @workspace-search="handleWorkspaceSearch"
-      @replace="handleFindReplaceOnce"
-      @replace-all="handleReplaceAllFromPanel"
-    />
 
     <!-- M72：润色预览确认框 -->
     <div
@@ -497,6 +475,24 @@
     />
 
     <div class="editor-main">
+      <!-- 查找替换面板：锚定编辑区右上角，不随工具栏高度变化漂移 -->
+      <FindReplacePanel
+        v-if="currentMode !== 'preview'"
+        :visible="findReplaceVisible"
+        :match-count="findMatchesTruncated ? findTotalCount : findMatches.length"
+        :match-count-truncated="findMatchesTruncated"
+        :current-match-index="findActiveIdx"
+        :matches-preview="findMatchesPreview"
+        :pattern-warning="findPatternWarning"
+        @close="onFindPanelClose"
+        @query-change="onFindQueryChange"
+        @find-next="handleFindNext"
+        @find-prev="handleFindPrev"
+        @jump-to-match="handleFindJumpToMatch"
+        @workspace-search="handleWorkspaceSearch"
+        @replace="handleFindReplaceOnce"
+        @replace-all="handleReplaceAllFromPanel"
+      />
       <div
         class="editor-container"
         :style="editorContainerStyle"
@@ -619,6 +615,13 @@
           @clear="clearAiApplyHistory"
         />
       </div>
+    </div>
+
+    <!-- 底部状态栏：字数统计 -->
+    <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
+      <span>字数: {{ wordCount }}</span>
+      <span>字符: {{ charCount }}</span>
+      <span>行数: {{ lineCount }}</span>
     </div>
   </div>
 </template>
@@ -812,6 +815,16 @@ const showUnreferencedAssetsBanner = computed(
 const editorReady = ref(false);
 /** 已收到宿主 INIT（内容与配置快照）；用于尽早展示工具栏，独立于 CM6/Milkdown 是否已附着 */
 const hostInitReceived = ref(false);
+/** 工具栏收起状态（INIT 恢复；变更时经 SET_TOOLBAR_COLLAPSED 持久化到宿主 globalState） */
+const toolbarCollapsed = ref(false);
+
+function toggleToolbarCollapsed(): void {
+  toolbarCollapsed.value = !toolbarCollapsed.value;
+  sendMessage({
+    type: 'SET_TOOLBAR_COLLAPSED',
+    payload: { collapsed: toolbarCollapsed.value },
+  });
+}
 /** 文档所在目录的 webview URI（尾斜杠），Rich 内解析 ![](./assets/…) */
 const markdownDocumentBaseUrl = ref<string | undefined>(undefined);
 /** INIT 后待应用的首屏模式（须在 editorReady 之后 switch，避免容器未就绪） */
@@ -2186,6 +2199,10 @@ function handleMessage(event: MessageEvent) {
         const im = (message.payload as { initialEditorMode?: EditorMode }).initialEditorMode;
         pendingInitialEditorMode.value =
           im === 'rich' || im === 'source' || im === 'preview' ? im : null;
+      }
+      {
+        const tc = (message.payload as { toolbarCollapsed?: boolean }).toolbarCollapsed;
+        if (typeof tc === 'boolean') toolbarCollapsed.value = tc;
       }
       recalcRichTableColumnResizeNow();
       assetImageRelativePaths.value = [];
@@ -4807,7 +4824,7 @@ onUnmounted(() => {
 .markly-mode-rail {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 3px 10px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
 }
@@ -4831,9 +4848,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   width: auto;
-  height: 28px;
-  padding: 0 12px;
-  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  gap: 5px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -4867,6 +4884,11 @@ onUnmounted(() => {
 
 .mode-btn .btn-icon {
   font-size: 13px;
+}
+
+.mode-btn .btn-icon.codicon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .mode-btn .btn-label {
@@ -5290,12 +5312,15 @@ onUnmounted(() => {
 
 .word-count {
   display: flex;
-  gap: 16px;
-  padding: 6px 16px;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 2px 12px;
   background: var(--vscode-editorWidget-background);
   border-top: 1px solid var(--vscode-editorWidget-border);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 16px;
   color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
 }
 
 .word-count span {

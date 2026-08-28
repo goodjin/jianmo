@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import 'katex/dist/katex.min.css';
 import 'prosemirror-tables/style/tables.css';
+import '@vscode/codicons/dist/codicon.css';
 import './style.css';
 import './styles/decorators.css';
 import './styles/diagram.css';

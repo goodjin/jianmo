@@ -211,6 +211,7 @@ export function isExtensionMessage(
       if (p.hostDiagnostics !== undefined && !isHostDiagnostics(p.hostDiagnostics)) return false;
       if (p.documentFolderWebviewUri !== undefined && !isString(p.documentFolderWebviewUri)) return false;
       if (p.initialEditorMode !== undefined && !isEditorMode(p.initialEditorMode)) return false;
+      if (p.toolbarCollapsed !== undefined && typeof p.toolbarCollapsed !== 'boolean') return false;
       return true;
     }
     case 'CONTENT_UPDATE': {
@@ -569,6 +570,10 @@ export function isWebViewMessage(
       const m = (p as { mode?: unknown }).mode;
       // 2.0 起协议不含 `ir`；旧 webview 若仍上报则放行并由宿主规范化为 `source`
       return isRecord(p) && (isEditorMode(m) || m === 'ir');
+    }
+    case 'SET_TOOLBAR_COLLAPSED': {
+      const p = msg.payload;
+      return isRecord(p) && typeof p.collapsed === 'boolean' && Object.keys(p).length === 1;
     }
     case 'REQUEST_PREVIEW_HTML':
       return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);

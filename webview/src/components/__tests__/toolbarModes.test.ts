@@ -6,6 +6,59 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Toolbar from '../Toolbar.vue';
 
+describe('Toolbar collapse', () => {
+  it('shows expand control when collapsed and hides format rows', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        collapsed: true,
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+
+    expect(w.find('.toolbar-row-primary').exists()).toBe(false);
+    expect(w.find('.toolbar-collapse-btn[aria-label="展开工具栏"]').exists()).toBe(true);
+  });
+
+  it('emits toggle-collapse when collapse button clicked', async () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        collapsed: false,
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+
+    await w.find('.toolbar-collapse-btn[aria-label="收起工具栏"]').trigger('click');
+    expect(w.emitted('toggle-collapse')?.length).toBe(1);
+  });
+
+  it('emits toggle-collapse when expand button clicked in collapsed state', async () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        collapsed: true,
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+
+    await w.find('.toolbar-collapse-btn[aria-label="展开工具栏"]').trigger('click');
+    expect(w.emitted('toggle-collapse')?.length).toBe(1);
+  });
+});
+
 describe('Toolbar structure', () => {
   it('does not embed mode switch (modes live on App.vue mode rail)', () => {
     const w = mount(Toolbar as any, {
@@ -269,7 +322,7 @@ describe('Toolbar buttons emit correct events', () => {
     expect(wrapper.emitted('insert')![0]).toEqual(['codeBlock']);
   });
 
-  it('H1 button emits format event with id "h1"', async () => {
+  it('heading dropdown is closed by default and opens on trigger click', async () => {
     const wrapper = mount(Toolbar as any, {
       props: {
         mode: 'rich',
@@ -280,13 +333,32 @@ describe('Toolbar buttons emit correct events', () => {
         findPanelOpen: false,
       },
     });
-    const btn = wrapper.find('.toolbar-btn[title="Heading 1"]');
+    expect(wrapper.find('.heading-menu').exists()).toBe(false);
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    expect(wrapper.find('.heading-menu').exists()).toBe(true);
+    expect(wrapper.findAll('.heading-menu-btn').length).toBe(6);
+  });
+
+  it('H1 menu item emits format event with id "h1" and closes menu', async () => {
+    const wrapper = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    const btn = wrapper.find('.heading-menu-btn[title="Heading 1"]');
     expect(btn.exists()).toBe(true);
     await btn.trigger('click');
     expect(wrapper.emitted('format')![0]).toEqual(['h1']);
+    expect(wrapper.find('.heading-menu').exists()).toBe(false);
   });
 
-  it('H2 button emits format event with id "h2"', async () => {
+  it('H2 menu item emits format event with id "h2"', async () => {
     const wrapper = mount(Toolbar as any, {
       props: {
         mode: 'rich',
@@ -297,7 +369,8 @@ describe('Toolbar buttons emit correct events', () => {
         findPanelOpen: false,
       },
     });
-    const btn = wrapper.find('.toolbar-btn[title="Heading 2"]');
+    await wrapper.find('.toolbar-btn[title="标题"]').trigger('click');
+    const btn = wrapper.find('.heading-menu-btn[title="Heading 2"]');
     expect(btn.exists()).toBe(true);
     await btn.trigger('click');
     expect(wrapper.emitted('format')![0]).toEqual(['h2']);

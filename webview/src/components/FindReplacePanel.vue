@@ -1,4 +1,5 @@
 <template>
+  <Transition name="markly-panel">
   <div
     v-if="visible"
     class="find-replace-panel"
@@ -7,7 +8,9 @@
   >
     <div class="panel-header">
       <span class="panel-title">查找和替换</span>
-      <button class="close-btn" type="button" aria-label="关闭查找和替换" @click="close">×</button>
+      <button class="close-btn" type="button" aria-label="关闭查找和替换" @click="close">
+        <span class="codicon codicon-close" aria-hidden="true"></span>
+      </button>
     </div>
 
     <div class="panel-body">
@@ -30,10 +33,10 @@
 
         <div class="icon-actions" role="group" aria-label="查找操作">
           <button class="icon-btn" type="button" title="查找上一个" aria-label="查找上一个" @click="emitFindPrev">
-            ↑
+            <span class="codicon codicon-arrow-up" aria-hidden="true"></span>
           </button>
           <button class="icon-btn" type="button" title="查找下一个" aria-label="查找下一个" @click="emitFindNext">
-            ↓
+            <span class="codicon codicon-arrow-down" aria-hidden="true"></span>
           </button>
           <button
             class="icon-btn"
@@ -42,7 +45,7 @@
             aria-label="在工作区中搜索"
             @click="emitWorkspaceSearch"
           >
-            🔎
+            <span class="codicon codicon-search-fuzzy" aria-hidden="true"></span>
           </button>
         </div>
       </div>
@@ -59,9 +62,11 @@
         </div>
 
         <div class="icon-actions" role="group" aria-label="替换操作">
-          <button class="icon-btn" type="button" title="替换" aria-label="替换" @click="emitReplace">⤶</button>
+          <button class="icon-btn" type="button" title="替换" aria-label="替换" @click="emitReplace">
+            <span class="codicon codicon-replace" aria-hidden="true"></span>
+          </button>
           <button class="icon-btn primary" type="button" title="全部替换" aria-label="全部替换" @click="emitReplaceAll">
-            ⤶⤶
+            <span class="codicon codicon-replace-all" aria-hidden="true"></span>
           </button>
         </div>
       </div>
@@ -75,7 +80,7 @@
           aria-label="区分大小写"
           @click="caseSensitive = !caseSensitive"
         >
-          Aa
+          <span class="codicon codicon-case-sensitive" aria-hidden="true"></span>
         </button>
         <button
           class="toggle-btn"
@@ -85,7 +90,7 @@
           aria-label="全字匹配"
           @click="wholeWord = !wholeWord"
         >
-          W
+          <span class="codicon codicon-whole-word" aria-hidden="true"></span>
         </button>
 
         <div class="toggle-divider" aria-hidden="true"></div>
@@ -118,7 +123,7 @@
           aria-label="正则表达式"
           @click="patternMode = 'regex'"
         >
-          .*
+          <span class="codicon codicon-regex" aria-hidden="true"></span>
         </button>
       </div>
 
@@ -138,6 +143,7 @@
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -243,9 +249,10 @@ function emitWorkspaceSearch() {
 
 <style scoped>
 .find-replace-panel {
+  /* 锚定在 .editor-main（最近 positioned 祖先）右上角，与 VS Code 原生查找一致 */
   position: absolute;
-  top: 154px;
-  left: 20px;
+  top: 10px;
+  right: 20px;
   width: 360px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
@@ -395,6 +402,16 @@ function emitWorkspaceSearch() {
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn .codicon,
+.toggle-btn .codicon,
+.close-btn .codicon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .icon-btn:hover {
@@ -420,6 +437,9 @@ function emitWorkspaceSearch() {
 }
 
 .toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 24px;
   min-width: 28px;
   padding: 0 6px;
@@ -447,5 +467,24 @@ function emitWorkspaceSearch() {
   height: 16px;
   background: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
   margin: 0 2px;
+}
+
+/* 面板出现/消失过渡 */
+.markly-panel-enter-active,
+.markly-panel-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.markly-panel-enter-from,
+.markly-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markly-panel-enter-active,
+  .markly-panel-leave-active {
+    transition: none;
+  }
 }
 </style>

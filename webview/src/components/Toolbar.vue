@@ -1,20 +1,63 @@
 <template>
-  <div class="toolbar" role="toolbar" aria-label="Markly 格式与插入工具栏">
+  <div class="toolbar" :class="{ 'toolbar--collapsed': collapsed }" role="toolbar" aria-label="Markly 格式与插入工具栏">
+    <div v-if="collapsed" class="toolbar-collapsed-bar">
+      <button
+        class="toolbar-btn toolbar-collapse-btn"
+        type="button"
+        title="展开工具栏"
+        aria-label="展开工具栏"
+        aria-expanded="false"
+        @mousedown.prevent
+        @click="$emit('toggle-collapse')"
+      >
+        <span class="btn-icon codicon codicon-chevron-down" aria-hidden="true"></span>
+        <span class="btn-label">展开</span>
+      </button>
+    </div>
+
+    <template v-else>
     <div class="toolbar-row toolbar-row-primary">
-      <!-- 标题 -->
-      <div class="toolbar-group" role="group" aria-label="Headings">
+      <!-- 标题：下拉选择 H1~H6 -->
+      <div class="toolbar-group heading-dropdown" role="group" aria-label="Headings">
         <button
-          v-for="btn in headingButtons"
-          :key="btn.id"
+          ref="headingMenuBtnRef"
           class="toolbar-btn heading-btn"
-          :title="btn.label"
-          :aria-label="btn.label"
+          :class="{ active: headingMenuOpen }"
+          type="button"
+          title="标题"
+          aria-label="标题"
+          aria-haspopup="menu"
+          :aria-expanded="headingMenuOpen"
           @mousedown.prevent
-          @click="$emit('format', btn.id)"
+          @click="toggleHeadingMenu()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
-          <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
+          <span class="btn-icon">H</span>
+          <span class="btn-label">标题</span>
+          <span class="btn-caret codicon codicon-chevron-down" aria-hidden="true"></span>
         </button>
+        <div
+          v-if="headingMenuOpen"
+          ref="headingMenuRef"
+          class="heading-menu"
+          role="menu"
+          aria-label="标题级别"
+        >
+          <button
+            v-for="btn in headingButtons"
+            :key="btn.id"
+            class="heading-menu-btn"
+            :class="'heading-menu-' + btn.id"
+            role="menuitem"
+            type="button"
+            :title="btn.label"
+            :aria-label="btn.label"
+            @mousedown.prevent
+            @click="onHeadingPick(btn.id)"
+          >
+            <span class="heading-menu-tag">{{ btn.icon }}</span>
+            <span class="heading-menu-label">{{ btn.displayLabel }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="toolbar-divider" aria-hidden="true"></div>
@@ -31,7 +74,8 @@
           @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -49,7 +93,8 @@
           @mousedown.prevent
           @click="$emit('format', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -67,7 +112,8 @@
           @mousedown.prevent
           @click="$emit('insert', btn.id)"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span v-if="btn.codicon" class="btn-icon codicon" :class="'codicon-' + btn.codicon" aria-hidden="true"></span>
+          <span v-else class="btn-icon">{{ btn.icon }}</span>
           <span class="btn-label">{{ btn.displayLabel || btn.shortLabel }}</span>
         </button>
       </div>
@@ -84,7 +130,7 @@
           @mousedown.prevent
           @click="$emit('insert', 'table')"
         >
-          <span class="btn-icon">⊞</span>
+          <span class="btn-icon codicon codicon-table" aria-hidden="true"></span>
           <span class="btn-label">表格</span>
         </button>
         <button
@@ -96,7 +142,7 @@
           @mousedown.prevent
           @click="toggleTableMenu()"
         >
-          <span class="btn-icon">▾</span>
+          <span class="btn-icon codicon codicon-chevron-down" aria-hidden="true"></span>
           <span class="btn-label">更多</span>
         </button>
 
@@ -193,7 +239,7 @@
           @mousedown.prevent
           @click="$emit('undo')"
         >
-          <span class="btn-icon">&#x21A9;</span>
+          <span class="btn-icon codicon codicon-discard" aria-hidden="true"></span>
           <span class="btn-label">撤销</span>
         </button>
         <button
@@ -204,7 +250,7 @@
           @mousedown.prevent
           @click="$emit('redo')"
         >
-          <span class="btn-icon">&#x21AA;</span>
+          <span class="btn-icon codicon codicon-redo" aria-hidden="true"></span>
           <span class="btn-label">重做</span>
         </button>
       </div>
@@ -222,7 +268,7 @@
           @mousedown.prevent
           @click="$emit('find-replace')"
         >
-          <span class="btn-icon">&#x2315;</span>
+          <span class="btn-icon codicon codicon-search" aria-hidden="true"></span>
           <span class="btn-label">查找</span>
         </button>
       </div>
@@ -237,7 +283,7 @@
           @mousedown.prevent
           @click="emit('zoom-out')"
         >
-          <span class="btn-icon">🔍−</span>
+          <span class="btn-icon codicon codicon-zoom-out" aria-hidden="true"></span>
           <span class="btn-label">缩小</span>
         </button>
         <button
@@ -259,7 +305,7 @@
           @mousedown.prevent
           @click="emit('zoom-in')"
         >
-          <span class="btn-icon">🔍＋</span>
+          <span class="btn-icon codicon codicon-zoom-in" aria-hidden="true"></span>
           <span class="btn-label">放大</span>
         </button>
       </div>
@@ -273,7 +319,7 @@
           aria-label="Toggle Outline"
           @click="$emit('toggle-outline')"
         >
-          <span class="btn-icon">&#x2630;</span>
+          <span class="btn-icon codicon codicon-list-tree" aria-hidden="true"></span>
           <span class="btn-label">大纲</span>
         </button>
         <button
@@ -284,7 +330,7 @@
           aria-label="Toggle Line Numbers"
           @click="$emit('toggle-line-numbers')"
         >
-          <span class="btn-icon">#</span>
+          <span class="btn-icon codicon codicon-list-selection" aria-hidden="true"></span>
           <span class="btn-label">行号</span>
         </button>
       </div>
@@ -294,24 +340,40 @@
       <!-- 导出 -->
       <div class="toolbar-group" role="group" aria-label="Export">
         <button class="toolbar-btn export-btn" title="Export PDF" aria-label="Export PDF" @click="$emit('export', 'pdf')">
-          <span class="btn-icon">&#x1F4C4;</span>
+          <span class="btn-icon codicon codicon-file-pdf" aria-hidden="true"></span>
           <span class="btn-label">PDF</span>
         </button>
         <button class="toolbar-btn export-btn" title="Export HTML" aria-label="Export HTML" @click="$emit('export', 'html')">
-          <span class="btn-icon">&#x1F310;</span>
+          <span class="btn-icon codicon codicon-globe" aria-hidden="true"></span>
           <span class="btn-label">HTML</span>
         </button>
       </div>
+
+      <button
+        class="toolbar-btn toolbar-collapse-btn toolbar-collapse-btn--end"
+        type="button"
+        title="收起工具栏"
+        aria-label="收起工具栏"
+        aria-expanded="true"
+        @mousedown.prevent
+        @click="$emit('toggle-collapse')"
+      >
+        <span class="btn-icon codicon codicon-chevron-up" aria-hidden="true"></span>
+        <span class="btn-label">收起</span>
+      </button>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { EditorMode } from '../../../src/types';
 
 const props = defineProps<{
   mode: EditorMode;
+  /** 工具栏是否收起 */
+  collapsed?: boolean;
   showOutline?: boolean;
   showLineNumbers?: boolean;
   /** 查找面板是否打开（工具栏高亮） */
@@ -341,9 +403,20 @@ const emit = defineEmits<{
   (e: 'export', format: 'pdf' | 'html'): void;
   (e: 'rich-table-op', op: string): void;
   (e: 'rich-table-help'): void;
+  (e: 'toggle-collapse'): void;
 }>();
 
-const headingButtons = [
+interface ToolbarBtnDef {
+  id: string;
+  icon: string;
+  /** codicon 图标名（不含 codicon- 前缀）；缺省则回退渲染 icon 文本 */
+  codicon?: string;
+  shortLabel: string;
+  displayLabel: string;
+  label: string;
+}
+
+const headingButtons: ToolbarBtnDef[] = [
   { id: 'h1', icon: 'H1', shortLabel: 'H1', displayLabel: '标题1', label: 'Heading 1' },
   { id: 'h2', icon: 'H2', shortLabel: 'H2', displayLabel: '标题2', label: 'Heading 2' },
   { id: 'h3', icon: 'H3', shortLabel: 'H3', displayLabel: '标题3', label: 'Heading 3' },
@@ -352,19 +425,20 @@ const headingButtons = [
   { id: 'h6', icon: 'H6', shortLabel: 'H6', displayLabel: '标题6', label: 'Heading 6' },
 ];
 
-const formatButtons = [
-  { id: 'bold', icon: 'B', shortLabel: 'Bold', displayLabel: '加粗', label: 'Bold' },
-  { id: 'italic', icon: 'I', shortLabel: 'Italic', displayLabel: '斜体', label: 'Italic' },
+const formatButtons: ToolbarBtnDef[] = [
+  { id: 'bold', icon: 'B', codicon: 'bold', shortLabel: 'Bold', displayLabel: '加粗', label: 'Bold' },
+  { id: 'italic', icon: 'I', codicon: 'italic', shortLabel: 'Italic', displayLabel: '斜体', label: 'Italic' },
+  // codicon 无删除线图标：保留文本 S，靠 .format-strike 画删除线
   { id: 'strike', icon: 'S', shortLabel: 'Strike', displayLabel: '删除线', label: 'Strikethrough' },
-  { id: 'code', icon: '</>', shortLabel: 'Code', displayLabel: '行内代码', label: 'Inline Code' },
-  { id: 'quote', icon: '"', shortLabel: 'Quote', displayLabel: '引用', label: 'Blockquote' },
-  { id: 'clearFormat', icon: 'T', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
+  { id: 'code', icon: '</>', codicon: 'code', shortLabel: 'Code', displayLabel: '行内代码', label: 'Inline Code' },
+  { id: 'quote', icon: '"', codicon: 'quote', shortLabel: 'Quote', displayLabel: '引用', label: 'Blockquote' },
+  { id: 'clearFormat', icon: 'T', codicon: 'clear-all', shortLabel: 'Normal', displayLabel: '清除', label: 'Clear Format' },
 ];
 
-const listButtons = [
-  { id: 'bulletList', icon: '\u2022', shortLabel: 'List', displayLabel: '无序', label: 'Bullet List' },
-  { id: 'orderedList', icon: '1.', shortLabel: 'Num', displayLabel: '有序', label: 'Ordered List' },
-  { id: 'taskList', icon: '\u2610', shortLabel: 'Task', displayLabel: '任务', label: 'Task List' },
+const listButtons: ToolbarBtnDef[] = [
+  { id: 'bulletList', icon: '\u2022', codicon: 'list-unordered', shortLabel: 'List', displayLabel: '无序', label: 'Bullet List' },
+  { id: 'orderedList', icon: '1.', codicon: 'list-ordered', shortLabel: 'Num', displayLabel: '有序', label: 'Ordered List' },
+  { id: 'taskList', icon: '\u2610', codicon: 'tasklist', shortLabel: 'Task', displayLabel: '任务', label: 'Task List' },
 ];
 
 function formatBtnClass(id: string): Record<string, boolean> {
@@ -375,12 +449,12 @@ function formatBtnClass(id: string): Record<string, boolean> {
   };
 }
 
-const insertButtons = [
-  { id: 'link', icon: '\uD83D\uDD17', shortLabel: 'Link', displayLabel: '链接', label: 'Link' },
-  { id: 'image', icon: '\uD83D\uDDBC', shortLabel: 'Image', displayLabel: '图片', label: 'Image' },
-  { id: 'codeBlock', icon: '{ }', shortLabel: 'Block', displayLabel: '代码块', label: 'Code Block' },
-  { id: 'hr', icon: '\u2014', shortLabel: 'Line', displayLabel: '分割线', label: 'Horizontal Rule' },
-  { id: 'math', icon: '\u2211', shortLabel: 'Math', displayLabel: '公式', label: 'Math Formula' },
+const insertButtons: ToolbarBtnDef[] = [
+  { id: 'link', icon: '\uD83D\uDD17', codicon: 'link', shortLabel: 'Link', displayLabel: '链接', label: 'Link' },
+  { id: 'image', icon: '\uD83D\uDDBC', codicon: 'file-media', shortLabel: 'Image', displayLabel: '图片', label: 'Image' },
+  { id: 'codeBlock', icon: '{ }', codicon: 'file-code', shortLabel: 'Block', displayLabel: '代码块', label: 'Code Block' },
+  { id: 'hr', icon: '\u2014', codicon: 'horizontal-rule', shortLabel: 'Line', displayLabel: '分割线', label: 'Horizontal Rule' },
+  { id: 'math', icon: '\u2211', codicon: 'symbol-operator', shortLabel: 'Math', displayLabel: '公式', label: 'Math Formula' },
 ];
 
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
@@ -389,6 +463,22 @@ const tableHelpTitle = 'Rich 表格快捷键说明';
 const tableMenuOpen = ref(false);
 const tableMenuBtnRef = ref<HTMLButtonElement | null>(null);
 const tableMenuRef = ref<HTMLDivElement | null>(null);
+const headingMenuOpen = ref(false);
+const headingMenuBtnRef = ref<HTMLButtonElement | null>(null);
+const headingMenuRef = ref<HTMLDivElement | null>(null);
+
+function toggleHeadingMenu(): void {
+  headingMenuOpen.value = !headingMenuOpen.value;
+}
+
+function closeHeadingMenu(): void {
+  headingMenuOpen.value = false;
+}
+
+function onHeadingPick(id: string): void {
+  emit('format', id);
+  closeHeadingMenu();
+}
 const rowCountText = ref('1');
 const colCountText = ref('1');
 
@@ -409,23 +499,36 @@ function closeTableMenu(): void {
   tableMenuOpen.value = false;
 }
 
+watch(
+  () => props.collapsed,
+  (isCollapsed) => {
+    if (isCollapsed) {
+      closeTableMenu();
+      closeHeadingMenu();
+    }
+  }
+);
+
 function emitTableOpN(op: string, count: number): void {
   const n = Math.max(1, Math.min(99, Number(count) || 1));
   for (let i = 0; i < n; i++) emit('rich-table-op', op);
 }
 
 function onWindowPointerDown(e: PointerEvent): void {
-  if (!tableMenuOpen.value) return;
   const t = e.target as Node | null;
   if (!t) return;
-  if (tableMenuRef.value?.contains(t)) return;
-  if (tableMenuBtnRef.value?.contains(t)) return;
-  closeTableMenu();
+  if (tableMenuOpen.value && !tableMenuRef.value?.contains(t) && !tableMenuBtnRef.value?.contains(t)) {
+    closeTableMenu();
+  }
+  if (headingMenuOpen.value && !headingMenuRef.value?.contains(t) && !headingMenuBtnRef.value?.contains(t)) {
+    closeHeadingMenu();
+  }
 }
 
 function onWindowKeyDown(e: KeyboardEvent): void {
-  if (!tableMenuOpen.value) return;
-  if (e.key === 'Escape') closeTableMenu();
+  if (e.key !== 'Escape') return;
+  if (tableMenuOpen.value) closeTableMenu();
+  if (headingMenuOpen.value) closeHeadingMenu();
 }
 
 const zoomInHint = isMac ? '⌘=' : 'Ctrl+=';
@@ -451,7 +554,7 @@ onUnmounted(() => {
   padding: var(--markly-pad-sm) var(--markly-pad-md);
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
-  gap: 8px;
+  gap: 4px;
   /* 必须高于 .editor-main：否则下拉菜单会被后同级编辑区盖住；勿用 overflow-x:hidden 裁切菜单 */
   position: relative;
   z-index: 25000;
@@ -459,12 +562,70 @@ onUnmounted(() => {
   min-height: auto;
 }
 
+.toolbar--collapsed {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  gap: 0;
+}
+
+/* 展开/收起与下拉菜单：轻量进入动画（v-if 重建节点时触发） */
+.toolbar-row,
+.toolbar-collapsed-bar {
+  animation: markly-toolbar-in 0.16s ease;
+}
+
+.heading-menu,
+.table-menu {
+  animation: markly-menu-in 0.12s ease;
+}
+
+@keyframes markly-toolbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes markly-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-row,
+  .toolbar-collapsed-bar,
+  .heading-menu,
+  .table-menu {
+    animation: none;
+  }
+}
+
+.toolbar-collapsed-bar {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.toolbar-collapse-btn--end {
+  margin-left: auto;
+}
+
 .toolbar-row {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   overflow: visible;
   max-width: 100%;
 }
@@ -480,46 +641,102 @@ onUnmounted(() => {
 
 .toolbar-divider {
   width: 1px;
-  height: 40px;
+  height: 18px;
   background: var(--vscode-editorWidget-border);
-  margin: 0 6px;
+  margin: 0 4px;
   flex-shrink: 0;
 }
 
-/* 基础按钮：增大 20% (32 -> 38) */
+/* 紧凑按钮：横排图标 + 小字，高度 28px */
 .toolbar-btn {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  width: 44px;
-  height: 44px;
-  padding: 4px 3px;
+  min-width: 28px;
+  width: auto;
+  height: 28px;
+  padding: 0 7px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--vscode-foreground);
   border-radius: var(--markly-radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   transition: background-color 0.15s;
   flex-shrink: 0;
-  gap: 2px;
+  gap: 5px;
 }
 
 .toolbar-btn-mini {
-  min-width: 44px;
-  width: 44px;
+  min-width: 24px;
+  padding: 0 5px;
+}
+
+.btn-caret {
+  font-size: 9px;
+  opacity: 0.75;
+  line-height: 1;
 }
 
 .table-dropdown {
   position: relative;
 }
 
+.heading-dropdown {
+  position: relative;
+}
+
+.heading-menu {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 26001;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-editorWidget-background, #252526);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.heading-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.heading-menu-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 90, 90, 0.5));
+}
+
+.heading-menu-tag {
+  font-weight: 700;
+  font-size: 11px;
+  opacity: 0.85;
+  min-width: 20px;
+}
+
+.heading-menu-h1 .heading-menu-label { font-size: 15px; font-weight: 700; }
+.heading-menu-h2 .heading-menu-label { font-size: 14px; font-weight: 700; }
+.heading-menu-h3 .heading-menu-label { font-size: 13px; font-weight: 600; }
+
 .table-menu {
   position: absolute;
-  top: 54px;
+  top: 32px;
   left: 0;
   z-index: 26001;
   min-width: 320px;
@@ -604,14 +821,20 @@ onUnmounted(() => {
   line-height: 1.2;
 }
 
+.btn-icon.codicon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.btn-caret.codicon {
+  font-size: 10px;
+}
+
 .btn-label {
   font-size: 11px;
   font-weight: 600;
   opacity: 0.9;
   line-height: 1;
-  max-width: 44px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -682,7 +905,6 @@ onUnmounted(() => {
 
 /* Export buttons */
 .export-btn {
-  min-width: 54px;
-  width: 54px;
+  min-width: 44px;
 }
 </style>

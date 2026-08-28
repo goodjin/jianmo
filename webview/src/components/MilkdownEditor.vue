@@ -2717,45 +2717,59 @@ defineExpose({
   color: var(--vscode-editor-selectionForeground, inherit);
 }
 
+/* 标题排版：上方留白大于下方，形成清晰的分节节奏 */
 .milkdown-editor h1 {
-  font-size: 2.2em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 2.1em;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 1em 0 0.5em;
   padding-bottom: 0.3em;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .milkdown-editor h2 {
-  font-size: 1.7em;
-  font-weight: 600;
-  margin: 0.5em 0;
-  padding-bottom: 0.3em;
+  font-size: 1.65em;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 1em 0 0.5em;
+  padding-bottom: 0.25em;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .milkdown-editor h3 {
-  font-size: 1.4em;
+  font-size: 1.35em;
   font-weight: 600;
-  margin: 0.5em 0;
+  line-height: 1.3;
+  margin: 0.9em 0 0.45em;
 }
 
 .milkdown-editor h4 {
-  font-size: 1.2em;
+  font-size: 1.15em;
   font-weight: 600;
-  margin: 0.5em 0;
+  line-height: 1.3;
+  margin: 0.85em 0 0.4em;
 }
 
 .milkdown-editor h5 {
-  font-size: 1.1em;
+  font-size: 1.05em;
   font-weight: 600;
-  margin: 0.5em 0;
+  line-height: 1.3;
+  margin: 0.8em 0 0.4em;
 }
 
 .milkdown-editor h6 {
   font-size: 1em;
   font-weight: 600;
-  margin: 0.5em 0;
+  line-height: 1.3;
+  margin: 0.8em 0 0.4em;
   color: var(--vscode-descriptionForeground);
+}
+
+/* 文档首个标题不需要额外的顶部留白 */
+.milkdown-editor .ProseMirror > h1:first-child,
+.milkdown-editor .ProseMirror > h2:first-child,
+.milkdown-editor .ProseMirror > h3:first-child {
+  margin-top: 0.2em;
 }
 
 /* 高亮样式 */
@@ -2794,7 +2808,8 @@ defineExpose({
 }
 
 .milkdown-editor p {
-  margin: 0.5em 0;
+  margin: 0.6em 0;
+  line-height: 1.65;
 }
 
 .milkdown-editor img {
@@ -2809,18 +2824,20 @@ defineExpose({
 }
 
 .milkdown-editor code {
-  background: var(--vscode-textCodeBlock-background);
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
-  font-family: var(--vscode-editor-font-family);
+  background: var(--markly-codeBackground, var(--vscode-textCodeBlock-background));
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, monospace);
   font-size: 0.9em;
 }
 
 .milkdown-editor pre {
-  background: var(--vscode-textCodeBlock-background);
-  padding: 24px;
-  border-radius: 12px;
+  background: var(--markly-codeBackground, var(--vscode-textCodeBlock-background));
+  border: 1px solid var(--vscode-editorWidget-border, transparent);
+  padding: 12px 14px;
+  border-radius: 6px;
   overflow-x: auto;
+  line-height: 1.5;
 }
 
 .milkdown-editor pre code {
@@ -2869,13 +2886,14 @@ defineExpose({
   color: var(--vscode-editor-foreground);
 }
 
+/* 颜色跟随 VS Code 主题（亮/暗自动适配），保留旧暗色值兜底 */
 .milkdown-editor code .token.property,
 .milkdown-editor code .token.tag,
 .milkdown-editor code .token.boolean,
 .milkdown-editor code .token.number,
 .milkdown-editor code .token.constant,
 .milkdown-editor code .token.symbol {
-  color: #b5cea8;
+  color: var(--vscode-debugTokenExpression-number, #b5cea8);
 }
 
 .milkdown-editor code .token.selector,
@@ -2883,7 +2901,7 @@ defineExpose({
 .milkdown-editor code .token.string,
 .milkdown-editor code .token.char,
 .milkdown-editor code .token.builtin {
-  color: #ce9178;
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
 }
 
 .milkdown-editor code .token.operator,
@@ -2891,24 +2909,24 @@ defineExpose({
 .milkdown-editor code .token.url,
 .milkdown-editor code .language-css .token.string,
 .milkdown-editor code .style .token.string {
-  color: #d4d4d4;
+  color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
 .milkdown-editor code .token.atrule,
 .milkdown-editor code .token.attr-value,
 .milkdown-editor code .token.keyword {
-  color: #569cd6;
+  color: var(--vscode-debugTokenExpression-name, #569cd6);
 }
 
 .milkdown-editor code .token.function,
 .milkdown-editor code .token.class-name {
-  color: #dcdcaa;
+  color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
 }
 
 .milkdown-editor code .token.regex,
 .milkdown-editor code .token.important,
 .milkdown-editor code .token.variable {
-  color: #d16969;
+  color: var(--vscode-debugTokenExpression-error, #d16969);
 }
 
 /* Mermaid 图表样式 */
@@ -2923,10 +2941,18 @@ defineExpose({
 }
 
 .milkdown-editor blockquote {
-  border-left: 4px solid var(--vscode-textBlockQuote-border);
-  margin: 0.5em 0;
-  padding-left: 1em;
-  color: var(--vscode-textBlockQuote-foreground);
+  border-left: 3px solid var(--vscode-textBlockQuote-border, var(--markly-border-color));
+  margin: 0.7em 0;
+  padding: 0.15em 0 0.15em 1em;
+  color: var(--vscode-textBlockQuote-foreground, var(--markly-textSecondary));
+  background: var(--vscode-textBlockQuote-background, transparent);
+  border-radius: 0 4px 4px 0;
+}
+
+.milkdown-editor hr {
+  border: none;
+  border-top: 1px solid var(--vscode-editorWidget-border, var(--markly-border-color));
+  margin: 1.4em 0;
 }
 
 .milkdown-editor table {
@@ -2946,7 +2972,7 @@ defineExpose({
 .milkdown-editor th,
 .milkdown-editor td {
   border: 1px solid var(--vscode-editorWidget-border);
-  padding: 12px 18px;
+  padding: 7px 12px;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -2954,7 +2980,7 @@ defineExpose({
 }
 
 .milkdown-editor th {
-  background: var(--vscode-editor-inactiveSelectionBackground);
+  background: var(--markly-surface, var(--vscode-editorWidget-background));
   font-weight: 600;
 }
 
