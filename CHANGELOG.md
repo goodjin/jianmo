@@ -14,6 +14,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A11y/E2E/Perf: added baseline docs (`docs/A11Y_BASELINE_M308.md`, `docs/E2E_BRIDGE_CONTRACT_M309.md`, `docs/E2E_SMOKE_SUITE_M310.md`, `docs/PERF_BASELINE_M312.md`).
 - Release: added release playbook (`docs/RELEASE_PLAYBOOK_M316.md`).
 
+## [2.2.1] - 2026-09-29
+
+### Fixed
+
+- **大纲不再收录围栏代码里的 `#` 行**：` ``` ` 围栏内的 `# 注释` 曾被当成标题进入大纲（webview 大纲 / 结构提示 / 悬停预览 / 桌面端大纲共用同一解析器），现与导出目录同规则跳过；围栏后正文的标题锚点定位（from/to）不受影响。
+- **`{#custom-id}` 不再残留为可见文本**：导出 HTML / Preview 预览 / PDF 的标题与目录标签此前会显示标记原文（如「快速开始 {#quick}」），现只在锚点与跳转里生效；尾部标记剥除，正文中间或行内代码里的同形文本视为普通文案不受影响。锚点 id 计算规则不变，跨侧契约测试已覆盖「可见文本」一致性。
+
+### 桌面版
+
+- 随本修复打包 **0.4.1**（含 0.4.0 的 UI 改版：打开拆分按钮、设置入口、根目录文件树、大纲整栏收起、拖拽只开 Markdown）。
+
+## [2.2.0]
+
+### 渲染视觉升级
+
+- **排版升级**：导出 HTML / Preview 预览 / 独立桌面端预览共用一套新版式（标题层级、段落节奏、引用卡片、表格、目录卡片、脚注、行内元素），亮暗双主题与打印样式同步刷新。
+- **代码块语法高亮**：导出与 PDF 的围栏代码块按语言着色（Shiki：JS/TS/Python/Bash/JSON/YAML/HTML/CSS/SQL/Java/Go/Rust/C/C++/C#/Diff/XML/Markdown），未知语言自动回退素色；代码块带语言标签与悬停「复制」按钮，宽表格自动加横向滚动。
+- **标题与目录修复**：标题内强调/行内代码不再被转义显示；目录标签渲染行内标记；锚点与 webview 大纲 slug 对齐（中文标题可跳转）；`{#custom-id}` 自定义锚点生效；围栏代码里的 `# 注释` 不再误入目录。
+- **PDF 版式**：默认与学术模板同步新视觉（标题、引用卡片、表格、代码块），保留分页与表头重复规则。
+- **Rich 编辑器**：编辑态的标题、段落、代码、引用、列表、链接排版与导出版式统一。
+- **包体治理**：语法高亮器独立为按需加载切片 `dist/extension/markly-code-highlight.cjs`，扩展入口包体积不变；`check:bundle` 为切片新增独立预算（见 `resources/BUNDLE_GOVERNANCE.md`）。
+
+### 锚点契约统一（跨侧一致性）
+
+- 标题锚点收敛为一份权威实现（`src/core/export/headingAnchor.ts`）：`{#custom-id}` 优先 → 文本 slug（保留中文、剥行内标记）→ 按出现序号兜底；导出 HTML、webview 大纲（含 Rich / 目录 / 结构提示）、桌面端大纲全部对齐，并有跨侧契约测试守着一致性。
+- 修掉「点大纲/目录跳不动」的一类问题：中文标题、自定义锚点标题、带链接/强调的标题在导出预览与桌面端预览都能正确落点；跳转改为坐标直滚（沙箱 iframe 下 `scrollIntoView` 不可靠）。
+- 桌面版随本次渲染升级打包 **0.4.0**（`app/release/Markly-0.4.0-arm64.dmg`）。
+
 ## [1.39.15] - 2026-05-06
 
 ### Highlights (user-facing)

@@ -66,3 +66,11 @@ requirements.txt
 
 # 源码与工具链已进 dist，webview 目录不必进 VSIX
 webview/
+
+# root-owned stray log; vsce cannot read it
+nohup.out
+
+# 独立 Electron app / 本地工具目录，勿进 VSIX
+app/
+.opencode/
+build/

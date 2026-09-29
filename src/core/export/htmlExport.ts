@@ -4,12 +4,28 @@ import * as katex from 'katex';
 import { marked } from 'marked';
 import { bundleHtmlLocalImages, sanitizeAssetsSubdirectory } from './htmlBundleImages';
 import {
+  decodeBasicEntities,
+  highlightFencedCodeInHtml,
+  type CodeHighlightTheme,
+} from './codeHighlight';
+import { buildExportHtmlStyle } from './exportHtmlStyle';
+import {
   buildMermaidExportBootstrapScript,
   getMermaidExportDocumentCss,
   transformMermaidFencesForExport,
   type MermaidScriptBundling,
 } from './mermaidExport';
 import { buildDiagramTocAnchors } from './mermaidFenceUtils';
+import { headingAnchor, stripCustomIdToken } from './headingAnchor';
+
+// 标题锚点契约的权威实现在 headingAnchor.ts；此处再导出，保持既有调用面稳定。
+export {
+  extractCustomHeadingId,
+  stripCustomIdToken,
+  headingAnchor,
+  headingSlug,
+  stripInlineMarkup,
+} from './headingAnchor';
 
 export interface HtmlExportOptions {
   includeToc?: boolean;
@@ -50,6 +66,55 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => map[char]);
 }
 
+/* ========== 标题锚点：权威实现见 ./headingAnchor.ts（导出/预览/大纲共用契约） ========== */
+
+/** 目录标签：转义后再还原少量行内标记，既保留强调又杜绝注入。 */
+export function formatInlineMarkdown(text: string): string {
+  let out = escapeHtml(String(text ?? ''));
+  out = out.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1');
+  out = out.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  out = out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  return out;
+}
+
+/** 渲染后的标题内层 HTML → 纯文本（剥掉标签与 KaTeX 的 MathML 重复朗读层）。 */
+function plainTextFromHeadingHtml(inner: string): string {
+  return decodeBasicEntities(
+    String(inner ?? '')
+      .replace(/<span class="katex-mathml">[\s\S]*?<\/span>/g, '')
+      .replace(/<[^>]*>/g, '')
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 给渲染后的 HTML 标题补 `id`（已有 id 保留）。
+ * 导出 HTML / PDF 两条链路共用，保证目录、大纲、预览跳转指向同一套锚点。
+ */
+export function addHeadingAnchors(html: string): string {
+  let headingIndex = 0;
+  return String(html).replace(
+    /<h([1-6])([^>]*)>([\s\S]*?)<\/h\1>/g,
+    (match, level, attrs, inner) => {
+      headingIndex += 1;
+      // 如果已经有 id 属性，则保留
+      if (/id=["']/.test(attrs)) {
+        return match;
+      }
+      const fullText = plainTextFromHeadingHtml(inner);
+      const anchor = headingAnchor(fullText, headingIndex);
+      // 尾部的 `{#custom-id}` 是锚点语法不是文案，渲染时剥掉（尾部普通文本才会命中，行内代码里的不受影响）
+      const displayInner = stripCustomIdToken(inner);
+      return `<h${level} id="${escapeHtml(anchor)}"${attrs}>${displayInner}</h${level}>`;
+    }
+  );
+}
+
 /**
  * 生成与「导出 HTML」一致的完整文档字符串（不写盘；用于发布前预览等）。
  */
@@ -64,7 +129,9 @@ export async function buildExportHtmlString(
     tocHtml = generateToc(markdownContent);
   }
 
-  const htmlContent = await markdownToHtml(markdownContent);
+  const htmlContent = await markdownToHtml(markdownContent, {
+    codeTheme: opts.darkMode ? 'dark' : 'light',
+  });
   return buildHtmlDocument(htmlContent, tocHtml, opts);
 }
 
@@ -103,14 +170,22 @@ export async function exportToHtml(
 export function generateToc(markdown: string): string {
   const headings: { level: number; text: string; anchor: string }[] = [];
   const lines = markdown.split('\n');
+  let inFence = false;
+  let headingIndex = 0;
 
   for (const line of lines) {
+    // 围栏代码里的 "# 注释" 不是标题，不能进目录
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     const match = line.match(/^(#{1,6})\s+(.+)$/);
     if (match) {
+      headingIndex += 1;
       const level = match[1].length;
       const text = match[2].trim();
-      const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-      headings.push({ level, text, anchor });
+      headings.push({ level, text, anchor: headingAnchor(text, headingIndex) });
     }
   }
 
@@ -120,8 +195,8 @@ export function generateToc(markdown: string): string {
   let tocHtml = '<nav class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    // 使用 escapeHtml 防止 XSS
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtml(h.text)}</a></li>`;
+    // 使用 escapeHtml 防止 XSS；`{#custom-id}` 是锚点语法，不进目录文案
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${escapeHtml(h.anchor)}">${formatInlineMarkdown(stripCustomIdToken(h.text))}</a></li>`;
   }
   for (const d of diagrams) {
     tocHtml += `<li class="toc-diagram"><a href="#${d.anchor}">${escapeHtml(d.label)}</a></li>`;
@@ -131,7 +206,15 @@ export function generateToc(markdown: string): string {
   return tocHtml;
 }
 
-export async function markdownToHtml(markdown: string): Promise<string> {
+export interface MarkdownToHtmlOptions {
+  /** 代码块语法高亮主题；默认随导出亮色 */
+  codeTheme?: CodeHighlightTheme;
+}
+
+export async function markdownToHtml(
+  markdown: string,
+  options: MarkdownToHtmlOptions = {}
+): Promise<string> {
   const raw = String(markdown ?? '');
   const md = renderMarkdownMath(raw);
   // M290：大文档分段解析（避免 marked 一次吃下超长字符串导致峰值过高/卡顿）
@@ -144,18 +227,13 @@ export async function markdownToHtml(markdown: string): Promise<string> {
   }
   const html = htmlParts.join('\n');
 
-  // 添加锚点到标题（修复：处理带属性的标题）
-  const withAnchors = String(html).replace(/<h([1-6])([^>]*)>(.+?)<\/h[1-6]>/g, (match, level, attrs, text) => {
-    // 如果已经有 id 属性，则保留
-    if (/id=["']/.test(attrs)) {
-      return match;
-    }
-    const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-    // 使用 escapeHtml 防止 XSS
-    return `<h${level} id="${anchor}"${attrs}>${escapeHtml(text)}</h${level}>`;
-  });
+  // 添加锚点到标题：标题内层（含强调/行内代码/链接）原样保留，只补 id
+  const withAnchors = addHeadingAnchors(html);
 
-  return transformMermaidFencesForExport(withAnchors, markdown);
+  // 代码块语法高亮（未知语言/失败自动回退原样）
+  const highlighted = await highlightFencedCodeInHtml(withAnchors, options.codeTheme ?? 'light');
+
+  return transformMermaidFencesForExport(highlighted, markdown);
 }
 
 /**
@@ -236,50 +314,10 @@ export function readKatexCss(): string {
     }
   }
 }
-
 export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlExportOptions): string {
   const { darkMode } = opts;
   const printFriendly = opts.htmlTheme === 'print-friendly';
   const bodyClass = printFriendly ? 'markly-export-print-friendly' : '';
-  const bgColor = darkMode ? '#0d1117' : '#ffffff';
-  const textColor = darkMode ? '#c9d1d9' : '#24292e';
-  const codeBg = darkMode ? '#161b22' : '#f6f8fa';
-  const borderColor = darkMode ? '#30363d' : '#d0d7de';
-
-  // 当 darkMode: false 时，添加 prefers-color-scheme: light 强制使用浅色
-  // 阻止系统深色偏好影响
-  const systemPreferenceMedia = darkMode
-    ? `@media (prefers-color-scheme: dark) {
-      :root {
-        --bg-color: #0d1117;
-        --text-color: #c9d1d9;
-        --code-bg: #161b22;
-        --border-color: #30363d;
-        --link-color: #58a6ff;
-        --link-hover: #79b8ff;
-      }
-    }`
-    : `@media (prefers-color-scheme: light) {
-      :root {
-        --bg-color: #ffffff;
-        --text-color: #24292e;
-        --code-bg: #f6f8fa;
-        --border-color: #d0d7de;
-        --link-color: #0969da;
-        --link-hover: #0550ae;
-      }
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg-color: #ffffff !important;
-        --text-color: #24292e !important;
-        --code-bg: #f6f8fa !important;
-        --border-color: #d0d7de !important;
-        --link-color: #0969da !important;
-        --link-hover: #0550ae !important;
-      }
-    }`;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -290,305 +328,185 @@ export function buildHtmlDocument(content: string, tocHtml: string, opts: HtmlEx
   <style>
     ${readKatexCss()}
     ${getMermaidExportDocumentCss()}
-    :root {
-      --bg-color: ${bgColor};
-      --text-color: ${textColor};
-      --code-bg: ${codeBg};
-      --border-color: ${borderColor};
-      --link-color: #0969da;
-      --link-hover: #0550ae;
-    }
-
-    ${systemPreferenceMedia}
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      font-size: 16px;
-      line-height: 1.7;
-      color: var(--text-color);
-      background-color: var(--bg-color);
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 40px 20px;
-    }
-
-    /* TOC 样式 */
-    .toc {
-      background: var(--code-bg);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 20px;
-      margin-bottom: 40px;
-    }
-
-    .toc h2 {
-      font-size: 1.5em;
-      margin-top: 0;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid var(--border-color);
-    }
-
-    .toc ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .toc li {
-      margin: 6px 0;
-    }
-
-    .toc a {
-      color: var(--link-color);
-      text-decoration: none;
-    }
-
-    .toc a:hover {
-      color: var(--link-hover);
-      text-decoration: underline;
-    }
-
-    /* 标题样式 */
-    h1, h2, h3, h4, h5, h6 {
-      margin-top: 1.5em;
-      margin-bottom: 0.5em;
-      font-weight: 600;
-      line-height: 1.25;
-    }
-
-    h1 {
-      font-size: 2em;
-      padding-bottom: 0.3em;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    h2 {
-      font-size: 1.5em;
-      padding-bottom: 0.3em;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    h3 { font-size: 1.25em; }
-    h4 { font-size: 1em; }
-    h5 { font-size: 0.875em; }
-    h6 { font-size: 0.85em; }
-
-    /* 段落和列表 */
-    p {
-      margin: 0 0 16px 0;
-    }
-
-    ul, ol {
-      padding-left: 2em;
-      margin-bottom: 16px;
-    }
-
-    li {
-      margin: 4px 0;
-    }
-
-    /* 代码（M84：长行换行；打印时 pre 可跨页） */
-    code {
-      background-color: var(--code-bg);
-      padding: 0.2em 0.4em;
-      border-radius: 3px;
-      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      font-size: 85%;
-      overflow-wrap: break-word;
-      word-break: break-word;
-    }
-
-    pre {
-      background-color: var(--code-bg);
-      padding: 16px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border-radius: 6px;
-      margin-bottom: 16px;
-      border: 1px solid var(--border-color);
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      tab-size: 4;
-    }
-
-    pre code {
-      background: transparent;
-      padding: 0;
-      font-size: 14px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-
-    /* 引用 */
-    blockquote {
-      margin: 0 0 16px 0;
-      padding: 0 1em;
-      color: #6a737d;
-      border-left: 0.25em solid var(--border-color);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      blockquote {
-        color: #8b949e;
-      }
-    }
-
-    /* 表格 */
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-bottom: 16px;
-    }
-
-    table th, table td {
-      border: 1px solid var(--border-color);
-      padding: 8px 12px;
-    }
-
-    table th {
-      background-color: var(--code-bg);
-      font-weight: 600;
-    }
-
-    table tr:nth-child(even) {
-      background-color: var(--code-bg);
-    }
-
-    /* 链接 */
-    a {
-      color: var(--link-color);
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-      color: var(--link-hover);
-    }
-
-    /* 图片 */
-    img {
-      max-width: 100%;
-      height: auto;
-      border-radius: 4px;
-    }
-
-    /* 分割线 */
-    hr {
-      height: 2px;
-      background-color: var(--border-color);
-      border: none;
-      margin: 24px 0;
-    }
-
-    /* 任务列表 */
-    .task-list-item {
-      list-style-type: none;
-      margin-left: -1.5em;
-    }
-
-    .task-list-item input {
-      margin-right: 0.5em;
-    }
-
-    /* 脚注 */
-    .footnote {
-      font-size: 0.9em;
-      color: #6a737d;
-      border-top: 1px solid var(--border-color);
-      margin-top: 40px;
-      padding-top: 20px;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .footnote {
-        color: #8b949e;
-      }
-    }
-
-    ${
-      printFriendly
-        ? `
-    body.markly-export-print-friendly {
-      max-width: none;
-      font-size: 11pt;
-      padding: 24px 12px;
-    }
-    body.markly-export-print-friendly pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      tab-size: 4;
-    }
-    `
-        : ''
-    }
-
-    /* 打印样式（M84：围栏代码可跨页；blockquote 仍尽量整块） */
-    @media print {
-      body {
-        max-width: 100%;
-        padding: 0;
-      }
-
-      .toc {
-        page-break-after: always;
-      }
-
-      pre {
-        page-break-inside: auto;
-        break-inside: auto;
-        white-space: pre-wrap;
-        overflow: visible;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-      }
-
-      pre code {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-      }
-
-      blockquote {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-
-      /* M32：分页时尽量重复表头（依赖 UA 对 thead 的表格头组语义） */
-      thead {
-        display: table-header-group;
-      }
-
-      tfoot {
-        display: table-footer-group;
-      }
-
-      table {
-        page-break-inside: auto;
-        break-inside: auto;
-      }
-
-      tr,
-      th,
-      td {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-    }
   </style>
+${buildExportHtmlStyle({ darkMode, printFriendly })}
 </head>
 <body${bodyClass ? ` class="${bodyClass}"` : ''}>
   ${tocHtml}
   <div class="content">
     ${content}
   </div>
+  <script>
+  /* 文档运行时增强（渐进增强，脚本被禁用时文档依旧完整可读）：
+     1) 显式拦截 #锚点点击：iframe sandbox 在不同浏览器对 hash-only 跳转行为不一致，
+        由脚本自行 scrollIntoView 保证跳转生效；同时挂 mousedown/pointerdown 三道保险。
+     2) 代码块：语言标签 + 一键复制；
+     3) 宽表格：横向滚动包装；
+     4) 标题：悬停显示锚点链接。 */
+  (function(){
+      function resolve(ev) {
+          var t = ev.target;
+          while (t && t !== document) {
+              if (t.tagName === 'A') return t;
+              t = t.parentNode;
+          }
+          return null;
+      }
+      /* 跳转统一走「算坐标 + window.scrollTo(instant)」：
+         scrollIntoView 在沙箱 iframe（桌面端预览）里观察到不生效，scrollTo 可靠；
+         顶部留 16px 呼吸位（与标题 scroll-margin-top 对齐）。 */
+      function scrollToTarget(target) {
+          if (!target) return false;
+          var base = window.pageYOffset || document.documentElement.scrollTop || 0;
+          var top = base + target.getBoundingClientRect().top - 16;
+          if (top < 0) top = 0;
+          try {
+              window.scrollTo({ top: top, behavior: 'instant' });
+          } catch (e) {
+              window.scrollTo(0, top);
+          }
+          return true;
+      }
+      function jumpTo(href) {
+          if (!href || href.charAt(0) !== '#' || href.length < 2) return false;
+          var raw = href.slice(1);
+          var id;
+          try { id = decodeURIComponent(raw); } catch (e) { id = raw; }
+          var target = document.getElementById(id);
+          if (!target) return false;
+          scrollToTarget(target);
+          try { history.replaceState(null, '', '#' + id); } catch (e) { /* ignore */ }
+          return true;
+      }
+      function handler(ev) {
+          var a = resolve(ev);
+          if (!a) return;
+          if (jumpTo(a.getAttribute('href') || '')) {
+              ev.preventDefault();
+              ev.stopPropagation();
+          }
+      }
+      document.addEventListener('click', handler, true);
+      document.addEventListener('mousedown', handler, true);
+      document.addEventListener('pointerdown', handler, true);
+      /* 父 renderer 通过 postMessage 通知跳转（沙箱无 allow-same-origin，
+         父无法直接操作 contentDocument；postMessage 是跨 origin 唯一可靠通道）。 */
+      window.addEventListener('message', function(ev) {
+          var d = ev.data;
+          if (!d || d.type !== 'SCROLL_TO_HEADING' || !d.headingId) return;
+          var id;
+          try { id = decodeURIComponent(String(d.headingId)); } catch (e) { id = String(d.headingId); }
+          var target = document.getElementById(id);
+          if (!target) return;
+          scrollToTarget(target);
+          try { history.replaceState(null, '', '#' + id); } catch (e) { /* ignore */ }
+      });
+
+      function fallbackCopy(text, done) {
+          try {
+              var ta = document.createElement('textarea');
+              ta.value = text;
+              ta.setAttribute('readonly', '');
+              ta.style.position = 'fixed';
+              ta.style.left = '-9999px';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              done();
+          } catch (e) { /* 沙箱里复制不可用时静默失败 */ }
+      }
+      function copyText(text, done) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(done, function() { fallbackCopy(text, done); });
+          } else {
+              fallbackCopy(text, done);
+          }
+      }
+
+      function enhanceCodeBlocks(root) {
+          var pres = root.querySelectorAll('pre');
+          for (var i = 0; i < pres.length; i++) {
+              var pre = pres[i];
+              if (pre.parentNode && pre.parentNode.classList && pre.parentNode.classList.contains('markly-codeblock')) continue;
+              var codeEl = pre.querySelector('code');
+              var wrap = document.createElement('div');
+              wrap.className = 'markly-codeblock';
+              pre.parentNode.insertBefore(wrap, pre);
+              wrap.appendChild(pre);
+
+              var lang = '';
+              if (codeEl) {
+                  var m = (codeEl.getAttribute('class') || '').match(/language-([\\w#+.\\-]+)/);
+                  if (m) lang = m[1];
+              }
+              if (lang) {
+                  var chip = document.createElement('span');
+                  chip.className = 'markly-code-lang';
+                  chip.textContent = lang;
+                  wrap.appendChild(chip);
+              }
+              if (codeEl) {
+                  var btn = document.createElement('button');
+                  btn.type = 'button';
+                  btn.className = 'markly-code-copy';
+                  btn.textContent = '复制';
+                  btn.addEventListener('click', (function(preEl, button) {
+                      return function() {
+                          copyText(preEl.textContent || '', function() {
+                              button.textContent = '已复制';
+                              setTimeout(function() { button.textContent = '复制'; }, 1200);
+                          });
+                      };
+                  })(pre, btn));
+                  wrap.appendChild(btn);
+              }
+          }
+      }
+
+      function enhanceTables(root) {
+          var tables = root.querySelectorAll('table');
+          for (var i = 0; i < tables.length; i++) {
+              var table = tables[i];
+              if (table.parentNode && table.parentNode.classList && table.parentNode.classList.contains('markly-table-wrap')) continue;
+              var wrap = document.createElement('div');
+              wrap.className = 'markly-table-wrap';
+              table.parentNode.insertBefore(wrap, table);
+              wrap.appendChild(table);
+          }
+      }
+
+      function enhanceHeadings(root) {
+          var hs = root.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]');
+          for (var i = 0; i < hs.length; i++) {
+              var el = hs[i];
+              if (el.querySelector('.markly-anchor')) continue;
+              var id = el.getAttribute('id');
+              if (!id) continue;
+              var a = document.createElement('a');
+              a.className = 'markly-anchor';
+              a.href = '#' + id;
+              a.textContent = '#';
+              a.setAttribute('aria-label', '本节锚点');
+              el.insertBefore(a, el.firstChild);
+          }
+      }
+
+      function enhance() {
+          var root = document.querySelector('.content');
+          if (!root) return;
+          enhanceCodeBlocks(root);
+          enhanceTables(root);
+          enhanceHeadings(root);
+      }
+
+      if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', enhance);
+      } else {
+          enhance();
+      }
+  })();
+  </script>
 ${buildMermaidExportBootstrapScript(opts.darkMode ? 'dark' : 'default', {
     bundling: opts.mermaidScriptBundling ?? 'embedded',
   })}

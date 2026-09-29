@@ -6,6 +6,42 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Toolbar from '../Toolbar.vue';
 
+describe('Toolbar collapse', () => {
+  it('shows expand control when collapsed and hides format rows', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        collapsed: true,
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+
+    expect(w.find('.toolbar-row-primary').exists()).toBe(false);
+    expect(w.find('.toolbar-collapse-btn[aria-label="展开工具栏"]').exists()).toBe(true);
+  });
+
+  it('emits toggle-collapse when collapse button clicked', async () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        collapsed: false,
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+      },
+    });
+
+    await w.find('.toolbar-collapse-btn[aria-label="收起工具栏"]').trigger('click');
+    expect(w.emitted('toggle-collapse')?.length).toBe(1);
+  });
+});
+
 describe('Toolbar structure', () => {
   it('does not embed mode switch (modes live on App.vue mode rail)', () => {
     const w = mount(Toolbar as any, {

@@ -4,6 +4,21 @@
 // - preview: 正文区内嵌「导出 HTML」同管线的只读预览（无工具栏）
 export type EditorMode = 'source' | 'rich' | 'preview';
 
+import type { EditorThemeSetting } from './editorTheme';
+export type {
+  EditorPaletteId,
+  EditorThemeSetting,
+} from './editorTheme';
+export {
+  EDITOR_PALETTE_IDS,
+  EDITOR_THEME_SETTING_IDS,
+  isEditorPaletteId,
+  isEditorThemeSetting,
+  resolveEditorPaletteId,
+  isDarkEditorPaletteId,
+  isDarkEditorThemeSetting,
+} from './editorTheme';
+
 export type RichTableCommandValue =
   | 'addRowBefore'
   | 'addRowAfter'
@@ -65,7 +80,7 @@ type MarginValue = Range<number, 0, 100>; // 0-100mm
 
 // 配置
 export interface EditorConfig {
-  theme: 'auto' | 'light' | 'dark';
+  theme: EditorThemeSetting;
   fontSize: FontSize;
   fontFamily: string;
   /** 超宽内容策略：自动换行优先 / 横向滚动优先 */
@@ -236,6 +251,8 @@ export type ExtensionMessage = ProtocolVersionEnvelope & (
         documentFolderWebviewUri?: string;
         /** 宿主根据设置 + 记忆的默认编辑模式（Webview INIT 后可立即切换） */
         initialEditorMode?: EditorMode;
+        /** 工具栏是否收起（globalState 记忆，默认展开） */
+        toolbarCollapsed?: boolean;
       };
     }
   /** 外部内容更新（如 TextDocument 变化），Webview 应 best-effort 保留光标/滚动位置。 */
@@ -379,6 +396,10 @@ export type WebViewMessage = ProtocolVersionEnvelope & (
   | { type: 'EXPORT'; payload: { format: 'pdf' | 'html' | 'image' | 'preview' } }
   /** Webview 就绪（容器挂载完成、可接收 INIT）。 */
   | { type: 'READY'; payload?: undefined }
+  /** 同步工具栏收起状态（写入 extension globalState，跨文档/会话记忆） */
+  | { type: 'SET_TOOLBAR_COLLAPSED'; payload: { collapsed: boolean } }
+  /** 同步编辑器配色（写入 `markly.editor.theme` / 独立应用 `~/.markly/config.json`） */
+  | { type: 'SET_EDITOR_THEME'; payload: { theme: EditorThemeSetting } }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string; requestId?: string } }
   | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
   | { type: 'LIST_ASSETS_IMAGE_FILES'; payload: { requestId: string } }

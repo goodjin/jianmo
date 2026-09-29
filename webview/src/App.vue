@@ -4,10 +4,12 @@
     <div
       v-if="hostInitReceived"
       class="markly-mode-rail"
-      role="tablist"
-      aria-label="编辑模式 Rich / Source / 预览"
     >
-      <div class="toolbar-group mode-switch" role="group" aria-label="Editor Mode">
+      <div
+        class="toolbar-group mode-switch"
+        role="tablist"
+        aria-label="编辑模式 Rich / Source / 预览"
+      >
         <button
           class="toolbar-btn mode-btn"
           :class="{ active: currentMode === 'rich' }"
@@ -48,10 +50,30 @@
           <span class="btn-label">预览</span>
         </button>
       </div>
+      <button
+        class="toolbar-btn settings-rail-btn"
+        :class="{ active: settingsOpen }"
+        type="button"
+        title="设置"
+        aria-label="设置"
+        :aria-expanded="settingsOpen"
+        @click="toggleSettingsPanel"
+      >
+        <span class="btn-icon">⚙</span>
+        <span class="btn-label">设置</span>
+      </button>
     </div>
+    <SettingsPanel
+      v-if="hostInitReceived && settingsOpen"
+      :theme="config?.editor?.theme ?? 'auto'"
+      :prefers-dark="systemPrefersDark"
+      @select-theme="onSelectEditorTheme"
+      @close="settingsOpen = false"
+    />
     <Toolbar
       v-if="hostInitReceived && currentMode !== 'preview'"
       :mode="currentMode"
+      :collapsed="toolbarCollapsed"
       :show-outline="showOutline"
       :show-line-numbers="toolbarShowLineNumbers"
       :find-panel-open="findReplaceVisible"
@@ -73,6 +95,7 @@
       @export="handleExport"
       @rich-table-op="handleRichTableOp"
       @rich-table-help="richTableHelpOpen = true"
+      @toggle-collapse="toggleToolbarCollapsed"
     />
     <!-- 字数统计 -->
     <div class="word-count" v-if="hostInitReceived && currentMode !== 'preview'">
@@ -628,6 +651,7 @@ import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from
 import { useEditor } from './composables/useEditor';
 import { useImageHandler } from './composables/useImageHandler';
 import Toolbar from './components/Toolbar.vue';
+import SettingsPanel from './components/SettingsPanel.vue';
 import OutlinePanel from './components/OutlinePanel.vue';
 import BacklinksPanel from './components/BacklinksPanel.vue';
 import type { BacklinkRow } from './components/BacklinksPanel.vue';
@@ -685,10 +709,13 @@ import {
   matchOrdinalInText,
   type FindPatternMode,
 } from './utils/findPattern';
-import { parseHeadings, generateHeadingId, isHeadingSlugAmbiguous } from './shared/outline';
+import { parseHeadings, headingNodeId, isHeadingSlugAmbiguous } from './shared/outline';
 import { reorderMarkdownTopLevelSections } from './shared/outlineReorder';
 import { mockRewriteSelection } from './utils/mockRewriteSelection';
-import type { ExtensionConfig, ExtensionMessage, EditorMode, LocalImageRefCheckResult } from '../../src/types';
+import { jumpCaretIntoView, jumpRichWithRetry } from './utils/outlineJump';
+import type { EditorMode, EditorPaletteId, ExtensionConfig, ExtensionMessage, LocalImageRefCheckResult } from '../../src/types';
+import { isDarkEditorThemeSetting } from '../../src/types';
+import { applyEditorPalette, resolveEditorPalette } from './shared/themeConfig';
 import { undoDepth, redoDepth } from '@codemirror/commands';
 
 import { useVSCode } from './composables/useVSCode';
@@ -1474,6 +1501,59 @@ function onToolbarFindReplace(): void {
   findReplaceVisible.value = true;
 }
 
+function toggleToolbarCollapsed(): void {
+  toolbarCollapsed.value = !toolbarCollapsed.value;
+  persistToolbarCollapsed();
+}
+
+function persistToolbarCollapsed(): void {
+  try {
+    const prev = getState();
+    const base = prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {};
+    setState({ ...base, toolbarCollapsed: toolbarCollapsed.value });
+  } catch {
+    /* ignore */
+  }
+  try {
+    sendMessage({ type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: toolbarCollapsed.value } });
+  } catch {
+    /* ignore */
+  }
+}
+
+function toggleSettingsPanel(): void {
+  settingsOpen.value = !settingsOpen.value;
+}
+
+function applyCurrentEditorTheme(): void {
+  const el = document.querySelector('.md-editor-app') as HTMLElement | null;
+  if (!el) return;
+  const palette = resolveEditorPalette(config.value?.editor?.theme, systemPrefersDark.value);
+  applyEditorPalette(el, palette);
+}
+
+function onSelectEditorTheme(theme: EditorPaletteId): void {
+  if (config.value) {
+    config.value = {
+      ...config.value,
+      editor: { ...config.value.editor, theme },
+    };
+  }
+  applyCurrentEditorTheme();
+  try {
+    const prev = getState();
+    const base = prev && typeof prev === 'object' ? (prev as Record<string, unknown>) : {};
+    setState({ ...base, editorTheme: theme });
+  } catch {
+    /* ignore */
+  }
+  try {
+    sendMessage({ type: 'SET_EDITOR_THEME', payload: { theme } });
+  } catch {
+    /* ignore */
+  }
+}
+
 // UI state
 const findReplaceVisible = ref(false);
 const imagePreviewVisible = ref(false);
@@ -1481,6 +1561,10 @@ const currentImages = ref<string[]>([]);
 const currentImageIndex = ref(0);
 const currentImageSrc = ref('');
 const showOutline = ref(false);
+/** 工具栏是否收起（extension globalState + webview state 双写） */
+const toolbarCollapsed = ref(false);
+/** 顶栏设置面板是否展开 */
+const settingsOpen = ref(false);
 /** M40：大纲当前节高亮（scroll spy / 点击跳转） */
 const outlineHighlightHeadingId = ref('');
 /** M40：折叠的标题 id（随 webview state 持久化） */
@@ -1933,13 +2017,9 @@ const lineCount = computed(() => {
 const systemPrefersDark = ref(
   typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 );
-const isDark = computed(() => {
-  if (!config.value) return false;
-  if (config.value.editor.theme === 'auto') {
-    return systemPrefersDark.value;
-  }
-  return config.value.editor.theme === 'dark';
-});
+const isDark = computed(() =>
+  isDarkEditorThemeSetting(config.value?.editor?.theme, systemPrefersDark.value)
+);
 
 const wrapPolicy = computed(() => config.value?.editor?.wrapPolicy ?? 'autoWrap');
 const tableCellWrap = computed(() => config.value?.editor?.tableCellWrap ?? 'wrap');
@@ -1950,6 +2030,14 @@ const appClasses = computed(() => ({
   'table-cell-wrap': tableCellWrap.value === 'wrap',
   'table-cell-nowrap': tableCellWrap.value === 'nowrap',
 }));
+
+watch(
+  [() => config.value?.editor?.theme, systemPrefersDark],
+  () => {
+    void nextTick(() => applyCurrentEditorTheme());
+  },
+  { immediate: true }
+);
 
 /** 确保 CM6 已挂载到容器并完成 INIT（避免宿主过早 postMessage INIT 时 ref 未就绪 → 永久 Loading） */
 function ensureEditorFromInit(): boolean {
@@ -2186,6 +2274,10 @@ function handleMessage(event: MessageEvent) {
         const im = (message.payload as { initialEditorMode?: EditorMode }).initialEditorMode;
         pendingInitialEditorMode.value =
           im === 'rich' || im === 'source' || im === 'preview' ? im : null;
+      }
+      {
+        const tc = (message.payload as { toolbarCollapsed?: unknown }).toolbarCollapsed;
+        if (typeof tc === 'boolean') toolbarCollapsed.value = tc;
       }
       recalcRichTableColumnResizeNow();
       assetImageRelativePaths.value = [];
@@ -4382,8 +4474,9 @@ function refreshOutlineSpyCm(): void {
   const offset = v.state.selection.main.head;
   const hs = parseHeadings(content.value);
   let slug = '';
-  for (const h of hs) {
-    if (h.from <= offset) slug = generateHeadingId(h.text);
+  for (let i = 0; i < hs.length; i++) {
+    const h = hs[i]!;
+    if (h.from <= offset) slug = headingNodeId(h, i + 1);
   }
   if (slug && slug !== outlineHighlightHeadingId.value) outlineHighlightHeadingId.value = slug;
 }
@@ -4516,38 +4609,21 @@ function handleOutlineJump(pos: number, headingId: string) {
     showToast('与其它小节锚点 ID 重复：Rich 或 # 链接可能总是跳到第一个同名标题。', 3000);
   }
   if (currentMode.value === 'rich') {
-    // 与大纲点击同一帧内 ProseMirror 可能尚未稳定；延后一帧再滚动手风琴容器内的 scrollTop
+    // Rich：ProseMirror heading DOM 可能晚于编辑器 ready 才挂载（首屏 / 切模式后重建）。
+    // 多帧重试 + 传 fallback pos 兜底，避免静默失败。
     nextTick(() => {
-      requestAnimationFrame(() => {
-        milkdownRef.value?.scrollToHeading?.(headingId);
+      jumpRichWithRetry({
+        attempt: () => Boolean(milkdownRef.value?.scrollToHeading?.(headingId, pos)),
+        onGiveUp: () => showToast('未定位到目标章节，请稍后再试。', 2400),
       });
     });
     return;
   }
 
-  if (editor.view.value) {
-    const view = editor.view.value;
-
-    // 先移动光标
-    view.dispatch({
-      selection: { anchor: pos },
-    });
-
-    // 然后滚动到该位置
-    requestAnimationFrame(() => {
-      const line = view.lineBlockAt(pos);
-      if (line) {
-        // 找到对应的 DOM 元素并滚动
-        const scroller = view.scrollDOM;
-        const coords = view.coordsAtPos(pos);
-        if (coords && scroller) {
-          scroller.scrollTop = coords.top - scroller.clientTop - 20;
-        }
-      }
-    });
-
-    focusEditor();
-  }
+  // Source / IR（CM6）：直接交给 CM6 处理滚动。
+  // 见 utils/outlineJump.ts 中关于历史公式 bug 的注释。
+  jumpCaretIntoView(editor.view.value, pos);
+  focusEditor();
 }
 
 // 导出处理函数
@@ -4566,6 +4642,12 @@ function handleExport(format: 'pdf' | 'html' | 'preview') {
 function handleKeyDown(e: KeyboardEvent) {
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+  if (settingsOpen.value && e.key === 'Escape') {
+    e.preventDefault();
+    settingsOpen.value = false;
+    return;
+  }
 
   // M308：modal 优先处理（Esc 关闭 + Tab 焦点环）
   if (modalStack.value.length) {
@@ -4708,6 +4790,9 @@ onMounted(() => {
     if (st && typeof st === 'object' && Array.isArray((st as { outlineCollapsedIds?: unknown }).outlineCollapsedIds)) {
       outlineCollapsedIds.value = [...((st as { outlineCollapsedIds: string[] }).outlineCollapsedIds)];
     }
+    if (st && typeof st === 'object' && typeof (st as { toolbarCollapsed?: unknown }).toolbarCollapsed === 'boolean') {
+      toolbarCollapsed.value = (st as { toolbarCollapsed: boolean }).toolbarCollapsed;
+    }
   } catch {
     /* ignore */
   }
@@ -4807,9 +4892,35 @@ onUnmounted(() => {
 .markly-mode-rail {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 6px 12px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+}
+
+.settings-rail-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
+  border-radius: var(--markly-radius-md, 6px);
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-rail-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 90, 90, 0.31));
+}
+
+.settings-rail-btn.active {
+  background: var(--vscode-tab-activeBackground, var(--vscode-button-secondaryBackground, rgba(130, 130, 130, 0.3)));
+  border-color: var(--vscode-focusBorder, #007acc);
 }
 
 .mode-switch {

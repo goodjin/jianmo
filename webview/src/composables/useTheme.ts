@@ -8,6 +8,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import type { Ref, ComputedRef } from 'vue';
 import type { ThemeType, ThemeConfig } from '../shared/themeConfig';
 import { lightTheme, darkTheme } from '../shared/themeConfig';
+import { isDarkEditorThemeSetting } from '../../../src/types';
 import { useVSCode } from './useVSCode';
 
 /**
@@ -50,10 +51,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
    * 实际生效的主题
    */
   const effectiveTheme = computed<'light' | 'dark'>(() => {
-    if (theme.value === 'auto') {
-      return systemPrefersDark.value ? 'dark' : 'light';
-    }
-    return theme.value;
+    return isDarkEditorThemeSetting(theme.value, systemPrefersDark.value) ? 'dark' : 'light';
   });
 
   /**

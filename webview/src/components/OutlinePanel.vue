@@ -85,7 +85,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onBeforeUnmount } from 'vue';
-import type { EditorMode } from '../../src/types';
+import type { EditorMode } from '@types';
 import { collectOutlineFilterIndices, generateHeadingId, getDuplicateHeadingSlugs, parseHeadings } from '../shared/outline';
 import { parseMermaidOutlineEntries } from '../shared/mermaidOutline';
 

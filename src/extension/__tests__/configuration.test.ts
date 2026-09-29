@@ -121,6 +121,12 @@ describe('validateConfig', () => {
     expect(result.errors.some((e: string) => e.includes('theme'))).toBe(true);
   });
 
+  it('accepts named editor palettes', () => {
+    const cfg = deepMerge(validConfig, { editor: { theme: 'nord' } } as any);
+    const result = validateConfig(cfg);
+    expect(result.valid).toBe(true);
+  });
+
   it('rejects compressThreshold <= 0', () => {
     const cfg = deepMerge(validConfig, { image: { compressThreshold: 0 } } as any);
     const result = validateConfig(cfg);

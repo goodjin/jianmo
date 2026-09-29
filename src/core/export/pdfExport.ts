@@ -3,7 +3,17 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { marked } from 'marked';
 import type { PdfConfig, PdfExportTemplateId } from '@types';
-import { readKatexCss, renderMarkdownMath } from './htmlExport';
+import {
+  addHeadingAnchors,
+  formatInlineMarkdown,
+  headingAnchor,
+  headingSlug,
+  readKatexCss,
+  renderMarkdownMath,
+  splitMarkdownForExport,
+  stripCustomIdToken,
+} from './htmlExport';
+import { highlightFencedCodeInHtml } from './codeHighlight';
 import {
   buildMermaidExportBootstrapScript,
   getMermaidExportDocumentCss,
@@ -155,14 +165,22 @@ export async function exportToPdf(
 export function generateTocPdf(markdown: string): string {
   const headings: { level: number; text: string; anchor: string }[] = [];
   const lines = markdown.split('\n');
+  let inFence = false;
+  let headingIndex = 0;
 
   for (const line of lines) {
+    // 围栏代码里的 "# 注释" 不是标题，不能进目录
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     const match = line.match(/^(#{1,6})\s+(.+)$/);
     if (match) {
+      headingIndex += 1;
       const level = match[1].length;
       const text = match[2].trim();
-      const anchor = generateAnchor(text);  // 使用统一函数
-      headings.push({ level, text, anchor });
+      headings.push({ level, text, anchor: headingAnchor(text, headingIndex) });
     }
   }
 
@@ -172,7 +190,8 @@ export function generateTocPdf(markdown: string): string {
   let tocHtml = '<div class="toc"><h2>目录</h2><ul>';
   for (const h of headings) {
     const indent = (h.level - 1) * 20;
-    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${escapeHtmlPdf(h.text)}</a></li>`;
+    // `{#custom-id}` 是锚点语法，不进目录文案（与 HTML 导出目录同规则）
+    tocHtml += `<li style="margin-left: ${indent}px"><a href="#${escapeHtmlPdf(h.anchor)}">${formatInlineMarkdown(stripCustomIdToken(h.text))}</a></li>`;
   }
   for (const d of diagrams) {
     tocHtml += `<li class="toc-diagram"><a href="#${d.anchor}">${escapeHtmlPdf(d.label)}</a></li>`;
@@ -191,7 +210,6 @@ export async function markdownToPdfHtml(markdown: string): Promise<string> {
 
   // M290：大文档分段解析（与 HTML 导出一致，避免极端大文档峰值过高）
   const md = renderMarkdownMath(String(markdown ?? ''));
-  const { splitMarkdownForExport } = await import('./htmlExport');
   const segments = splitMarkdownForExport(md, 256_000);
   const parts: string[] = [];
   for (const seg of segments) {
@@ -200,18 +218,18 @@ export async function markdownToPdfHtml(markdown: string): Promise<string> {
   }
   const html = parts.join('\n');
 
-  // 添加锚点到标题（使用统一函数生成锚点）
-  const withAnchors = html.replace(/<h([1-6])>(.+?)<\/h[1-6]>/g, (match, level, text) => {
-    const anchor = generateAnchor(text);
-    return `<h${level} id="${anchor}">${escapeHtmlPdf(text)}</h${level}>`;
-  });
+  // 添加锚点到标题（与 HTML 导出同一套锚点规则）
+  const withAnchors = addHeadingAnchors(html);
 
-  return transformMermaidFencesForExport(withAnchors, markdown);
+  // 代码块语法高亮（打印同样保留着色；未知语言回退原样）
+  const highlighted = await highlightFencedCodeInHtml(withAnchors, 'light');
+
+  return transformMermaidFencesForExport(highlighted, markdown);
 }
 
-/** 统一的锚点生成函数 */
+/** 统一的锚点生成函数（与 webview 大纲 slug 同规则，中文标题可跳转） */
 export function generateAnchor(text: string): string {
-  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+  return headingSlug(text);
 }
 
 /** 学术风：衬线、偏印刷色面（与 default 区分明显） */
@@ -256,6 +274,7 @@ export function getPdfTemplateExtraCss(template: PdfExportTemplateId): string {
       tab-size: 4;
     }
     body.markly-pdf--academic blockquote {
+      background-color: #faf7f0;
       border-left-color: #8b7355;
       color: #3d3d3d;
     }
@@ -292,50 +311,23 @@ export function buildPdfHtmlDocument(
   <style>
     ${readKatexCss()}
     ${getMermaidExportDocumentCss()}
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+        'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      color: #333;
+      line-height: 1.72;
+      color: #24292e;
+      background-color: #ffffff;
       max-width: 100%;
       margin: 0;
       padding: 0;
-    }
-
-    /* TOC 样式 */
-    .toc {
-      page-break-after: always;
-      padding: 40px;
-    }
-
-    .toc h2 {
-      font-size: 24px;
-      margin-bottom: 20px;
-      border-bottom: 2px solid #333;
-      padding-bottom: 10px;
-    }
-
-    .toc ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .toc li {
-      margin: 8px 0;
-    }
-
-    .toc a {
-      color: #333;
-      text-decoration: none;
-    }
-
-    .toc a:hover {
-      text-decoration: underline;
-    }
-
-    /* 分页 */
-    .page-break {
-      page-break-after: always;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     /* 内容样式 */
@@ -343,39 +335,142 @@ export function buildPdfHtmlDocument(
       padding: 40px;
     }
 
-    h1, h2, h3, h4, h5, h6 {
-      margin-top: 24px;
-      margin-bottom: 16px;
-      font-weight: 600;
-      line-height: 1.25;
+    /* TOC 样式 */
+    .toc {
+      page-break-after: always;
+      padding: 32px 40px;
     }
 
-    h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
-    h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
-    h3 { font-size: 1.25em; }
-    h4 { font-size: 1em; }
+    .toc h2 {
+      font-size: 0.82em;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      color: #57606a;
+      margin: 0 0 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #d0d7de;
+    }
+
+    .toc ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .toc li {
+      margin: 8px 0;
+      line-height: 1.55;
+    }
+
+    .toc a {
+      color: #24292e;
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      color: #0969da;
+      text-decoration: underline;
+    }
+
+    .toc li.toc-diagram a {
+      color: #57606a;
+    }
+
+    /* 分页 */
+    .page-break {
+      page-break-after: always;
+    }
+
+    /* 标题：层级靠字重与留白拉开 */
+    h1, h2, h3, h4, h5, h6 {
+      color: #1b1f24;
+      font-weight: 650;
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+      margin: 1.6em 0 0.6em;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    h1:first-child {
+      margin-top: 0;
+    }
+
+    h1 {
+      font-size: 2em;
+      font-weight: 700;
+      letter-spacing: -0.022em;
+      padding-bottom: 0.32em;
+      border-bottom: 1px solid #d0d7de;
+    }
+
+    h2 {
+      font-size: 1.52em;
+      padding-bottom: 0.3em;
+      border-bottom: 1px solid #e7eaee;
+    }
+
+    h3 { font-size: 1.26em; }
+    h4 { font-size: 1.07em; }
+    h5 { font-size: 0.95em; color: #57606a; }
+    h6 { font-size: 0.88em; color: #57606a; }
 
     p {
-      margin: 0 0 16px 0;
+      margin: 0 0 1.1em;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    ul, ol {
+      margin: 0 0 1.1em;
+      padding-left: 1.6em;
+    }
+
+    li {
+      margin: 0.3em 0;
+    }
+
+    li::marker {
+      color: #57606a;
+    }
+
+    li > p {
+      margin-bottom: 0.5em;
+    }
+
+    li > p:last-child {
+      margin-bottom: 0;
+    }
+
+    .task-list-item,
+    li:has(> input[type='checkbox']) {
+      list-style: none;
+      margin-left: -1.35em;
+    }
+
+    input[type='checkbox'] {
+      accent-color: #0969da;
+      margin-right: 0.5em;
     }
 
     code {
-      background-color: #f6f8fa;
-      padding: 0.2em 0.4em;
-      border-radius: 3px;
-      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      font-size: 85%;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, 'PingFang SC', monospace;
+      font-size: 0.875em;
+      background-color: #f2f4f7;
+      padding: 0.15em 0.4em;
+      border-radius: 5px;
       overflow-wrap: break-word;
       word-break: break-word;
     }
 
     pre {
       background-color: #f6f8fa;
-      padding: 16px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border-radius: 6px;
-      margin-bottom: 16px;
+      border: 1px solid #e1e4e8;
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 0 0 1.1em;
       /* M84：长行换行 + 极长 token 可断行；长代码块允许跨页 */
       page-break-inside: auto;
       break-inside: auto;
@@ -389,13 +484,58 @@ export function buildPdfHtmlDocument(
 
     pre code {
       background: transparent;
+      border: 0;
       padding: 0;
+      font-size: 12.5px;
+      line-height: 1.7;
       white-space: pre-wrap;
       word-break: break-word;
       overflow-wrap: anywhere;
     }
 
+    blockquote {
+      margin: 0 0 1.1em;
+      padding: 0.85em 1.2em;
+      color: #57606a;
+      background-color: #f6f8fc;
+      border-left: 4px solid #4a7fc9;
+      border-radius: 0 8px 8px 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    blockquote > :last-child {
+      margin-bottom: 0;
+    }
+
     /* 表格：表头重复、行尽量不拆开 */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0 0 1.1em;
+      font-size: 0.95em;
+      border: 1px solid #d0d7de;
+    }
+
+    table th, table td {
+      border: 1px solid #e1e4e8;
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: break-word;
+    }
+
+    table th {
+      background-color: #eef4fd;
+      color: #1b1f24;
+      font-weight: 600;
+      border-bottom-color: #d0d7de;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #fafbfc;
+    }
+
     thead {
       display: table-header-group;
     }
@@ -416,45 +556,34 @@ export function buildPdfHtmlDocument(
       overflow-x: auto;
     }
 
-    blockquote {
-      margin: 0 0 16px 0;
-      padding: 0 1em;
-      color: #6a737d;
-      border-left: 0.25em solid #dfe2e5;
-    }
-
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-bottom: 16px;
-    }
-
-    table th, table td {
-      border: 1px solid #dfe2e5;
-      padding: 6px 13px;
-    }
-
-    table th {
-      background-color: #f6f8fa;
-      font-weight: 600;
-    }
-
-    ul, ol {
-      margin-bottom: 16px;
-      padding-left: 2em;
-    }
-
     img {
       max-width: 100%;
       height: auto;
+      border-radius: 6px;
+    }
+
+    a {
+      color: #0969da;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    hr {
+      height: 1px;
+      border: 0;
+      margin: 1.8em 0;
+      background-color: #d0d7de;
     }
 
     .footnote {
       font-size: 0.9em;
-      color: #666;
-      border-top: 1px solid #ddd;
-      margin-top: 40px;
-      padding-top: 20px;
+      color: #57606a;
+      border-top: 1px solid #e7eaee;
+      margin-top: 32px;
+      padding-top: 16px;
     }
     ${extraCss}
   </style>

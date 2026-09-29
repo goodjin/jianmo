@@ -310,6 +310,10 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'EXPORT', payload: { format: 'preview' } },
     { type: 'TRACK_EDITOR_MODE', payload: { mode: 'rich' } },
     { type: 'TRACK_EDITOR_MODE', payload: { mode: 'preview' } },
+    { type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: true } },
+    { type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: false } },
+    { type: 'SET_EDITOR_THEME', payload: { theme: 'nord' } },
+    { type: 'SET_EDITOR_THEME', payload: { theme: 'github-light' } },
     { type: 'REQUEST_PREVIEW_HTML' },
     { type: 'REQUEST_PREVIEW_HTML', payload: {} },
     { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
@@ -353,6 +357,7 @@ describe('messageGuards — Webview → Extension', () => {
       false
     );
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_EDITOR_THEME', payload: { theme: 'neon' } })).toBe(false);
   });
 
   it('TRACK_EDITOR_MODE accepts legacy ir payload (ingestion only)', () => {

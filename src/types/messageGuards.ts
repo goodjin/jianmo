@@ -11,6 +11,7 @@ import type {
   WebViewMessage,
   ImageAssetCommandValue,
 } from './index';
+import { isEditorThemeSetting } from './editorTheme';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
@@ -104,7 +105,7 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   const ddr = (editor as { deferDiagramRenderInRich?: unknown }).deferDiagramRenderInRich;
   if (ddr !== undefined && typeof ddr !== 'boolean') return false;
   const theme = editor.theme;
-  if (theme !== 'auto' && theme !== 'light' && theme !== 'dark') return false;
+  if (!isEditorThemeSetting(theme)) return false;
   if (!isNumber(editor.fontSize)) return false;
   if (!isString(editor.fontFamily)) return false;
   if (!isString(image.saveDirectory)) return false;
@@ -211,6 +212,7 @@ export function isExtensionMessage(
       if (p.hostDiagnostics !== undefined && !isHostDiagnostics(p.hostDiagnostics)) return false;
       if (p.documentFolderWebviewUri !== undefined && !isString(p.documentFolderWebviewUri)) return false;
       if (p.initialEditorMode !== undefined && !isEditorMode(p.initialEditorMode)) return false;
+      if (p.toolbarCollapsed !== undefined && typeof p.toolbarCollapsed !== 'boolean') return false;
       return true;
     }
     case 'CONTENT_UPDATE': {
@@ -569,6 +571,14 @@ export function isWebViewMessage(
       const m = (p as { mode?: unknown }).mode;
       // 2.0 起协议不含 `ir`；旧 webview 若仍上报则放行并由宿主规范化为 `source`
       return isRecord(p) && (isEditorMode(m) || m === 'ir');
+    }
+    case 'SET_TOOLBAR_COLLAPSED': {
+      const p = msg.payload;
+      return isRecord(p) && typeof p.collapsed === 'boolean';
+    }
+    case 'SET_EDITOR_THEME': {
+      const p = msg.payload;
+      return isRecord(p) && isEditorThemeSetting(p.theme);
     }
     case 'REQUEST_PREVIEW_HTML':
       return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ExtensionConfig } from '@types';
+import { isEditorThemeSetting, type ExtensionConfig } from '@types';
 
 /**
  * 深度合并两个对象，确保 target 的默认值被保留
@@ -55,8 +55,8 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
   }
 
   // 验证 editor.theme
-  if (!['auto', 'light', 'dark'].includes(config.editor.theme)) {
-    errors.push(`editor.theme 必须是 "auto", "light" 或 "dark"，当前值: ${config.editor.theme}`);
+  if (!isEditorThemeSetting(config.editor.theme)) {
+    errors.push(`editor.theme 不是合法主题 ID，当前值: ${config.editor.theme}`);
   }
 
   // 验证 editor.wrapPolicy
@@ -315,6 +315,8 @@ export class ConfigurationStore implements vscode.Disposable {
     const diagramBundling =
       diagramBundlingRaw === 'external' || diagramBundlingRaw === 'embedded' ? diagramBundlingRaw : 'embedded';
     const deferDiagramRich = vsConfig.get<boolean>('editor.deferDiagramRenderInRich', false);
+    const editorThemeRaw = vsConfig.get<string>('editor.theme', DEFAULT_CONFIG.editor.theme);
+    const editorTheme = isEditorThemeSetting(editorThemeRaw) ? editorThemeRaw : DEFAULT_CONFIG.editor.theme;
     const remoteAllowRaw = vsConfig.get<string[]>('image.remoteHttpsHostsAllowlist', []);
     const remoteAllow =
       Array.isArray(remoteAllowRaw) && remoteAllowRaw.every((h) => typeof h === 'string')
@@ -340,7 +342,7 @@ export class ConfigurationStore implements vscode.Disposable {
       templates: {
         userDirectory: templatesUserDirectory,
       },
-      editor: { ...(userEditor || {}), deferDiagramRenderInRich: deferDiagramRich },
+      editor: { ...(userEditor || {}), theme: editorTheme, deferDiagramRenderInRich: deferDiagramRich },
       image: {
         ...(userImage || {}),
         sameNameHandling: imageSameNameHandling,

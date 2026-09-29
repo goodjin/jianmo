@@ -194,7 +194,8 @@ import { undoDepth, redoDepth } from 'prosemirror-history';
 import { toggleMark, wrapIn, setBlockType } from '@milkdown/prose/commands';
 import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import type { EditorView } from '@milkdown/prose/view';
-import type { ExtensionConfig } from '../../src/types';
+import type { ExtensionConfig } from '@types';
+import { isDarkEditorThemeSetting } from '@types';
 import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
 import type { RichPerfTier } from '../utils/richPerfTier';
 import { setRuntimeRichPerfTier } from '../utils/richPerfRuntime';
@@ -771,43 +772,72 @@ function scrollHeadingIntoMilkdownRoot(heading: HTMLElement): void {
   root.scrollTop += hCenterY - rootCenterY;
 }
 
-/** 大纲 / TOC：滚动到标题并（若编辑器已就绪）将光标落入该标题附近 */
-function scrollToHeading(headingId: string): void {
+/**
+ * 大纲 / TOC：滚动到标题并（若编辑器已就绪）将光标落入该标题附近。
+ *
+ * @param headingId 与大纲一致的标题 slug
+ * @param fallbackPos heading DOM 还未挂载时（如刚切到 rich / 大纲跨文档同步），
+ *                    用文档绝对位置作为兜底：直接把 ProseMirror 选区滚到 `pos`。
+ *                    两者均失败时返回 false，调用方据此决定重试或放弃。
+ */
+function scrollToHeading(headingId: string, fallbackPos?: number): boolean {
   const diagramMatch = /^markly-diagram-(\d+)$/.exec(headingId);
   if (diagramMatch) {
     const idx = Number(diagramMatch[1]);
     const el = findMermaidJumpTarget(idx);
-    if (!el) return;
+    if (!el) return false;
     scrollHeadingIntoMilkdownRoot(el);
     el.classList.add('toc-highlight');
     setTimeout(() => {
       el.classList.remove('toc-highlight');
     }, 2000);
-    return;
+    return true;
   }
 
   const heading = findHeadingElement(headingId);
-  if (!heading) return;
+  if (heading) {
+    scrollHeadingIntoMilkdownRoot(heading);
+    heading.classList.add('toc-highlight');
+    setTimeout(() => {
+      heading.classList.remove('toc-highlight');
+    }, 2000);
 
-  scrollHeadingIntoMilkdownRoot(heading);
-  heading.classList.add('toc-highlight');
-  setTimeout(() => {
-    heading.classList.remove('toc-highlight');
-  }, 2000);
-
-  if (!editor) return;
-  try {
-    const view = editor.ctx.get(editorViewCtx);
-    const pos = view.posAtDOM(heading, 0);
-    if (!Number.isFinite(pos) || pos < 0) return;
-    const max = view.state.doc.content.size;
-    const clamped = Math.min(Math.max(1, pos), Math.max(1, max - 1));
-    const $p = view.state.doc.resolve(clamped);
-    view.dispatch(view.state.tr.setSelection(TextSelection.near($p)).scrollIntoView());
-    view.focus();
-  } catch (e) {
-    console.warn('[Milkdown] scrollToHeading: could not move caret:', e);
+    if (!editor) return true;
+    try {
+      const view = editor.ctx.get(editorViewCtx);
+      const pos = view.posAtDOM(heading, 0);
+      if (Number.isFinite(pos) && pos >= 0) {
+        const max = view.state.doc.content.size;
+        const clamped = Math.min(Math.max(1, pos), Math.max(1, max - 1));
+        const $p = view.state.doc.resolve(clamped);
+        view.dispatch(view.state.tr.setSelection(TextSelection.near($p)).scrollIntoView());
+        view.focus();
+      }
+      return true;
+    } catch (e) {
+      console.warn('[Milkdown] scrollToHeading: could not move caret:', e);
+      // DOM 滚动已经完成，光标同步失败：视为整体成功，避免 caller 误以为未跳
+      return true;
+    }
   }
+
+  // 兜底：heading DOM 还未挂载时（例如刚切到 Rich / 大纲与文档状态不同步），
+  // 用 caller 传入的 doc position 直接走 ProseMirror scrollIntoView。
+  if (editor && typeof fallbackPos === 'number' && Number.isFinite(fallbackPos)) {
+    try {
+      const view = editor.ctx.get(editorViewCtx);
+      const max = view.state.doc.content.size;
+      const clamped = Math.min(Math.max(1, fallbackPos), Math.max(1, max - 1));
+      const $p = view.state.doc.resolve(clamped);
+      view.dispatch(view.state.tr.setSelection(TextSelection.near($p)).scrollIntoView());
+      view.focus();
+      return true;
+    } catch (e) {
+      console.warn('[Milkdown] scrollToHeading fallback: could not scroll by pos:', e);
+      return false;
+    }
+  }
+  return false;
 }
 
 // 检查文档中是否已有 TOC
@@ -1209,10 +1239,9 @@ function initMermaid(): void {
       if (!mermaidRuntimeInitialized) {
         let theme = 'default';
         const config = safeConfig.value;
-        if (config?.editor?.theme === 'dark') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDarkEditorThemeSetting(config?.editor?.theme, prefersDark)) {
           theme = 'dark';
-        } else if (config?.editor?.theme === 'auto') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
         }
         try {
           const themeVariables = readVscodeCssThemeVariablesForMermaid();
@@ -2674,7 +2703,7 @@ defineExpose({
 .milkdown-editor .editor {
   font-family: v-bind('safeConfig.editor.fontFamily');
   font-size: v-bind('safeConfig.editor.fontSize * 1.5 + "px"');
-  line-height: 1.6;
+  line-height: 1.72;
   outline: none;
   min-height: 100%;
 }
@@ -2717,45 +2746,53 @@ defineExpose({
   color: var(--vscode-editor-selectionForeground, inherit);
 }
 
+/* Markdown 版式：与导出/预览同一套层级语言（字重 + 留白拉开层次） */
+.milkdown-editor h1,
+.milkdown-editor h2,
+.milkdown-editor h3,
+.milkdown-editor h4,
+.milkdown-editor h5,
+.milkdown-editor h6 {
+  color: var(--vscode-editor-foreground);
+  font-weight: 650;
+  line-height: 1.32;
+  letter-spacing: -0.01em;
+  margin: 1.15em 0 0.5em;
+}
+
 .milkdown-editor h1 {
-  font-size: 2.2em;
-  font-weight: 600;
-  margin: 0.5em 0;
-  padding-bottom: 0.3em;
+  font-size: 2.15em;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  margin-bottom: 0.55em;
+  padding-bottom: 0.32em;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .milkdown-editor h2 {
-  font-size: 1.7em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 1.62em;
+  margin-bottom: 0.5em;
   padding-bottom: 0.3em;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .milkdown-editor h3 {
-  font-size: 1.4em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 1.32em;
 }
 
 .milkdown-editor h4 {
-  font-size: 1.2em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 1.12em;
 }
 
 .milkdown-editor h5 {
-  font-size: 1.1em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 1em;
+  color: var(--vscode-descriptionForeground);
 }
 
 .milkdown-editor h6 {
-  font-size: 1em;
-  font-weight: 600;
-  margin: 0.5em 0;
+  font-size: 0.92em;
   color: var(--vscode-descriptionForeground);
+  letter-spacing: 0.015em;
 }
 
 /* 高亮样式 */
@@ -2794,7 +2831,11 @@ defineExpose({
 }
 
 .milkdown-editor p {
-  margin: 0.5em 0;
+  margin: 0.65em 0;
+}
+
+.milkdown-editor p:first-child {
+  margin-top: 0;
 }
 
 .milkdown-editor img {
@@ -2810,22 +2851,31 @@ defineExpose({
 
 .milkdown-editor code {
   background: var(--vscode-textCodeBlock-background);
-  padding: 0.2em 0.4em;
-  border-radius: 4px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  padding: 0.12em 0.38em;
+  border-radius: 6px;
   font-family: var(--vscode-editor-font-family);
-  font-size: 0.9em;
+  font-size: 0.88em;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .milkdown-editor pre {
   background: var(--vscode-textCodeBlock-background);
-  padding: 24px;
-  border-radius: 12px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  padding: 16px 18px;
+  border-radius: 10px;
   overflow-x: auto;
+  margin: 0.75em 0;
 }
 
 .milkdown-editor pre code {
   padding: 0;
   background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.92em;
+  line-height: 1.7;
 }
 
 /* Shiki 代码高亮样式 */
@@ -2924,9 +2974,28 @@ defineExpose({
 
 .milkdown-editor blockquote {
   border-left: 4px solid var(--vscode-textBlockQuote-border);
-  margin: 0.5em 0;
-  padding-left: 1em;
+  margin: 0.75em 0;
+  padding: 0.85em 1.25em;
   color: var(--vscode-textBlockQuote-foreground);
+  background: var(--vscode-textBlockQuote-background, rgba(120, 120, 120, 0.08));
+  border-radius: 0 10px 10px 0;
+}
+
+.milkdown-editor blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* 链接：默认干净，悬停/键盘聚焦时给下划线反馈 */
+.milkdown-editor a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.milkdown-editor a:hover,
+.milkdown-editor a:focus-visible {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .milkdown-editor table {
@@ -2955,7 +3024,8 @@ defineExpose({
 
 .milkdown-editor th {
   background: var(--vscode-editor-inactiveSelectionBackground);
-  font-weight: 600;
+  font-weight: 650;
+  vertical-align: top;
 }
 
 /* M38：Mermaid 不可用 / 渲染失败时的占位（含源码回退） */
@@ -2984,8 +3054,20 @@ defineExpose({
 
 .milkdown-editor ul,
 .milkdown-editor ol {
-  padding-left: 2em;
-  margin: 0.5em 0;
+  padding-left: 1.7em;
+  margin: 0.65em 0;
+}
+
+.milkdown-editor li {
+  margin: 0.28em 0;
+}
+
+.milkdown-editor li::marker {
+  color: var(--vscode-descriptionForeground);
+}
+
+.milkdown-editor li > p {
+  margin: 0.35em 0;
 }
 
 /* TOC 高亮样式 */

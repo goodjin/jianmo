@@ -65,6 +65,11 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
   ) {}
 
   private static readonly LAST_MODE_BY_URI_STATE_KEY = 'markly.editorModeByDocumentUri';
+  private static readonly TOOLBAR_COLLAPSED_GLOBAL_KEY = 'markly.toolbarCollapsed';
+
+  private readToolbarCollapsed(): boolean {
+    return this.context.globalState.get<boolean>(MarkdownEditorProvider.TOOLBAR_COLLAPSED_GLOBAL_KEY) ?? false;
+  }
 
   private readLastModesMap(): Record<string, string> {
     return (
@@ -594,6 +599,28 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         break;
       }
 
+      case 'SET_TOOLBAR_COLLAPSED': {
+        void this.context.globalState.update(
+          MarkdownEditorProvider.TOOLBAR_COLLAPSED_GLOBAL_KEY,
+          Boolean(message.payload.collapsed)
+        );
+        break;
+      }
+
+      case 'SET_EDITOR_THEME': {
+        const theme = message.payload.theme;
+        try {
+          await vscode.workspace.getConfiguration('markly').update(
+            'editor.theme',
+            theme,
+            vscode.ConfigurationTarget.Global
+          );
+        } catch (err) {
+          console.warn('[Markly] persist editor.theme failed', err);
+        }
+        break;
+      }
+
       case 'REQUEST_PREVIEW_HTML': {
         const panel = this.webviews.get(uri);
         const docNow = this.documentStore.getDocument(uri);
@@ -944,6 +971,7 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
         hostDiagnostics: this.buildHostDiagnostics(),
         ...(documentFolderWebviewUri ? { documentFolderWebviewUri } : {}),
         initialEditorMode,
+        toolbarCollapsed: this.readToolbarCollapsed(),
       },
     };
   }

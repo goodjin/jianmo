@@ -76,7 +76,7 @@
   "config.markly.image.compressThreshold.description": "图片压缩阈值（字节，默认 500KB）",
   "config.markly.image.compressQuality.description": "图片压缩质量（0–1）",
   "config.markly.image.sameNameHandling.description": "保存图片时若文件名已存在：覆盖 / 自动改名 / 弹窗询问",
-  "config.markly.editor.theme.description": "编辑器主题",
+  "config.markly.editor.theme.description": "编辑器配色主题。也可在顶栏「设置」中选择；选择后会记住。",
   "config.markly.editor.openMode.markdownDescription": "用 Markly 打开文档时的**初始模式**。\n\n- **`remember`（默认）**：同一工作区内，按**该文件上次关闭前使用的模式**恢复（存于 `workspaceState`，不跨设备同步）。\n- **`rich` / `source` / `preview`**：每次打开都固定从该模式开始（仅影响首次进入；之后仍可用顶栏或命令切换）。\n\n切换方式：顶栏 **Rich / Source / 预览**，或命令 **循环编辑模式**。",
   "config.markly.editor.fontSize.description": "编辑器字号",
   "config.markly.editor.fontFamily.description": "编辑器字体",

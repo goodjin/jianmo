@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   cleanHeadingText,
   generateHeadingId,
+  headingNodeId,
   parseHeadings,
   buildTree,
   collectOutlineFilterIndices,
@@ -64,6 +65,63 @@ describe('parseHeadings', () => {
     expect(headings[0]).toMatchObject({ text: '长标题 Example', from: 0 });
     expect(cleanHeadingText('Title {#id}')).toBe('Title');
     expect(generateHeadingId(headings[0].text)).toBe('长标题-example');
+  });
+
+  it('应该把 {#custom-id} 记进 customId（显示文本不带它）', () => {
+    const headings = parseHeadings('# 快速开始 {#quick}\n## 普通标题');
+
+    expect(headings[0]).toMatchObject({ text: '快速开始', customId: 'quick' });
+    expect(headings[1].customId).toBeUndefined();
+  });
+
+  it('应该忽略围栏代码块里的 "# 注释" 行', () => {
+    const content = ['# 标题', '', '```bash', '# 安装并构建', 'npm install', '```', '', '## 结尾'].join('\n');
+    const headings = parseHeadings(content);
+
+    expect(headings.map((h) => h.text)).toEqual(['标题', '结尾']);
+  });
+
+  it('未闭合围栏之后的 "# 行" 全部视为代码（与目录同规则）', () => {
+    const content = ['```ts', 'const a = 1;', '# 不是标题', '## 也不是标题'].join('\n');
+    expect(parseHeadings(content)).toEqual([]);
+  });
+
+  it('围栏不影响后续标题的字符定位（from/to 仍指向原文）', () => {
+    const content = ['```sh', '# 注释', '```', '', '# 真标题'].join('\n');
+    const headings = parseHeadings(content);
+
+    expect(headings).toHaveLength(1);
+    expect(content.slice(headings[0].from, headings[0].to)).toBe('# 真标题');
+    expect(headings[0].line).toBe(4);
+  });
+
+  it('缩进的围栏开合行同样生效（与 utils/toc 同规则）', () => {
+    const content = ['正文', '', '  ```', '# 代码里的注释', '  ```', '', '# 真标题'].join('\n');
+    const headings = parseHeadings(content);
+
+    expect(headings.map((h) => h.text)).toEqual(['真标题']);
+  });
+
+  it('围栏之后的标题同样解析 {#custom-id}', () => {
+    const content = ['```sh', '# 注释', '```', '', '## 快速开始 {#quick}'].join('\n');
+    const headings = parseHeadings(content);
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toMatchObject({ text: '快速开始', customId: 'quick' });
+  });
+});
+
+describe('headingNodeId（与导出/预览锚点同契约）', () => {
+  it('自定义锚点优先，其次文本 slug（保留中文）', () => {
+    const headings = parseHeadings('# 标题 Title {#quick}\n## 中文标题\n');
+    expect(headingNodeId(headings[0], 1)).toBe('quick');
+    expect(headingNodeId(headings[1], 2)).toBe('中文标题');
+  });
+
+  it('slug 为空时按出现序号兜底', () => {
+    const headings = parseHeadings('# !!!\n## ???');
+    expect(headingNodeId(headings[0], 1)).toBe('markly-h-1');
+    expect(headingNodeId(headings[1], 2)).toBe('markly-h-2');
   });
 });
 

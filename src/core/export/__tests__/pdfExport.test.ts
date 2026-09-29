@@ -60,9 +60,15 @@ describe('generateAnchor', () => {
     expect(generateAnchor('my-heading')).toBe('my-heading');
   });
 
-  it('handles CJK characters by removing them', () => {
+  it('keeps CJK characters so Chinese headings stay linkable (与 webview 大纲 slug 一致)', () => {
     const anchor = generateAnchor('标题 Title');
-    expect(anchor).toBe('-title');
+    expect(anchor).toBe('标题-title');
+  });
+
+  it('strips inline markup before slugging (与目录/正文锚点同源)', () => {
+    expect(generateAnchor('**快速开始**')).toBe('快速开始');
+    expect(generateAnchor('Use `code` here')).toBe('use-code-here');
+    expect(generateAnchor('See [docs](https://example.com)')).toBe('see-docs');
   });
 });
 
@@ -87,6 +93,13 @@ describe('generateTocPdf', () => {
   it('generates anchors using generateAnchor', () => {
     const toc = generateTocPdf('## Hello World');
     expect(toc).toContain('href="#hello-world"');
+  });
+
+  it('keeps the {#custom-id} syntax out of TOC labels while still anchoring to it', () => {
+    const toc = generateTocPdf('## 快速开始 {#quick}');
+    expect(toc).toContain('href="#quick"');
+    expect(toc).toContain('>快速开始</a>');
+    expect(toc).not.toContain('{#quick}');
   });
 
   it('indents by heading level', () => {

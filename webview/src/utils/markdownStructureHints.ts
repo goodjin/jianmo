@@ -1,7 +1,7 @@
 /**
  * M77：长文结构启发式——锚点重复、标题层级断层、开篇层级过深（本地分析，不涉及 AI）。
  */
-import { generateHeadingId, getDuplicateHeadingSlugs, parseHeadings } from '../shared/outline';
+import { getDuplicateHeadingSlugs, headingNodeId, parseHeadings } from '../shared/outline';
 
 export type MarkdownStructureHintKind = 'duplicate_anchor' | 'heading_level_jump' | 'first_heading_deep';
 
@@ -41,8 +41,9 @@ export function analyzeMarkdownStructureHints(markdown: string): MarkdownStructu
   const hints: MarkdownStructureHint[] = [];
   const dupSlugs = getDuplicateHeadingSlugs(headings);
 
-  for (const h of headings) {
-    const headingId = generateHeadingId(h.text);
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i]!;
+    const headingId = headingNodeId(h, i + 1);
     if (dupSlugs.has(headingId)) {
       hints.push({
         kind: 'duplicate_anchor',
@@ -62,7 +63,7 @@ export function analyzeMarkdownStructureHints(markdown: string): MarkdownStructu
       line: first.line + 1,
       headingText: first.text,
       from: first.from,
-      headingId: generateHeadingId(first.text),
+      headingId: headingNodeId(first, 1),
       message: `文档以 H${first.level} 起头，长文可考虑用 H1/H2 便于导航`,
     });
   }
@@ -76,7 +77,7 @@ export function analyzeMarkdownStructureHints(markdown: string): MarkdownStructu
         line: cur.line + 1,
         headingText: cur.text,
         from: cur.from,
-        headingId: generateHeadingId(cur.text),
+        headingId: headingNodeId(cur, i + 1),
         message: `H${prev.level} 后直连 H${cur.level}（缺 H${prev.level + 1}），易在大纲中“断层”`,
       });
     }

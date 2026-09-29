@@ -76,7 +76,7 @@
   "config.markly.image.compressThreshold.description": "Image compression threshold in bytes (500KB default)",
   "config.markly.image.compressQuality.description": "Image compression quality (0-1)",
   "config.markly.image.sameNameHandling.description": "When saving a pasted/dropped image, if an asset filename already exists: overwrite file, pick a unique name automatically, or ask (prompt)",
-  "config.markly.editor.theme.description": "Editor theme",
+  "config.markly.editor.theme.description": "Editor color theme. Also available from the Settings button in the editor. The last choice is remembered.",
   "config.markly.editor.openMode.markdownDescription": "Which mode loads when opening a document in Markly.\n\n- **`remember`** (default): reopen with the **last mode used for that file** within this workspace (`workspaceState`; not synced across machines).\n- **`rich` / `source` / `preview`**: always start in that mode (overrides remembered state for initial open only).\n\nUse the **Cycle Edit Mode** command or the Rich / Source / **Preview** rail to switch afterward.",
   "config.markly.editor.fontSize.description": "Editor font size",
   "config.markly.editor.fontFamily.description": "Editor font family",

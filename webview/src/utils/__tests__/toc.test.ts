@@ -63,13 +63,20 @@ Some text
       expect(headings[1].text).toBe('Another Real Heading');
     });
 
-    it('should strip existing custom IDs from heading text', () => {
+    it('should strip existing custom IDs from heading text and use the custom ID as anchor', () => {
       const markdown = '# My Title {#custom-id}';
       const headings = extractHeadings(markdown);
       expect(headings[0].text).toBe('My Title');
-      // Notice: generateHeadingId generates ID from the text, it currently doesn't preserve the {#custom-id} in the AST
-      // but it does strip it from the display text correctly
+      // 锚点契约：`{#custom-id}` 优先（与导出/预览 heading.id 一致），目录链接才能跳转到目标
+      expect(headings[0].id).toBe('custom-id');
+    });
+
+    it('falls back to slug when no custom ID, and to ordinal when the slug is empty', () => {
+      const markdown = ['# My Title', '# {#only-custom}', '# !!!'].join('\n');
+      const headings = extractHeadings(markdown);
       expect(headings[0].id).toBe('my-title');
+      expect(headings[1].id).toBe('only-custom');
+      expect(headings[2].id).toBe('markly-h-3');
     });
   });
 

@@ -109,6 +109,9 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录 md 分页 100 + 更多。
+- [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。
+- [X] **工具栏收起/展开**：`Toolbar` 右侧「收起」、收起后单行「展开」；`SET_TOOLBAR_COLLAPSED` + `globalState` 跨文档/会话记忆；**2.0.3**。
 - [X] **2.0**：移除 **`EditorMode='ir'`**；仅 **Rich / Source / Preview**；`workspaceState` 与 **TRACK** 将遗留 `ir` 规范为 `source`。**版本 2.0.0**。
 - [X] 内嵌**预览模式**（Rich/Source/预览 顶栏）+ **`markly.editor.openMode`**（remember/rich/source/preview）与按 URI 的 `workspaceState` 记忆；契约单测与 ExTester 用例已对齐。
 - [X] **手工验收链路**：`npm run manual:vscode` 会先 **build extension + webview**，避免看不到最新 UI；INIT 后轮询 `ensureEditorUntil` 修「首帧无工具栏」；脚本生成 `fixture-workspace/assets` 多张彩色 PNG。

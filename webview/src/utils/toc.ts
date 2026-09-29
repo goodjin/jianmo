@@ -3,6 +3,12 @@
  * 用于生成、更新 Markdown 文档的目录
  */
 
+import {
+  extractCustomHeadingId,
+  headingSlug,
+  stripCustomIdToken,
+} from '../../../src/core/export/headingAnchor';
+
 // TOC 标记
 export const TOC_PLACEHOLDER = '<!-- TOC -->';
 export const TOC_REGEX = /<!--\s*TOC\s*-->[\s\S]*?(?=<!--\s*\/TOC\s*-->|$)<!--\s*\/TOC\s*-->|<!--\s*TOC\s*-->/i;
@@ -16,17 +22,12 @@ export interface TocItem {
 }
 
 /**
- * 生成标题 ID
+ * 生成标题 ID（与导出/预览锚点的 slug 同规则，权威实现见 src/core/export/headingAnchor.ts）
  * @param text 标题文本
  * @returns ID
  */
 export function generateHeadingId(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fa5\s-]/g, '') // 移除特殊字符，保留中文
-    .replace(/\s+/g, '-') // 空格替换为连字符
-    .replace(/-+/g, '-') // 多个连字符合并
-    .replace(/^-|-$/g, ''); // 移除首尾连字符
+  return headingSlug(text);
 }
 
 /**
@@ -52,12 +53,15 @@ export function extractHeadings(markdown: string): TocItem[] {
     const match = line.match(/^(#{1,6})\s+(.+)$/);
     if (match) {
       const level = match[1].length;
-      // 移除已有的 ID 锚点以获取纯文本
+      // 移除已有的 ID 锚点以获取纯文本（与大纲 cleanHeadingText 同规则）
       const rawText = match[2].trim();
-      const cleanText = rawText.replace(/\{#[^}]+\}$/, '').trim();
+      const cleanText = stripCustomIdToken(rawText);
 
-      // 生成标题 ID
-      const id = generateHeadingId(cleanText);
+      // 与导出/预览锚点同契约：`{#custom-id}` 优先，其次文本 slug，兜底按出现序号
+      const id =
+        extractCustomHeadingId(rawText) ||
+        generateHeadingId(cleanText) ||
+        `markly-h-${headings.length + 1}`;
       headings.push({ level, text: cleanText, id });
     }
   }

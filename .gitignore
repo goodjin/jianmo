@@ -5,6 +5,9 @@ node_modules/
 dist/
 out/
 
+# 独立桌面 app 构建产物（dmg + 中间未压缩 .app，避免 Launchpad/Spotlight 索引到 release/mac-arm64/Markly.app 出现"两个 Markly"）
+app/release/
+
 # Logs
 *.log
 npm-debug.log*

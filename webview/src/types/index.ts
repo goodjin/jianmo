@@ -23,6 +23,8 @@ export interface HeadingNode {
   children?: HeadingNode[];
   /** 是否折叠 */
   collapsed?: boolean;
+  /** `{#custom-id}` 自定义锚点（如有）；锚点解析时优先于文本 slug */
+  customId?: string;
 }
 
 // 查找替换类型

@@ -1,8 +1,16 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [vue()],
+  // 与 vite.config.ts 的别名保持一致：单测走 vitest，不经过 vite.config
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      '@types': resolve(__dirname, '../src/types'),
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

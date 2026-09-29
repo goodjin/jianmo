@@ -4,6 +4,7 @@
 
 - **扩展入口包**（`dist/extension/index.js`）经 esbuild 打包；**不得**把 Puppeteer 浏览器二进制打进该包（`puppeteer` 为 **external**，运行时由依赖安装拉取 Chromium）。
 - **Shiki / Mermaid**：作为 **npm 依赖** 供导出与 webview 构建使用；Rich 中可通过设置关闭 **Shiki** / **Mermaid** 以降低运行时负载。
+- **导出代码高亮切片**（`dist/extension/markly-code-highlight.cjs`）：Shiki 语法高亮器单独打成一个产物，由导出/预览渲染时**按需加载**（`src/core/export/codeHighlight.ts`）；入口包把 `shiki*` / `@shikijs/*` 标为 external，不承担高亮器体积。切片缺失或加载失败时回退素色代码块，导出不受影响。
 - **门禁**：`npm run check:bundle`（`scripts/check_webview_bundle.mjs` + `scripts/check_extension_bundle.mjs`）限制宿主/ webview 的体积与 gzip；调阈值请同步评审。
 
 ## Budget（M313）
@@ -15,7 +16,12 @@
 - `MARKLY_EXTENSION_MAX_BYTES`：默认 500KB
 - `MARKLY_EXTENSION_MAX_GZIP_BYTES`：默认 180KB
 
-实现：`scripts/check_extension_bundle.mjs`
+### 导出高亮切片（`dist/extension/markly-code-highlight.cjs`）
+
+- `MARKLY_EXTENSION_SHIKI_MAX_BYTES`：默认 2.2MB
+- `MARKLY_EXTENSION_SHIKI_MAX_GZIP_BYTES`：默认 300KB
+
+实现：`scripts/check_extension_bundle.mjs`（同时检查上述两个产物）
 
 ### Webview dist（`dist/webview/`）
 
@@ -31,7 +37,7 @@
 | 依赖 | 策略 |
 |------|------|
 | Puppeteer | external；PDF 导出时按需启动 |
-| Shiki | 依赖；Rich 默认关，可关 |
+| Shiki | 依赖；Rich 默认关，可关；导出代码高亮走独立切片按需加载（`markly-code-highlight.cjs`） |
 | Mermaid | 依赖；Rich 默认可关；导出内联脚本见导出管线 |
 
 仓库脚本与 CI 以实际 `package.json` / `esbuild` 外部化为准。
