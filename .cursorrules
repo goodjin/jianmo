@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版复制成功打勾**：顶栏复制按钮成功后短暂显示绿色打勾（描边动画），约 1.6 秒恢复；失败保持复制图标并标红。桌面版 **0.4.2**。
 - [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录 md 分页 100 + 更多。
 - [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。
 - [X] **工具栏收起/展开**：`Toolbar` 右侧「收起」、收起后单行「展开」；`SET_TOOLBAR_COLLAPSED` + `globalState` 跨文档/会话记忆；**2.0.3**。

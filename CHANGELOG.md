@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 桌面版
+
+- 顶栏复制按钮在复制成功后短暂变成绿色打勾（描边画出），约 1.6 秒后恢复成复制图标；失败时图标不变、边框变红。桌面版 **0.4.2**。
+
 ### Mid Phase (M305–M316) snapshot
 
 - Docs: Profiles support (`docs/CONFIG_PROFILES_M305.md`), enterprise managed settings (`docs/ENTERPRISE_POLICY_MANAGED_SETTINGS_M306.md`).

@@ -94,8 +94,60 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(copy).not.toBeNull();
     // 复制紧跟在 "+" 前面
     expect(plus.previousElementSibling).toBe(copy);
-    // 图标按钮：不再带「复制」文字
+    // 图标按钮：不再带「复制」文字，空闲时是复制符号
     expect(copy.textContent?.trim()).not.toContain('复制');
+    expect(copy.textContent).toContain('⧉');
+    expect(copy.querySelector('.tab-copy-mark')).toBeNull();
+  });
+
+  it('复制成功后按钮变成打勾，一会儿恢复成复制图标', async () => {
+    vi.useFakeTimers();
+    try {
+      const copyToClipboard = vi.fn(async () => true);
+      (window as unknown as { electron: ElectronAppBridge }).electron.copyToClipboard = copyToClipboard;
+
+      const el = mount();
+      await flush();
+      const copy = el.querySelector('.tab-copy') as HTMLButtonElement;
+      copy.click();
+      await flush();
+
+      expect(copyToClipboard).toHaveBeenCalledTimes(1);
+      expect(copy.classList.contains('is-copied')).toBe(true);
+      expect(copy.querySelector('.tab-copy-mark')).not.toBeNull();
+      expect(copy.textContent).not.toContain('⧉');
+      expect(copy.getAttribute('aria-label')).toContain('已复制');
+
+      const firstMark = copy.querySelector('.tab-copy-mark');
+      copy.click();
+      await flush();
+      expect(copyToClipboard).toHaveBeenCalledTimes(2);
+      expect(copy.querySelector('.tab-copy-mark')).not.toBe(firstMark);
+
+      await vi.advanceTimersByTimeAsync(1600);
+      await nextTick();
+      expect(copy.classList.contains('is-copied')).toBe(false);
+      expect(copy.querySelector('.tab-copy-mark')).toBeNull();
+      expect(copy.textContent).toContain('⧉');
+      expect(copy.getAttribute('aria-label')).toContain('复制全文');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('复制失败时不显示打勾，提示失败', async () => {
+    (window as unknown as { electron: ElectronAppBridge }).electron.copyToClipboard = vi.fn(async () => false);
+
+    const el = mount();
+    await flush();
+    const copy = el.querySelector('.tab-copy') as HTMLButtonElement;
+    copy.click();
+    await flush();
+
+    expect(copy.classList.contains('is-copied')).toBe(false);
+    expect(copy.classList.contains('is-failed')).toBe(true);
+    expect(copy.querySelector('.tab-copy-mark')).toBeNull();
+    expect(copy.getAttribute('aria-label')).toBe('复制失败');
   });
 
   it('设置固定在「最近打开」面板最后一行，点击进设置页', async () => {

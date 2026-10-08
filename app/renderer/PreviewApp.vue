@@ -31,12 +31,18 @@
       <template #pre-new>
         <button
           class="chrome-btn tab-copy"
+          :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
           type="button"
           :disabled="copying"
           :title="copyTitle"
           :aria-label="copyTitle"
           @click="onCopy"
-        >⧉</button>
+        >
+          <svg v-if="copied" :key="copiedTick" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
+          </svg>
+          <span v-else aria-hidden="true">⧉</span>
+        </button>
       </template>
     </TabBar>
     <FileTree
@@ -131,6 +137,8 @@ const activeFilePath = computed(
 const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
+/** 每次成功都 +1，让打勾 SVG 重新挂载，连点时描边动画会再播一次。 */
+const copiedTick = ref(0);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
 const copyTitle = computed(() => {
@@ -335,6 +343,7 @@ function flashCopyState(ok: boolean): void {
   }
   copied.value = ok;
   copyFailed.value = !ok;
+  if (ok) copiedTick.value += 1;
   copiedTimer = setTimeout(() => {
     copied.value = false;
     copyFailed.value = false;
@@ -556,8 +565,11 @@ html, body, #app {
   padding: 6px 10px;
   min-width: 32px;
 }
-/* 复制：新建标签页左侧的小图标按钮 */
+/* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
 .tab-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   align-self: center;
   width: 28px;
   min-width: 28px;
@@ -569,6 +581,51 @@ html, body, #app {
   line-height: 1;
 }
 .tab-copy:disabled { opacity: 0.55; }
+.tab-copy.is-copied {
+  color: #1a7f37;
+  border-color: #1a7f37;
+  background: #dafbe1;
+}
+.tab-copy.is-copied:hover {
+  background: #aceebb;
+}
+.tab-copy.is-failed {
+  color: var(--markly-error, #cf222e);
+  border-color: var(--markly-error, #cf222e);
+}
+:global(html[data-theme='dark']) .tab-copy.is-copied {
+  color: #3fb950;
+  border-color: #3fb950;
+  background: rgba(63, 185, 80, 0.18);
+}
+:global(html[data-theme='dark']) .tab-copy.is-copied:hover {
+  background: rgba(63, 185, 80, 0.28);
+}
+.tab-copy-mark {
+  width: 15px;
+  height: 15px;
+  display: block;
+  overflow: visible;
+}
+.tab-copy-mark path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 18;
+  stroke-dashoffset: 18;
+  animation: tab-copy-draw 280ms ease-out forwards;
+}
+@keyframes tab-copy-draw {
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-copy-mark path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
 
 .outline-sidebar {
   grid-column: 2;
