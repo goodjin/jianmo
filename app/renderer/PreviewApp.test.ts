@@ -98,6 +98,63 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(copy.textContent?.trim()).not.toContain('复制');
   });
 
+  it('最近打开菜单点空白处收起，点菜单内部不收起', async () => {
+    const el = mount();
+    await flush();
+
+    (el.querySelector('.open-caret') as HTMLElement).click();
+    await flush();
+    expect(el.querySelector('.recent-menu')).not.toBeNull();
+
+    // 菜单里的空白（标题区）不算“外面”
+    (el.querySelector('.recent-title') as HTMLElement).dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true })
+    );
+    await flush();
+    expect(el.querySelector('.recent-menu')).not.toBeNull();
+
+    // 预览 iframe 盖不住父页面的点击：全屏透明层接住空白点击
+    const dismiss = el.querySelector('.recent-dismiss') as HTMLElement;
+    expect(dismiss).not.toBeNull();
+    dismiss.click();
+    await flush();
+    expect(el.querySelector('.recent-menu')).toBeNull();
+    expect(el.querySelector('.recent-dismiss')).toBeNull();
+
+    // 侧栏、预览区这类“外面”的按下也要收起（不依赖遮罩那一下 click）
+    (el.querySelector('.open-caret') as HTMLElement).click();
+    await flush();
+    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    el.querySelector('.preview-area')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await flush();
+    expect(el.querySelector('.recent-menu')).toBeNull();
+  });
+
+  it('最近打开菜单在焦点进入预览时收起', async () => {
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<p>正文</p>' });
+    await flush();
+
+    (el.querySelector('.open-caret') as HTMLElement).click();
+    await flush();
+    expect(el.querySelector('.recent-menu')).not.toBeNull();
+
+    // 普通失焦（焦点没进预览）不收起
+    window.dispatchEvent(new Event('blur'));
+    await flush();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(el.querySelector('.recent-menu')).not.toBeNull();
+
+    const frame = el.querySelector('.preview-frame') as HTMLIFrameElement;
+    expect(frame).not.toBeNull();
+    frame.focus();
+    window.dispatchEvent(new Event('blur'));
+    await flush();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(el.querySelector('.recent-menu')).toBeNull();
+  });
+
   it('设置固定在「最近打开」面板最后一行，点击进设置页', async () => {
     const el = mount();
     await flush();

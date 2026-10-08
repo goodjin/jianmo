@@ -16,6 +16,17 @@
     >
       <template #left>
         <div ref="openSplitRef" class="open-split">
+          <!--
+            预览在沙箱 iframe 里，父文档的点击监听收不到里面的空白点击。
+            菜单打开时铺一层全屏透明层，点到菜单和打开按钮以外就收起。
+          -->
+          <div
+            v-if="recentOpen"
+            class="recent-dismiss"
+            aria-hidden="true"
+            @pointerdown.stop.prevent
+            @click.stop="closeRecent"
+          />
           <button class="chrome-btn open-main" type="button" title="打开 Markdown 文件" @click="onOpen">打开…</button>
           <button
             class="chrome-btn open-caret"
@@ -132,6 +143,7 @@ const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+let blurCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 const copyTitle = computed(() => {
   if (copied.value) return '已复制到剪贴板（Markdown + 富文本）';
@@ -300,15 +312,32 @@ async function onOpenRecent(p: string): Promise<void> {
   await electronApp()?.openPath?.(p);
 }
 
-function onDocMouseDown(ev: MouseEvent): void {
+function onDocPointerDown(ev: PointerEvent): void {
   if (!recentOpen.value) return;
+  const target = ev.target;
+  // 遮罩自己的 click 负责收起，并吃掉这次点击，避免落到下面的预览上
+  if (target instanceof Element && target.closest('.recent-dismiss')) return;
   const root = openSplitRef.value;
-  if (root && ev.target instanceof Node && root.contains(ev.target)) return;
+  if (root && target instanceof Node && root.contains(target)) return;
   closeRecent();
 }
 
 function onDocKeydown(ev: KeyboardEvent): void {
   if (ev.key === 'Escape') closeRecent();
+}
+
+/**
+ * 点进预览 iframe 时，父页面收不到 pointerdown，窗口会失焦，activeElement 变成这个 frame。
+ * 延后一拍再看焦点，避免把普通失焦误当成“点了空白”。
+ */
+function onWindowBlur(): void {
+  if (!recentOpen.value) return;
+  if (blurCloseTimer) clearTimeout(blurCloseTimer);
+  blurCloseTimer = setTimeout(() => {
+    blurCloseTimer = null;
+    if (!recentOpen.value) return;
+    if (document.activeElement instanceof HTMLIFrameElement) closeRecent();
+  }, 0);
 }
 
 /** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。 */
@@ -471,8 +500,9 @@ onMounted(() => {
   } catch {
     fileTreeCollapsed.value = false;
   }
-  document.addEventListener('mousedown', onDocMouseDown);
-  document.addEventListener('keydown', onDocKeydown);
+  window.addEventListener('pointerdown', onDocPointerDown, true);
+  window.addEventListener('keydown', onDocKeydown);
+  window.addEventListener('blur', onWindowBlur);
   document.addEventListener('dragover', onDragOver);
   document.addEventListener('drop', onDrop);
   postMessage({ type: 'READY', payload: undefined });
@@ -482,13 +512,18 @@ onUnmounted(() => {
   off();
   offCopyRequest?.();
   offTabsChanged?.();
-  document.removeEventListener('mousedown', onDocMouseDown);
-  document.removeEventListener('keydown', onDocKeydown);
+  window.removeEventListener('pointerdown', onDocPointerDown, true);
+  window.removeEventListener('keydown', onDocKeydown);
+  window.removeEventListener('blur', onWindowBlur);
   document.removeEventListener('dragover', onDragOver);
   document.removeEventListener('drop', onDrop);
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;
+  }
+  if (blurCloseTimer) {
+    clearTimeout(blurCloseTimer);
+    blurCloseTimer = null;
   }
 });
 </script>
@@ -540,10 +575,24 @@ html, body, #app {
 }
 .open-split {
   position: relative;
+  z-index: 40;
   display: flex;
   align-items: stretch;
   align-self: center;
   margin: 0 6px 0 8px;
+}
+/* 盖住预览 iframe 与侧栏空白；低于按钮和菜单，点菜单本身不会被这层截走 */
+.recent-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: transparent;
+  cursor: default;
+}
+.open-split .open-main,
+.open-split .open-caret {
+  position: relative;
+  z-index: 2;
 }
 .open-split .open-main {
   border-top-right-radius: 0;
