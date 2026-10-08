@@ -1,6 +1,6 @@
 {
   "name": "markly-app",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Markly 独立桌面 Markdown 查看编辑器（脱离 VSCode）",
   "author": "Markly <hi@agentlab.fun>",
