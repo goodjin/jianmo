@@ -52,6 +52,7 @@
 
 ## 复盘与交接
 
+- `docs/MARKDOWN_RENDER_SCHEME.md`：Markdown 只读渲染方案（可交给外部插件参考）
 - `docs/MID_PHASE_COMPLETE_M343.md`：中期完成声明与证据汇总
 - `docs/MID_GONOGO_M344.md`：Go/No-Go 记录
 - `docs/MID_FREEZE_REFERENCE_M350.md`：中期封板参照
