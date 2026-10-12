@@ -1,5 +1,11 @@
 <template>
-  <div class="toolbar" :class="{ 'toolbar--collapsed': collapsed }" role="toolbar" aria-label="Markly 格式与插入工具栏">
+  <div
+    class="toolbar"
+    :class="{ 'toolbar--collapsed': collapsed }"
+    :style="toolbarFontStyle"
+    role="toolbar"
+    aria-label="Markly 格式与插入工具栏"
+  >
     <div v-if="collapsed" class="toolbar-collapsed-bar">
       <button
         class="toolbar-btn toolbar-collapse-btn"
@@ -18,9 +24,9 @@
     <template v-else>
     <div class="toolbar-row toolbar-row-primary">
       <!-- 标题 -->
-      <div class="toolbar-group" role="group" aria-label="Headings">
+      <div v-if="visibleHeadings.length" class="toolbar-group" role="group" aria-label="Headings">
         <button
-          v-for="btn in headingButtons"
+          v-for="btn in visibleHeadings"
           :key="btn.id"
           class="toolbar-btn heading-btn"
           :title="btn.label"
@@ -33,12 +39,12 @@
         </button>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="visibleHeadings.length && (visibleFormat.length || visibleLists.length || showHistory)" class="toolbar-divider" aria-hidden="true"></div>
 
       <!-- 格式 -->
-      <div class="toolbar-group" role="group" aria-label="Format">
+      <div v-if="visibleFormat.length" class="toolbar-group" role="group" aria-label="Format">
         <button
-          v-for="btn in formatButtons"
+          v-for="btn in visibleFormat"
           :key="btn.id"
           class="toolbar-btn"
           :class="formatBtnClass(btn.id)"
@@ -52,12 +58,12 @@
         </button>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="visibleFormat.length && (visibleLists.length || showHistory)" class="toolbar-divider" aria-hidden="true"></div>
 
       <!-- 列表 -->
-      <div class="toolbar-group" role="group" aria-label="Lists">
+      <div v-if="visibleLists.length" class="toolbar-group" role="group" aria-label="Lists">
         <button
-          v-for="btn in listButtons"
+          v-for="btn in visibleLists"
           :key="btn.id"
           class="toolbar-btn"
           :title="btn.label"
@@ -70,12 +76,42 @@
         </button>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="visibleLists.length && showHistory" class="toolbar-divider" aria-hidden="true"></div>
 
-      <!-- 插入 -->
-      <div class="toolbar-group" role="group" aria-label="Insert">
+      <!-- 撤销/重做：跟在编辑按钮后面，避免第一行过长把插入组挤到下一行 -->
+      <div v-if="showHistory" class="toolbar-group" role="group" aria-label="History">
         <button
-          v-for="btn in insertButtons"
+          v-if="showUndo"
+          class="toolbar-btn"
+          :disabled="props.canUndo === false"
+          title="Undo (Ctrl+Z)"
+          aria-label="Undo (Ctrl+Z)"
+          @mousedown.prevent
+          @click="$emit('undo')"
+        >
+          <span class="btn-icon">&#x21A9;</span>
+          <span class="btn-label">撤销</span>
+        </button>
+        <button
+          v-if="showRedo"
+          class="toolbar-btn"
+          :disabled="props.canRedo === false"
+          title="Redo (Ctrl+Shift+Z)"
+          aria-label="Redo (Ctrl+Shift+Z)"
+          @mousedown.prevent
+          @click="$emit('redo')"
+        >
+          <span class="btn-icon">&#x21AA;</span>
+          <span class="btn-label">重做</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-row toolbar-row-secondary">
+      <!-- 插入 -->
+      <div v-if="visibleInsert.length" class="toolbar-group" role="group" aria-label="Insert">
+        <button
+          v-for="btn in visibleInsert"
           :key="btn.id"
           class="toolbar-btn"
           :title="btn.label"
@@ -88,10 +124,10 @@
         </button>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="visibleInsert.length && (showTable || showFind || showZoom || showView || showExport)" class="toolbar-divider" aria-hidden="true"></div>
 
       <!-- 表格：主按钮 + 下拉 -->
-      <div class="toolbar-group table-dropdown" role="group" aria-label="Table">
+      <div v-if="showTable" class="toolbar-group table-dropdown" role="group" aria-label="Table">
         <button
           class="toolbar-btn"
           type="button"
@@ -197,38 +233,10 @@
         </div>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="showTable && (showFind || showZoom || showView || showExport)" class="toolbar-divider" aria-hidden="true"></div>
 
-      <!-- 撤销/重做 -->
-      <div class="toolbar-group" role="group" aria-label="History">
-        <button
-          class="toolbar-btn"
-          :disabled="props.canUndo === false"
-          title="Undo (Ctrl+Z)"
-          aria-label="Undo (Ctrl+Z)"
-          @mousedown.prevent
-          @click="$emit('undo')"
-        >
-          <span class="btn-icon">&#x21A9;</span>
-          <span class="btn-label">撤销</span>
-        </button>
-        <button
-          class="toolbar-btn"
-          :disabled="props.canRedo === false"
-          title="Redo (Ctrl+Shift+Z)"
-          aria-label="Redo (Ctrl+Shift+Z)"
-          @mousedown.prevent
-          @click="$emit('redo')"
-        >
-          <span class="btn-icon">&#x21AA;</span>
-          <span class="btn-label">重做</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="toolbar-row toolbar-row-secondary">
       <!-- 查找 -->
-      <div class="toolbar-group" role="group" aria-label="Search">
+      <div v-if="showFind" class="toolbar-group" role="group" aria-label="Search">
         <button
           class="toolbar-btn"
           :class="{ active: findPanelOpen }"
@@ -243,9 +251,10 @@
         </button>
       </div>
 
-      <!-- 缩放：图标按钮，点击立即生效 -->
-      <div class="toolbar-group zoom-group" role="group" aria-label="Zoom">
+      <!-- 缩放 -->
+      <div v-if="showZoom" class="toolbar-group zoom-group" role="group" aria-label="Zoom">
         <button
+          v-if="showZoomOut"
           class="toolbar-btn"
           type="button"
           :title="`缩小（${zoomOutHint}）`"
@@ -253,10 +262,11 @@
           @mousedown.prevent
           @click="emit('zoom-out')"
         >
-          <span class="btn-icon">🔍−</span>
+          <span class="btn-icon">−</span>
           <span class="btn-label">缩小</span>
         </button>
         <button
+          v-if="showZoomReset"
           class="toolbar-btn zoom-indicator"
           type="button"
           :title="`重置缩放（${zoomResetHint}）`"
@@ -268,6 +278,7 @@
           <span class="btn-label">重置</span>
         </button>
         <button
+          v-if="showZoomIn"
           class="toolbar-btn"
           type="button"
           :title="`放大（${zoomInHint}）`"
@@ -275,14 +286,15 @@
           @mousedown.prevent
           @click="emit('zoom-in')"
         >
-          <span class="btn-icon">🔍＋</span>
+          <span class="btn-icon">＋</span>
           <span class="btn-label">放大</span>
         </button>
       </div>
 
       <!-- 视图 -->
-      <div class="toolbar-group" role="group" aria-label="View">
+      <div v-if="showView" class="toolbar-group" role="group" aria-label="View">
         <button
+          v-if="showOutlineBtn"
           class="toolbar-btn"
           :class="{ active: showOutline }"
           title="Toggle Outline"
@@ -293,7 +305,7 @@
           <span class="btn-label">大纲</span>
         </button>
         <button
-          v-if="mode === 'source'"
+          v-if="showLineNumbersBtn"
           class="toolbar-btn"
           :class="{ active: showLineNumbers }"
           title="Toggle Line Numbers"
@@ -305,15 +317,15 @@
         </button>
       </div>
 
-      <div class="toolbar-divider" aria-hidden="true"></div>
+      <div v-if="showExport && (visibleInsert.length || showTable || showFind || showZoom || showView)" class="toolbar-divider" aria-hidden="true"></div>
 
       <!-- 导出 -->
-      <div class="toolbar-group" role="group" aria-label="Export">
-        <button class="toolbar-btn export-btn" title="Export PDF" aria-label="Export PDF" @click="$emit('export', 'pdf')">
+      <div v-if="showExport" class="toolbar-group" role="group" aria-label="Export">
+        <button v-if="showPdf" class="toolbar-btn export-btn" title="Export PDF" aria-label="Export PDF" @click="$emit('export', 'pdf')">
           <span class="btn-icon">&#x1F4C4;</span>
           <span class="btn-label">PDF</span>
         </button>
-        <button class="toolbar-btn export-btn" title="Export HTML" aria-label="Export HTML" @click="$emit('export', 'html')">
+        <button v-if="showHtml" class="toolbar-btn export-btn" title="Export HTML" aria-label="Export HTML" @click="$emit('export', 'html')">
           <span class="btn-icon">&#x1F310;</span>
           <span class="btn-label">HTML</span>
         </button>
@@ -339,6 +351,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { EditorMode } from '../../../src/types';
+import {
+  isToolbarButtonShown,
+  normalizeToolbarFontSize,
+  type ToolbarButtonId,
+} from '../../../src/types/toolbarPrefs';
 
 const props = defineProps<{
   mode: EditorMode;
@@ -356,6 +373,10 @@ const props = defineProps<{
   canUndo?: boolean;
   /** 能否重做 */
   canRedo?: boolean;
+  /** 工具栏字号（10–18），缺省 11 */
+  fontSize?: number;
+  /** 按钮 id → 是否显示；缺省或 true 为显示 */
+  buttonVisibility?: Partial<Record<ToolbarButtonId, boolean>>;
 }>();
 
 const emit = defineEmits<{
@@ -415,6 +436,34 @@ const insertButtons = [
   { id: 'hr', icon: '\u2014', shortLabel: 'Line', displayLabel: '分割线', label: 'Horizontal Rule' },
   { id: 'math', icon: '\u2211', shortLabel: 'Math', displayLabel: '公式', label: 'Math Formula' },
 ];
+
+function shown(id: string): boolean {
+  return isToolbarButtonShown(props.buttonVisibility, id);
+}
+
+const visibleHeadings = computed(() => headingButtons.filter((btn) => shown(btn.id)));
+const visibleFormat = computed(() => formatButtons.filter((btn) => shown(btn.id)));
+const visibleLists = computed(() => listButtons.filter((btn) => shown(btn.id)));
+const visibleInsert = computed(() => insertButtons.filter((btn) => shown(btn.id)));
+const showUndo = computed(() => shown('undo'));
+const showRedo = computed(() => shown('redo'));
+const showHistory = computed(() => showUndo.value || showRedo.value);
+const showTable = computed(() => shown('table'));
+const showFind = computed(() => shown('find'));
+const showZoomOut = computed(() => shown('zoomOut'));
+const showZoomReset = computed(() => shown('zoomReset'));
+const showZoomIn = computed(() => shown('zoomIn'));
+const showZoom = computed(() => showZoomOut.value || showZoomReset.value || showZoomIn.value);
+const showOutlineBtn = computed(() => shown('outline'));
+const showLineNumbersBtn = computed(() => props.mode === 'source' && shown('lineNumbers'));
+const showView = computed(() => showOutlineBtn.value || showLineNumbersBtn.value);
+const showPdf = computed(() => shown('exportPdf'));
+const showHtml = computed(() => shown('exportHtml'));
+const showExport = computed(() => showPdf.value || showHtml.value);
+
+const toolbarFontStyle = computed(() => ({
+  '--markly-toolbar-font': `${normalizeToolbarFontSize(props.fontSize)}px`,
+}));
 
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 const tableHelpTitle = 'Rich 表格快捷键说明';
@@ -488,15 +537,17 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: var(--markly-pad-sm) var(--markly-pad-md);
+  padding: 4px 8px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
-  gap: 8px;
+  gap: 4px;
   /* 必须高于 .editor-main：否则下拉菜单会被后同级编辑区盖住；勿用 overflow-x:hidden 裁切菜单 */
   position: relative;
   z-index: 25000;
   overflow: visible;
   min-height: auto;
+  --markly-toolbar-font: 11px;
+  font-size: var(--markly-toolbar-font);
 }
 
 .toolbar--collapsed {
@@ -512,7 +563,7 @@ onUnmounted(() => {
 }
 
 .toolbar-collapse-btn--end {
-  margin-left: auto;
+  margin-left: 4px;
 }
 
 .toolbar-row {
@@ -520,7 +571,7 @@ onUnmounted(() => {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   overflow: visible;
   max-width: 100%;
 }
@@ -536,37 +587,36 @@ onUnmounted(() => {
 
 .toolbar-divider {
   width: 1px;
-  height: 40px;
+  height: 1.7em;
   background: var(--vscode-editorWidget-border);
-  margin: 0 6px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
-/* 基础按钮：增大 20% (32 -> 38) */
+/* 按钮随字号缩放；宽度跟着文字走，短标签不再占满 44px */
 .toolbar-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  width: 44px;
-  height: 44px;
-  padding: 4px 3px;
+  min-width: 2.6em;
+  width: auto;
+  height: 2.75em;
+  padding: 0.12em 0.28em;
   border: 1px solid transparent;
   background: transparent;
   color: var(--vscode-foreground);
   border-radius: var(--markly-radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 1em;
   font-weight: 600;
   transition: background-color 0.15s;
   flex-shrink: 0;
-  gap: 2px;
+  gap: 0;
 }
 
 .toolbar-btn-mini {
-  min-width: 44px;
-  width: 44px;
+  min-width: 2.4em;
 }
 
 .table-dropdown {
@@ -575,7 +625,7 @@ onUnmounted(() => {
 
 .table-menu {
   position: absolute;
-  top: 54px;
+  top: calc(2.75em + 6px);
   left: 0;
   z-index: 26001;
   min-width: 320px;
@@ -656,16 +706,16 @@ onUnmounted(() => {
 }
 
 .btn-icon {
-  font-size: 13px;
-  line-height: 1.2;
+  font-size: 1.05em;
+  line-height: 1.05;
 }
 
 .btn-label {
-  font-size: 11px;
+  font-size: 0.82em;
   font-weight: 600;
   opacity: 0.9;
-  line-height: 1;
-  max-width: 44px;
+  line-height: 1.05;
+  max-width: 4.6em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -711,14 +761,14 @@ onUnmounted(() => {
 }
 
 .zoom-indicator .btn-icon {
-  font-size: 12px;
+  font-size: 0.95em;
   font-weight: 700;
-  letter-spacing: 0.2px;
+  letter-spacing: 0;
 }
 
 /* Heading buttons */
 .heading-btn .btn-icon {
-  font-size: 14px;
+  font-size: 1.05em;
   font-weight: 700;
 }
 
@@ -736,9 +786,8 @@ onUnmounted(() => {
   text-decoration: line-through;
 }
 
-/* Export buttons */
+/* Export buttons follow the same compact size as the rest of the toolbar */
 .export-btn {
-  min-width: 54px;
-  width: 54px;
+  min-width: 2.8em;
 }
 </style>

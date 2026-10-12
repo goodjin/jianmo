@@ -38,4 +38,23 @@ describe('SettingsPanel', () => {
     await w.get('[aria-label="关闭设置"]').trigger('click');
     expect(w.emitted('close')?.length).toBe(1);
   });
+
+  it('emits toolbar font size and per-button visibility', async () => {
+    const w = mount(SettingsPanel, {
+      props: { theme: 'nord', prefersDark: false, toolbarFontSize: 11, toolbarButtons: { math: false } },
+    });
+    const select = w.get('select');
+    expect((select.element as HTMLSelectElement).value).toBe('11');
+    await select.setValue('15');
+    expect(w.emitted('update-toolbar-font-size')?.[0]).toEqual([15]);
+
+    const math = w.findAll('.markly-toolbar-check').find((c) => c.text().includes('公式'));
+    expect(math).toBeTruthy();
+    expect((math!.get('input').element as HTMLInputElement).checked).toBe(false);
+    await math!.get('input').setValue(true);
+    expect(w.emitted('toggle-toolbar-button')?.[0]).toEqual(['math', true]);
+
+    await w.get('.markly-toolbar-button-head button').trigger('click');
+    expect(w.emitted('reset-toolbar-buttons')?.length).toBe(1);
+  });
 });

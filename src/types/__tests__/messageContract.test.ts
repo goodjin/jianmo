@@ -314,6 +314,9 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'SET_TOOLBAR_COLLAPSED', payload: { collapsed: false } },
     { type: 'SET_EDITOR_THEME', payload: { theme: 'nord' } },
     { type: 'SET_EDITOR_THEME', payload: { theme: 'github-light' } },
+    { type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 14 } },
+    { type: 'SET_TOOLBAR_SETTINGS', payload: { buttons: { math: false, bold: true } } },
+    { type: 'SET_TOOLBAR_SETTINGS', payload: { resetButtons: true } },
     { type: 'REQUEST_PREVIEW_HTML' },
     { type: 'REQUEST_PREVIEW_HTML', payload: {} },
     { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
@@ -358,6 +361,10 @@ describe('messageGuards — Webview → Extension', () => {
     );
     expect(isWebViewMessage({ type: 'SCROLL', requestId: 'x' })).toBe(false);
     expect(isWebViewMessage({ type: 'SET_EDITOR_THEME', payload: { theme: 'neon' } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: {} })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 9 } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { buttons: { nope: false } } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 12, extra: true } })).toBe(false);
   });
 
   it('TRACK_EDITOR_MODE accepts legacy ir payload (ingestion only)', () => {

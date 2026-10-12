@@ -212,6 +212,28 @@ describe('validateConfig', () => {
     expect(result.errors.some((e: string) => e.includes('templates.userDirectory'))).toBe(true);
   });
 
+  it('rejects toolbar font size outside 10-18 and unknown button ids', () => {
+    const tooSmall: ExtensionConfig = {
+      ...validConfig,
+      editor: { ...validConfig.editor, toolbarFontSize: 4 },
+    };
+    expect(validateConfig(tooSmall).valid).toBe(false);
+    expect(validateConfig(tooSmall).errors.some((e: string) => e.includes('toolbarFontSize'))).toBe(true);
+
+    const badButtons: ExtensionConfig = {
+      ...validConfig,
+      editor: { ...validConfig.editor, toolbarButtons: { nope: false } as any },
+    };
+    expect(validateConfig(badButtons).valid).toBe(false);
+    expect(validateConfig(badButtons).errors.some((e: string) => e.includes('toolbarButtons'))).toBe(true);
+
+    const ok: ExtensionConfig = {
+      ...validConfig,
+      editor: { ...validConfig.editor, toolbarFontSize: 14, toolbarButtons: { math: false, h1: true } },
+    };
+    expect(validateConfig(ok).valid).toBe(true);
+  });
+
   it('rejects non-boolean telemetry.enabled (M95)', () => {
     const cfg = deepMerge(validConfig, { telemetry: { enabled: 1 as any } } as any);
     const result = validateConfig(cfg);

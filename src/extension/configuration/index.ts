@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
-import { isEditorThemeSetting, type ExtensionConfig } from '@types';
+import {
+  isEditorThemeSetting,
+  isToolbarButtonId,
+  normalizeToolbarButtonMap,
+  normalizeToolbarFontSize,
+  type ExtensionConfig,
+} from '@types';
 
 /**
  * 深度合并两个对象，确保 target 的默认值被保留
@@ -80,6 +86,23 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
   const rtc = (config.editor as ExtensionConfig['editor']).richTableColumnResize;
   if (rtc !== 'auto' && rtc !== 'on' && rtc !== 'off') {
     errors.push(`editor.richTableColumnResize 必须是 auto|on|off，当前值: ${String(rtc)}`);
+  }
+
+  const toolbarFontSize = config.editor.toolbarFontSize;
+  if (toolbarFontSize !== undefined && (typeof toolbarFontSize !== 'number' || toolbarFontSize < 10 || toolbarFontSize > 18)) {
+    errors.push(`editor.toolbarFontSize 必须在 10-18 之间，当前值: ${String(toolbarFontSize)}`);
+  }
+  const toolbarButtons = config.editor.toolbarButtons;
+  if (toolbarButtons !== undefined) {
+    if (!toolbarButtons || typeof toolbarButtons !== 'object' || Array.isArray(toolbarButtons)) {
+      errors.push(`editor.toolbarButtons 必须是对象，当前值: ${String(toolbarButtons)}`);
+    } else {
+      for (const [key, val] of Object.entries(toolbarButtons)) {
+        if (!isToolbarButtonId(key) || typeof val !== 'boolean') {
+          errors.push(`editor.toolbarButtons.${key} 必须是已知按钮 id 且值为 boolean`);
+        }
+      }
+    }
   }
 
   // 验证 image.compressThreshold (支持字节或百分比，> 0 即可)
@@ -224,6 +247,8 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     deferDiagramRenderInRich: false,
     enableShiki: false,
     richTableColumnResize: 'auto',
+    toolbarFontSize: 11,
+    toolbarButtons: {},
   },
   image: {
     saveDirectory: './assets',
@@ -317,6 +342,10 @@ export class ConfigurationStore implements vscode.Disposable {
     const deferDiagramRich = vsConfig.get<boolean>('editor.deferDiagramRenderInRich', false);
     const editorThemeRaw = vsConfig.get<string>('editor.theme', DEFAULT_CONFIG.editor.theme);
     const editorTheme = isEditorThemeSetting(editorThemeRaw) ? editorThemeRaw : DEFAULT_CONFIG.editor.theme;
+    const toolbarFontSize = normalizeToolbarFontSize(
+      vsConfig.get<number>('editor.toolbarFontSize', DEFAULT_CONFIG.editor.toolbarFontSize)
+    );
+    const toolbarButtons = normalizeToolbarButtonMap(vsConfig.get('editor.toolbarButtons', {}));
     const remoteAllowRaw = vsConfig.get<string[]>('image.remoteHttpsHostsAllowlist', []);
     const remoteAllow =
       Array.isArray(remoteAllowRaw) && remoteAllowRaw.every((h) => typeof h === 'string')
@@ -342,7 +371,13 @@ export class ConfigurationStore implements vscode.Disposable {
       templates: {
         userDirectory: templatesUserDirectory,
       },
-      editor: { ...(userEditor || {}), theme: editorTheme, deferDiagramRenderInRich: deferDiagramRich },
+      editor: {
+        ...(userEditor || {}),
+        theme: editorTheme,
+        deferDiagramRenderInRich: deferDiagramRich,
+        toolbarFontSize,
+        toolbarButtons,
+      },
       image: {
         ...(userImage || {}),
         sameNameHandling: imageSameNameHandling,
