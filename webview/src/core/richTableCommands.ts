@@ -1,4 +1,5 @@
 import type { EditorView } from '@milkdown/prose/view';
+import { TextSelection } from '@milkdown/prose/state';
 import {
   addColumnAfter,
   addColumnBefore,
@@ -14,7 +15,8 @@ import {
   toggleHeaderRow,
   TableMap,
 } from 'prosemirror-tables';
-import { Fragment } from '@milkdown/prose/model';
+import { Fragment, type Node as PMNode } from '@milkdown/prose/model';
+import { bandCoversEntireAxis, tableSelectionBand, type TableSelectionBand } from './tableEdgeUi';
 
 export type RichTableOp =
   | 'addRowAfter'
@@ -185,6 +187,144 @@ function deleteCurrentTable(view: EditorView): boolean {
   view.dispatch(tr);
   emitTableToast('已删除当前表格。');
   return true;
+}
+
+function isTableNode(node: PMNode | null | undefined): node is PMNode {
+  if (!node) return false;
+  const role = (node.type.spec as { tableRole?: string }).tableRole;
+  return role === 'table' || node.type.name === 'table';
+}
+
+function tableNodeAt(doc: PMNode, tablePos: number): PMNode | null {
+  const table = doc.nodeAt(tablePos);
+  return isTableNode(table) ? table : null;
+}
+
+/** 单元格节点起点。与编辑器里已有的 CellSelection 位置算法一致。 */
+function cellNodePos(tablePos: number, table: PMNode, row: number, col: number): number {
+  const map = TableMap.get(table);
+  const r = Math.max(0, Math.min(row, map.height - 1));
+  const c = Math.max(0, Math.min(col, map.width - 1));
+  return tablePos + 1 + map.positionAt(r, c, table);
+}
+
+function selectSingleCell(view: EditorView, tablePos: number, table: PMNode, row: number, col: number): boolean {
+  const pos = cellNodePos(tablePos, table, row, col);
+  try {
+    const sel = TextSelection.create(view.state.doc, pos + 2);
+    view.dispatch(view.state.tr.setSelection(sel));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function selectCellRect(
+  view: EditorView,
+  tablePos: number,
+  table: PMNode,
+  rowStart: number,
+  colStart: number,
+  rowEnd: number,
+  colEnd: number
+): boolean {
+  const anchor = cellNodePos(tablePos, table, rowStart, colStart);
+  const head = cellNodePos(tablePos, table, rowEnd, colEnd);
+  try {
+    const next = new CellSelection(view.state.doc.resolve(anchor), view.state.doc.resolve(head));
+    view.dispatch(view.state.tr.setSelection(next).scrollIntoView());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 当前选区如果盖住整行或整列，返回这段范围。普通光标或局部选格返回 null。 */
+export function readTableAxisSelection(state: EditorView['state']): TableSelectionBand | null {
+  if (!(state.selection instanceof CellSelection)) return null;
+  try {
+    const rect = selectedRect(state);
+    return tableSelectionBand({
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      mapWidth: rect.map.width,
+      mapHeight: rect.map.height,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function selectTableRows(view: EditorView, tablePos: number, fromRow: number, toRow: number): boolean {
+  const table = tableNodeAt(view.state.doc, tablePos);
+  if (!table) return false;
+  const map = TableMap.get(table);
+  const a = Math.max(0, Math.min(fromRow, toRow, map.height - 1));
+  const b = Math.min(map.height - 1, Math.max(fromRow, toRow, 0));
+  return selectCellRect(view, tablePos, table, a, 0, b, map.width - 1);
+}
+
+export function selectTableColumns(view: EditorView, tablePos: number, fromCol: number, toCol: number): boolean {
+  const table = tableNodeAt(view.state.doc, tablePos);
+  if (!table) return false;
+  const map = TableMap.get(table);
+  const a = Math.max(0, Math.min(fromCol, toCol, map.width - 1));
+  const b = Math.min(map.width - 1, Math.max(fromCol, toCol, 0));
+  return selectCellRect(view, tablePos, table, 0, a, map.height - 1, b);
+}
+
+/**
+ * 在第 gap 条水平交界插入一行。
+ * 0 表示第一行之前，rowCount 表示最后一行之后，其余表示两行之间。
+ */
+export function insertTableRowAtGap(view: EditorView, tablePos: number, gap: number): boolean {
+  const table = tableNodeAt(view.state.doc, tablePos);
+  if (!table) return false;
+  const map = TableMap.get(table);
+  const g = Math.max(0, Math.min(Math.floor(gap), map.height));
+  if (g === 0) {
+    if (!selectSingleCell(view, tablePos, table, 0, 0)) return false;
+    return addRowBefore(view.state, view.dispatch);
+  }
+  if (!selectSingleCell(view, tablePos, table, g - 1, 0)) return false;
+  return addRowAfter(view.state, view.dispatch);
+}
+
+/** 在第 gap 条垂直交界插入一列。0 为最左之前，colCount 为最右之后。 */
+export function insertTableColumnAtGap(view: EditorView, tablePos: number, gap: number): boolean {
+  const table = tableNodeAt(view.state.doc, tablePos);
+  if (!table) return false;
+  const map = TableMap.get(table);
+  const g = Math.max(0, Math.min(Math.floor(gap), map.width));
+  if (g === 0) {
+    if (!selectSingleCell(view, tablePos, table, 0, 0)) return false;
+    return addColumnBefore(view.state, view.dispatch);
+  }
+  if (!selectSingleCell(view, tablePos, table, 0, g - 1)) return false;
+  return addColumnAfter(view.state, view.dispatch);
+}
+
+/**
+ * 删掉当前整行或整列选区。
+ * 多行多列一次删掉。选区盖住全部行或全部列时，删掉整张表（表内删光行/列没有意义）。
+ */
+export function deleteTableAxisSelection(view: EditorView): boolean {
+  if (!isInTable(view.state)) return false;
+  const band = readTableAxisSelection(view.state);
+  if (!band) return false;
+  let rect: ReturnType<typeof selectedRect>;
+  try {
+    rect = selectedRect(view.state);
+  } catch {
+    return false;
+  }
+  if (bandCoversEntireAxis(band, rect.map.width, rect.map.height)) {
+    return deleteCurrentTable(view);
+  }
+  if (band.axis === 'row') return deleteRow(view.state, view.dispatch);
+  return deleteColumn(view.state, view.dispatch);
 }
 
 export function runRichTableOp(view: EditorView, op: RichTableOp): boolean {
