@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **工具栏改成两行**：标题、格式、列表和撤销留在第一行，插入、表格、查找、缩放、大纲和导出放在第二行。按钮按文字收窄、高度变矮，避免第二行只挤下几个按钮就再折出第三行。
-- **设置里可以调工具栏**：编辑器「设置」和 VS Code 设置项 `markly.editor.toolbarFontSize`（10–18）可改工具栏字号；`markly.editor.toolbarButtons` 可单独隐藏每个按钮。没写到的按钮默认仍然显示。
+- **工具栏默认只显示图标**：鼠标停在按钮上才出现名称。设置里可以勾选「显示按钮名称」一直显示。顶栏的 Rich / Source / 预览和「设置」按钮也缩小了一档。
+- **设置里可以调工具栏**：编辑器「设置」和 VS Code 设置项 `markly.editor.toolbarFontSize`（10–18）可改工具栏字号；`markly.editor.toolbarShowLabels` 控制是否一直显示名称；`markly.editor.toolbarButtons` 可单独隐藏每个按钮。没写到的按钮默认仍然显示。
 
 ### Mid Phase (M305–M316) snapshot
 

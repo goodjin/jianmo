@@ -56,5 +56,10 @@ describe('SettingsPanel', () => {
 
     await w.get('.markly-toolbar-button-head button').trigger('click');
     expect(w.emitted('reset-toolbar-buttons')?.length).toBe(1);
+
+    const showNames = w.get('input[aria-label="显示按钮名称"]');
+    expect((showNames.element as HTMLInputElement).checked).toBe(false);
+    await showNames.setValue(true);
+    expect(w.emitted('update-toolbar-show-labels')?.[0]).toEqual([true]);
   });
 });

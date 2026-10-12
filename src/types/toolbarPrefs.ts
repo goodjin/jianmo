@@ -6,6 +6,8 @@
 export const TOOLBAR_FONT_SIZE_MIN = 10;
 export const TOOLBAR_FONT_SIZE_MAX = 18;
 export const DEFAULT_TOOLBAR_FONT_SIZE = 11;
+/** 默认不把名称画在按钮上，悬停时再显示。 */
+export const DEFAULT_TOOLBAR_SHOW_LABELS = false;
 
 export const TOOLBAR_BUTTON_IDS = [
   'h1',
@@ -135,6 +137,11 @@ export function isToolbarFontSize(value: unknown): value is number {
     value >= TOOLBAR_FONT_SIZE_MIN &&
     value <= TOOLBAR_FONT_SIZE_MAX
   );
+}
+
+/** 只有明确的 true 才一直显示名称。 */
+export function normalizeToolbarShowLabels(value: unknown): boolean {
+  return value === true;
 }
 
 /** 非法或缺失时回到默认字号；越界则夹到 10–18。 */

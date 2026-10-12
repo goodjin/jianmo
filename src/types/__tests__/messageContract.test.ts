@@ -317,6 +317,8 @@ describe('messageGuards — Webview → Extension', () => {
     { type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 14 } },
     { type: 'SET_TOOLBAR_SETTINGS', payload: { buttons: { math: false, bold: true } } },
     { type: 'SET_TOOLBAR_SETTINGS', payload: { resetButtons: true } },
+    { type: 'SET_TOOLBAR_SETTINGS', payload: { showLabels: true } },
+    { type: 'SET_TOOLBAR_SETTINGS', payload: { showLabels: false } },
     { type: 'REQUEST_PREVIEW_HTML' },
     { type: 'REQUEST_PREVIEW_HTML', payload: {} },
     { type: 'AI_REWRITE_SELECTION_REQUEST', payload: { requestId: 'rw-1', text: 'hello' } },
@@ -365,6 +367,7 @@ describe('messageGuards — Webview → Extension', () => {
     expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 9 } })).toBe(false);
     expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { buttons: { nope: false } } })).toBe(false);
     expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: 12, extra: true } })).toBe(false);
+    expect(isWebViewMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { showLabels: 'yes' } })).toBe(false);
   });
 
   it('TRACK_EDITOR_MODE accepts legacy ir payload (ingestion only)', () => {

@@ -4,6 +4,7 @@ import {
   isToolbarButtonShown,
   normalizeToolbarButtonMap,
   normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
 } from '../toolbarPrefs';
 
 describe('toolbarPrefs', () => {
@@ -13,6 +14,9 @@ describe('toolbarPrefs', () => {
     expect(normalizeToolbarFontSize(3)).toBe(10);
     expect(normalizeToolbarFontSize(40)).toBe(18);
     expect(normalizeToolbarFontSize('12')).toBe(11);
+    expect(normalizeToolbarShowLabels(undefined)).toBe(false);
+    expect(normalizeToolbarShowLabels(true)).toBe(true);
+    expect(normalizeToolbarShowLabels('yes')).toBe(false);
   });
 
   it('keeps only known button ids and treats missing ids as visible', () => {

@@ -4,6 +4,7 @@ import {
   isToolbarButtonId,
   normalizeToolbarButtonMap,
   normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
   type ExtensionConfig,
 } from '@types';
 
@@ -91,6 +92,10 @@ export function validateConfig(config: ExtensionConfig): ValidationResult {
   const toolbarFontSize = config.editor.toolbarFontSize;
   if (toolbarFontSize !== undefined && (typeof toolbarFontSize !== 'number' || toolbarFontSize < 10 || toolbarFontSize > 18)) {
     errors.push(`editor.toolbarFontSize 必须在 10-18 之间，当前值: ${String(toolbarFontSize)}`);
+  }
+  const toolbarShowLabels = config.editor.toolbarShowLabels;
+  if (toolbarShowLabels !== undefined && typeof toolbarShowLabels !== 'boolean') {
+    errors.push(`editor.toolbarShowLabels 必须是 boolean，当前值: ${String(toolbarShowLabels)}`);
   }
   const toolbarButtons = config.editor.toolbarButtons;
   if (toolbarButtons !== undefined) {
@@ -248,6 +253,7 @@ const DEFAULT_CONFIG: ExtensionConfig = {
     enableShiki: false,
     richTableColumnResize: 'auto',
     toolbarFontSize: 11,
+    toolbarShowLabels: false,
     toolbarButtons: {},
   },
   image: {
@@ -345,6 +351,9 @@ export class ConfigurationStore implements vscode.Disposable {
     const toolbarFontSize = normalizeToolbarFontSize(
       vsConfig.get<number>('editor.toolbarFontSize', DEFAULT_CONFIG.editor.toolbarFontSize)
     );
+    const toolbarShowLabels = normalizeToolbarShowLabels(
+      vsConfig.get('editor.toolbarShowLabels', DEFAULT_CONFIG.editor.toolbarShowLabels)
+    );
     const toolbarButtons = normalizeToolbarButtonMap(vsConfig.get('editor.toolbarButtons', {}));
     const remoteAllowRaw = vsConfig.get<string[]>('image.remoteHttpsHostsAllowlist', []);
     const remoteAllow =
@@ -376,6 +385,7 @@ export class ConfigurationStore implements vscode.Disposable {
         theme: editorTheme,
         deferDiagramRenderInRich: deferDiagramRich,
         toolbarFontSize,
+        toolbarShowLabels,
         toolbarButtons,
       },
       image: {

@@ -637,6 +637,9 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
               vscode.ConfigurationTarget.Global
             );
           }
+          if (typeof payload.showLabels === 'boolean') {
+            await cfg.update('editor.toolbarShowLabels', payload.showLabels, vscode.ConfigurationTarget.Global);
+          }
           if (payload.resetButtons) {
             await cfg.update('editor.toolbarButtons', {}, vscode.ConfigurationTarget.Global);
           } else if (payload.buttons) {

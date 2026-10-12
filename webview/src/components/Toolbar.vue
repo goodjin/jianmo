@@ -1,10 +1,12 @@
 <template>
   <div
     class="toolbar"
-    :class="{ 'toolbar--collapsed': collapsed }"
+    :class="{ 'toolbar--collapsed': collapsed, 'toolbar--icon-only': !showLabels }"
     :style="toolbarFontStyle"
     role="toolbar"
     aria-label="Markly 格式与插入工具栏"
+    @mouseover="hideNativeTip"
+    @mouseout="showNativeTip"
   >
     <div v-if="collapsed" class="toolbar-collapsed-bar">
       <button
@@ -375,6 +377,8 @@ const props = defineProps<{
   canRedo?: boolean;
   /** 工具栏字号（10–18），缺省 11 */
   fontSize?: number;
+  /** 一直在按钮上显示名称；默认只显示图标，悬停再出现名称 */
+  showLabels?: boolean;
   /** 按钮 id → 是否显示；缺省或 true 为显示 */
   buttonVisibility?: Partial<Record<ToolbarButtonId, boolean>>;
 }>();
@@ -464,6 +468,30 @@ const showExport = computed(() => showPdf.value || showHtml.value);
 const toolbarFontStyle = computed(() => ({
   '--markly-toolbar-font': `${normalizeToolbarFontSize(props.fontSize)}px`,
 }));
+
+const showLabels = computed(() => props.showLabels === true);
+
+/** 悬停时先拿掉原生 title，避免和自己画的名称提示叠在一起。离开后再放回去，方便自动化按 title 查找。 */
+function hideNativeTip(event: MouseEvent): void {
+  if (showLabels.value) return;
+  const btn = (event.target as HTMLElement | null)?.closest('button.toolbar-btn');
+  if (!btn || btn.dataset.tipStashed) return;
+  const title = btn.getAttribute('title');
+  if (!title) return;
+  btn.dataset.tipStashed = title;
+  btn.removeAttribute('title');
+}
+
+function showNativeTip(event: MouseEvent): void {
+  const btn = (event.target as HTMLElement | null)?.closest('button.toolbar-btn');
+  if (!btn) return;
+  const next = event.relatedTarget as Node | null;
+  if (next && btn.contains(next)) return;
+  const title = btn.dataset.tipStashed;
+  if (!title) return;
+  btn.setAttribute('title', title);
+  delete btn.dataset.tipStashed;
+}
 
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
 const tableHelpTitle = 'Rich 表格快捷键说明';
@@ -789,5 +817,46 @@ onUnmounted(() => {
 /* Export buttons follow the same compact size as the rest of the toolbar */
 .export-btn {
   min-width: 2.8em;
+}
+
+/* 默认只留图标。名称收成悬停提示，不占高度。 */
+.toolbar--icon-only .toolbar-btn {
+  position: relative;
+  width: 1.85em;
+  min-width: 1.85em;
+  height: 1.85em;
+  padding: 0;
+}
+
+.toolbar--icon-only .zoom-indicator {
+  width: auto;
+  min-width: 2.5em;
+  padding: 0 0.15em;
+}
+
+.toolbar--icon-only .btn-label {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 4px);
+  transform: translateX(-50%);
+  max-width: none;
+  width: max-content;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, #252526));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 40;
+  white-space: nowrap;
+}
+
+.toolbar--icon-only .toolbar-btn:hover .btn-label,
+.toolbar--icon-only .toolbar-btn:focus-visible .btn-label {
+  opacity: 1;
 }
 </style>

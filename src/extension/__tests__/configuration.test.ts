@@ -229,9 +229,16 @@ describe('validateConfig', () => {
 
     const ok: ExtensionConfig = {
       ...validConfig,
-      editor: { ...validConfig.editor, toolbarFontSize: 14, toolbarButtons: { math: false, h1: true } },
+      editor: { ...validConfig.editor, toolbarFontSize: 14, toolbarShowLabels: true, toolbarButtons: { math: false, h1: true } },
     };
     expect(validateConfig(ok).valid).toBe(true);
+
+    const badLabels: ExtensionConfig = {
+      ...validConfig,
+      editor: { ...validConfig.editor, toolbarShowLabels: 'yes' as any },
+    };
+    expect(validateConfig(badLabels).valid).toBe(false);
+    expect(validateConfig(badLabels).errors.some((e: string) => e.includes('toolbarShowLabels'))).toBe(true);
   });
 
   it('rejects non-boolean telemetry.enabled (M95)', () => {

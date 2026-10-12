@@ -110,6 +110,8 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   if (!isNumber(editor.fontSize)) return false;
   const toolbarFontSize = (editor as { toolbarFontSize?: unknown }).toolbarFontSize;
   if (toolbarFontSize !== undefined && !isToolbarFontSize(toolbarFontSize)) return false;
+  const toolbarShowLabels = (editor as { toolbarShowLabels?: unknown }).toolbarShowLabels;
+  if (toolbarShowLabels !== undefined && typeof toolbarShowLabels !== 'boolean') return false;
   const toolbarButtons = (editor as { toolbarButtons?: unknown }).toolbarButtons;
   if (toolbarButtons !== undefined) {
     if (!isRecord(toolbarButtons) || Array.isArray(toolbarButtons)) return false;
@@ -596,17 +598,23 @@ export function isWebViewMessage(
       const keys = Object.keys(p);
       if (keys.length === 0) return false;
       for (const key of keys) {
-        if (key !== 'fontSize' && key !== 'buttons' && key !== 'resetButtons') return false;
+        if (key !== 'fontSize' && key !== 'buttons' && key !== 'resetButtons' && key !== 'showLabels') return false;
       }
       if (p.fontSize !== undefined && !isToolbarFontSize(p.fontSize)) return false;
       if (p.resetButtons !== undefined && typeof p.resetButtons !== 'boolean') return false;
+      if (p.showLabels !== undefined && typeof p.showLabels !== 'boolean') return false;
       if (p.buttons !== undefined) {
         if (!isRecord(p.buttons) || Array.isArray(p.buttons)) return false;
         for (const [key, val] of Object.entries(p.buttons)) {
           if (!isToolbarButtonId(key) || typeof val !== 'boolean') return false;
         }
       }
-      return p.fontSize !== undefined || p.buttons !== undefined || p.resetButtons === true;
+      return (
+        p.fontSize !== undefined ||
+        p.buttons !== undefined ||
+        p.resetButtons === true ||
+        typeof p.showLabels === 'boolean'
+      );
     }
     case 'REQUEST_PREVIEW_HTML':
       return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);

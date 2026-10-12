@@ -60,6 +60,16 @@
           <option v-for="size in fontSizeOptions" :key="size" :value="String(size)">{{ size }} px</option>
         </select>
       </label>
+      <label class="markly-toolbar-check markly-toolbar-show-labels">
+        <input
+          type="checkbox"
+          aria-label="显示按钮名称"
+          :checked="showLabels"
+          @change="onShowLabelsChange"
+        />
+        <span>显示按钮名称</span>
+      </label>
+      <p class="markly-settings-hint">默认只显示图标。鼠标停在按钮上会看到名称；勾选后名称一直显示在按钮上。</p>
       <div class="markly-toolbar-button-head">
         <span>显示的按钮</span>
         <button type="button" class="markly-settings-close" @click="$emit('reset-toolbar-buttons')">全部显示</button>
@@ -93,6 +103,7 @@ import {
   TOOLBAR_GROUP_ORDER,
   isToolbarButtonShown,
   normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
 } from '../../../src/types/toolbarPrefs';
 import { EDITOR_PALETTES } from '../shared/themeConfig';
 
@@ -100,12 +111,14 @@ const props = defineProps<{
   theme: EditorThemeSetting | string;
   prefersDark: boolean;
   toolbarFontSize?: number;
+  toolbarShowLabels?: boolean;
   toolbarButtons?: Partial<Record<ToolbarButtonId, boolean>>;
 }>();
 
 const emit = defineEmits<{
   (e: 'select-theme', theme: EditorPaletteId): void;
   (e: 'update-toolbar-font-size', fontSize: number): void;
+  (e: 'update-toolbar-show-labels', showLabels: boolean): void;
   (e: 'toggle-toolbar-button', id: ToolbarButtonId, visible: boolean): void;
   (e: 'reset-toolbar-buttons'): void;
   (e: 'close'): void;
@@ -116,6 +129,7 @@ const palettes = EDITOR_PALETTES;
 const selectedPaletteId = computed(() => resolveEditorPaletteId(props.theme, props.prefersDark));
 
 const fontSize = computed(() => normalizeToolbarFontSize(props.toolbarFontSize));
+const showLabels = computed(() => normalizeToolbarShowLabels(props.toolbarShowLabels));
 
 const fontSizeOptions = Array.from(
   { length: TOOLBAR_FONT_SIZE_MAX - TOOLBAR_FONT_SIZE_MIN + 1 },
@@ -135,6 +149,10 @@ function isShown(id: ToolbarButtonId): boolean {
 function onFontSizeChange(event: Event): void {
   const raw = Number((event.target as HTMLSelectElement).value);
   emit('update-toolbar-font-size', normalizeToolbarFontSize(raw));
+}
+
+function onShowLabelsChange(event: Event): void {
+  emit('update-toolbar-show-labels', (event.target as HTMLInputElement).checked);
 }
 
 function onToggleButton(id: ToolbarButtonId, visible: boolean): void {
@@ -254,6 +272,11 @@ function onToggleButton(id: ToolbarButtonId, visible: boolean): void {
   gap: 8px;
   font-size: 12px;
   margin-bottom: 10px;
+}
+
+.markly-toolbar-show-labels {
+  margin: 0 0 8px;
+  font-weight: 600;
 }
 
 .markly-toolbar-font select {

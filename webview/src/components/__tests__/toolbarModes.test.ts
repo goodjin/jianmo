@@ -77,7 +77,24 @@ describe('Toolbar structure', () => {
     expect(w.find('.toolbar-btn[title="Bold"]').exists()).toBe(false);
     expect(w.find('.toolbar-btn[title="Math Formula"]').exists()).toBe(false);
     expect(w.find('.toolbar-btn[title="Italic"]').exists()).toBe(true);
-    expect((w.get('.toolbar').element as HTMLElement).style.getPropertyValue('--markly-toolbar-font')).toBe('16px');
+    expect(w.find('.toolbar').classes()).toContain('toolbar--icon-only');
+    expect(w.find('.toolbar-btn[title="Italic"] .btn-label').text()).toBe('斜体');
+  });
+
+  it('keeps names on the buttons when showLabels is on', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+        showLabels: true,
+      },
+    });
+    expect(w.find('.toolbar').classes()).not.toContain('toolbar--icon-only');
+    expect(w.find('.toolbar-btn[title="Bold"] .btn-label').text()).toBe('加粗');
   });
 
   it('exposes delete-table control when rich table is active', () => {

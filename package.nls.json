@@ -81,6 +81,8 @@
   "config.markly.editor.fontSize.description": "Editor font size",
   "config.markly.editor.toolbarFontSize.description": "Toolbar font size (10–18). Larger text makes buttons bigger.",
   "config.markly.editor.toolbarFontSize.markdownDescription": "工具栏字号，范围 **10–18**（默认 11）。也可以在编辑器顶栏的「设置」里调整。字号变大后按钮会一起变大，窄窗口里可能多占一行。",
+  "config.markly.editor.toolbarShowLabels.description": "Always show names on toolbar buttons. Off: icon only, name appears on hover.",
+  "config.markly.editor.toolbarShowLabels.markdownDescription": "When off (default), toolbar buttons show icons only and the name appears while the pointer is over the button. Turn on to keep names visible. The same switch is in the editor Settings panel.",
   "config.markly.editor.toolbarButtons.description": "Which toolbar buttons are shown. Omit a button to keep it visible.",
   "config.markly.editor.toolbarButtons.markdownDescription": "控制每个工具栏按钮是否显示。键是按钮 id，值为 `false` 表示隐藏；没写到的按钮默认显示。也可以在编辑器「设置」里勾选。\n\n示例：隐藏公式和导出 PDF：`{ \"math\": false, \"exportPdf\": false }`。\n\n可用 id：`h1`–`h6`、`bold`、`italic`、`strike`、`code`、`quote`、`clearFormat`、`bulletList`、`orderedList`、`taskList`、`undo`、`redo`、`link`、`image`、`codeBlock`、`hr`、`math`、`table`、`find`、`zoomOut`、`zoomReset`、`zoomIn`、`outline`、`lineNumbers`、`exportPdf`、`exportHtml`。",
   "config.markly.editor.fontFamily.description": "Editor font family",

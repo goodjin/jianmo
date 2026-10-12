@@ -28,9 +28,11 @@ export {
   TOOLBAR_FONT_SIZE_MIN,
   TOOLBAR_FONT_SIZE_MAX,
   DEFAULT_TOOLBAR_FONT_SIZE,
+  DEFAULT_TOOLBAR_SHOW_LABELS,
   isToolbarButtonId,
   isToolbarFontSize,
   normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
   normalizeToolbarButtonMap,
   isToolbarButtonShown,
   compactHiddenToolbarButtons,
@@ -129,6 +131,11 @@ export interface EditorConfig {
    * 设置项 `markly.editor.toolbarButtons`。
    */
   toolbarButtons?: Partial<Record<ToolbarButtonId, boolean>>;
+  /**
+   * 是否在工具栏按钮上一直显示名称。默认 false：只显示图标，悬停再出现名称。
+   * 设置项 `markly.editor.toolbarShowLabels`。
+   */
+  toolbarShowLabels?: boolean;
 }
 
 export interface ImageConfig {
@@ -437,6 +444,8 @@ export type WebViewMessage = ProtocolVersionEnvelope & (
         fontSize?: number;
         buttons?: Partial<Record<ToolbarButtonId, boolean>>;
         resetButtons?: boolean;
+        /** 是否一直显示按钮名称 */
+        showLabels?: boolean;
       };
     }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string; requestId?: string } }
