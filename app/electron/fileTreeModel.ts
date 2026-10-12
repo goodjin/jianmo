@@ -46,6 +46,29 @@ export function isPathUnderRoot(root: string, candidate: string): boolean {
   return c.startsWith(joinUnder(r, ''));
 }
 
+/** 还能不能再往上一级。文件系统根本身（`/`、`C:\`）没有父目录。 */
+export function canGoToParent(dir: string): boolean {
+  const parent = parentDir(dir);
+  if (!parent) return false;
+  return stripTrail(parent) !== stripTrail(dir);
+}
+
+/**
+ * 目录树一开始停在哪：记住的目录还在就用它，否则用用户主目录。
+ * `exists` 由调用方查磁盘，这里只决定优先级。
+ */
+export function resolveFileTreeRoot(
+  saved: string,
+  home: string,
+  exists: (dir: string) => boolean
+): string {
+  const remembered = String(saved ?? '').trim();
+  if (remembered && exists(remembered)) return remembered;
+  const fallback = String(home ?? '').trim();
+  if (fallback && exists(fallback)) return fallback;
+  return '';
+}
+
 /** 文件所在目录。根上的文件返回 `/` 或盘符根；无法再拆则返回空串。 */
 export function parentDir(filePath: string): string {
   const trimmed = stripTrail(String(filePath ?? '').trim());

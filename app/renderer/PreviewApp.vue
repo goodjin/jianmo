@@ -3,10 +3,24 @@
     class="markly-app"
     :class="{
       'files-collapsed': fileTreeCollapsed,
-      'outline-collapsed': outlineCollapsed,
-      'no-outline': isSettingsTab || !hasOutline,
     }"
   >
+    <div ref="openSplitRef" class="open-rail">
+      <div class="open-split">
+        <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">
+          <span class="open-label">打开…</span>
+        </button>
+        <button
+          class="chrome-btn open-caret"
+          type="button"
+          title="最近打开"
+          aria-label="最近打开"
+          :aria-expanded="recentOpen"
+          @click="toggleRecent"
+        >▾</button>
+        <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" @settings="onOpenSettings" />
+      </div>
+    </div>
     <TabBar
       :tabs="tabs"
       :active-id="activeTabId"
@@ -14,20 +28,6 @@
       @close="onCloseTab"
       @new="onNewTab"
     >
-      <template #left>
-        <div ref="openSplitRef" class="open-split">
-          <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">打开…</button>
-          <button
-            class="chrome-btn open-caret"
-            type="button"
-            title="最近打开"
-            aria-label="最近打开"
-            :aria-expanded="recentOpen"
-            @click="toggleRecent"
-          >▾</button>
-          <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" @settings="onOpenSettings" />
-        </div>
-      </template>
       <template #pre-new>
         <button
           class="chrome-btn tab-copy"
@@ -37,6 +37,35 @@
           :aria-label="copyTitle"
           @click="onCopy"
         >⧉</button>
+        <div
+          ref="exportSplitRef"
+          class="export-split"
+          @mouseenter="onExportEnter"
+          @mouseleave="onExportLeave"
+        >
+          <button
+            class="chrome-btn tab-export"
+            type="button"
+            :disabled="exporting || isSettingsTab"
+            :title="exportOpen ? '' : exportTitle"
+            :aria-label="exportTitle"
+            aria-haspopup="menu"
+            :aria-expanded="exportOpen"
+            aria-controls="export-format-menu"
+            @click="onExportButtonClick"
+          >
+            <span>导出</span>
+            <span class="export-caret" aria-hidden="true">▾</span>
+          </button>
+          <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
+            <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
+              导出 PDF
+            </button>
+            <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
+              导出 HTML
+            </button>
+          </div>
+        </div>
       </template>
     </TabBar>
     <FileTree
@@ -44,30 +73,6 @@
       :active-path="activeFilePath"
       @toggle="toggleFileTree"
     />
-    <aside v-if="!isSettingsTab && hasOutline" class="outline-sidebar" :class="{ collapsed: outlineCollapsed }">
-      <div class="outline-head">
-        <span v-if="!outlineCollapsed" class="outline-head-title">目录</span>
-        <button
-          class="outline-toggle"
-          type="button"
-          :title="outlineCollapsed ? '展开目录' : '收起目录'"
-          :aria-label="outlineCollapsed ? '展开目录' : '收起目录'"
-          :aria-expanded="!outlineCollapsed"
-          @click="toggleOutline"
-        >{{ outlineCollapsed ? '›' : '‹' }}</button>
-      </div>
-      <ul v-if="!outlineCollapsed" class="outline-list">
-        <li
-          v-for="item in outline"
-          :key="item.id"
-          class="outline-row"
-          :class="['level-' + item.level]"
-          :style="{ paddingLeft: (item.level - 1) * 12 + 12 + 'px' }"
-          :title="item.text"
-          @click="jumpToHeading(item.id)"
-        >{{ item.text }}</li>
-      </ul>
-    </aside>
     <main class="preview-area">
       <SettingsPage
         v-if="isSettingsTab"
@@ -76,29 +81,58 @@
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
       />
-      <div v-else-if="loading" class="status">加载中…</div>
-      <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
-      <iframe
-        v-else
-        ref="frameRef"
-        class="preview-frame"
-        :srcdoc="safeHtml"
-        sandbox="allow-scripts allow-popups"
-        referrerpolicy="no-referrer"
-        @load="onFrameLoad"
-      ></iframe>
+      <template v-else>
+        <aside v-if="hasOutline" class="doc-outline" :class="{ collapsed: outlineCollapsed }">
+          <div class="doc-outline-head">
+            <span v-if="!outlineCollapsed" class="doc-outline-title">目录</span>
+            <button
+              class="doc-outline-toggle"
+              type="button"
+              :title="outlineCollapsed ? '展开目录' : '收起目录'"
+              :aria-label="outlineCollapsed ? '展开目录' : '收起目录'"
+              :aria-expanded="!outlineCollapsed"
+              @click="toggleOutline"
+            >{{ outlineCollapsed ? '›' : '‹' }}</button>
+          </div>
+          <ul v-if="!outlineCollapsed" class="doc-outline-list">
+            <li
+              v-for="item in outline"
+              :key="item.id"
+              class="doc-outline-row"
+              :class="'level-' + item.level"
+              :style="{ paddingLeft: (item.level - 1) * 12 + 12 + 'px' }"
+              :title="item.text"
+              @click="jumpToHeading(item.id)"
+            >{{ item.text }}</li>
+          </ul>
+        </aside>
+        <div class="doc-body">
+          <div v-if="loading" class="status">加载中…</div>
+          <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
+          <iframe
+            v-else
+            ref="frameRef"
+            class="preview-frame"
+            :srcdoc="safeHtml"
+            sandbox="allow-scripts allow-popups"
+            referrerpolicy="no-referrer"
+            @load="onFrameLoad"
+          ></iframe>
+        </div>
+      </template>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useVSCode } from '@wv/composables/useVSCode';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
+import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
 import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
@@ -133,6 +167,7 @@ const isSettingsTab = computed(
 );
 const frameRef = ref<HTMLIFrameElement | null>(null);
 const openSplitRef = ref<HTMLElement | null>(null);
+const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
 const outlineCollapsed = ref(false);
@@ -155,10 +190,23 @@ const copyTitle = computed(() => {
   return '复制全文（Markdown 源 + 预览 HTML）';
 });
 
+const exportOpen = ref(false);
+const exportPinned = ref(false);
+const exporting = ref(false);
+const exportHint = ref('');
+let exportCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let exportHintTimer: ReturnType<typeof setTimeout> | null = null;
+
+const exportTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能导出';
+  if (exporting.value) return '正在导出…';
+  if (exportHint.value) return exportHint.value;
+  return '导出为 PDF 或 HTML';
+});
+
 /**
  * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
- * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底，保证 outline headingId 与 iframe 内 heading.id 完全匹配。
- * 统一走 `@wv/shared/outline` 的 headingNodeId，避免三处锚点规则各自漂移。
+ * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底。
  */
 interface OutlineEntry extends HeadingNode {
   id: string;
@@ -168,16 +216,11 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 文档没有标题时整栏不出现（连同展开/收起按钮），预览区占满宽度。JSON 没有 Markdown 标题。 */
+/** 没有 Markdown 标题，或当前是 JSON，就不显示目录。目录画在正文里面。 */
 const hasOutline = computed(
   () => structuredKindFromName(activeFilePath.value) === null && outline.value.length > 0
 );
 
-/**
- * 父→子：通过 postMessage 让 iframe 滚动到目标 heading。
- * iframe 内联监听见 src/core/export/htmlExport.ts 的 inline <script>。
- * 跨 sandbox（无 allow-same-origin）下唯一可靠的通信方式。
- */
 function jumpToHeading(headingId: string): void {
   frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
 }
@@ -301,7 +344,83 @@ function closeRecent(): void {
   recentOpen.value = false;
 }
 
+function clearExportCloseTimer(): void {
+  if (exportCloseTimer) {
+    clearTimeout(exportCloseTimer);
+    exportCloseTimer = null;
+  }
+}
+
+function closeExportMenu(): void {
+  exportOpen.value = false;
+  exportPinned.value = false;
+  clearExportCloseTimer();
+}
+
+/** 悬停就展开；离开后稍等再收起，给鼠标挪进菜单的时间。点击钉住的菜单不随鼠标离开关闭。 */
+function onExportEnter(): void {
+  if (exporting.value || isSettingsTab.value) return;
+  clearExportCloseTimer();
+  closeRecent();
+  exportOpen.value = true;
+}
+
+function onExportLeave(): void {
+  if (exportPinned.value) return;
+  clearExportCloseTimer();
+  exportCloseTimer = setTimeout(() => {
+    exportOpen.value = false;
+    exportCloseTimer = null;
+  }, 160);
+}
+
+/** 点击同样展开；已经钉住时再点一下收起。 */
+function onExportButtonClick(): void {
+  if (exporting.value || isSettingsTab.value) return;
+  clearExportCloseTimer();
+  if (exportPinned.value) {
+    closeExportMenu();
+    return;
+  }
+  closeRecent();
+  exportPinned.value = true;
+  exportOpen.value = true;
+}
+
+function flashExport(text: string): void {
+  if (exportHintTimer) {
+    clearTimeout(exportHintTimer);
+    exportHintTimer = null;
+  }
+  exportHint.value = text;
+  exportHintTimer = setTimeout(() => {
+    exportHint.value = '';
+    exportHintTimer = null;
+  }, 1600);
+}
+
+async function onPickExport(format: AppExportFormat): Promise<void> {
+  closeExportMenu();
+  const api = electronApp();
+  if (!api?.exportDocument) {
+    flashExport('导出失败');
+    return;
+  }
+  if (exporting.value || isSettingsTab.value) return;
+  exporting.value = true;
+  try {
+    const result = parseExportResult(await api.exportDocument(format));
+    if (result.ok) flashExport(format === 'pdf' ? '已导出 PDF' : '已导出 HTML');
+    else if (!('cancelled' in result)) flashExport(result.error);
+  } catch {
+    flashExport('导出失败');
+  } finally {
+    exporting.value = false;
+  }
+}
+
 async function toggleRecent(): Promise<void> {
+  closeExportMenu();
   recentOpen.value = !recentOpen.value;
   if (recentOpen.value) {
     await nextTick();
@@ -321,14 +440,22 @@ async function onOpenRecent(p: string): Promise<void> {
 }
 
 function onDocMouseDown(ev: MouseEvent): void {
-  if (!recentOpen.value) return;
-  const root = openSplitRef.value;
-  if (root && ev.target instanceof Node && root.contains(ev.target)) return;
-  closeRecent();
+  const target = ev.target instanceof Node ? ev.target : null;
+  if (recentOpen.value) {
+    const root = openSplitRef.value;
+    if (!(root && target && root.contains(target))) closeRecent();
+  }
+  if (exportOpen.value) {
+    const root = exportSplitRef.value;
+    if (!(root && target && root.contains(target))) closeExportMenu();
+  }
 }
 
 function onDocKeydown(ev: KeyboardEvent): void {
-  if (ev.key === 'Escape') closeRecent();
+  if (ev.key === 'Escape') {
+    closeRecent();
+    closeExportMenu();
+  }
 }
 
 /** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。 */
@@ -544,6 +671,10 @@ const offTabsChanged = electronApp()?.onTabsChanged?.((view) => {
   applyTabsView(view);
 });
 
+watch(isSettingsTab, (isSettings) => {
+  if (isSettings) closeExportMenu();
+});
+
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
@@ -581,6 +712,11 @@ onUnmounted(() => {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  clearExportCloseTimer();
+  if (exportHintTimer) {
+    clearTimeout(exportHintTimer);
+    exportHintTimer = null;
+  }
   if (selectionToastTimer) {
     clearTimeout(selectionToastTimer);
     selectionToastTimer = null;
@@ -596,24 +732,43 @@ html, body, #app {
 }
 .markly-app {
   --files-col: 220px;
-  --outline-col: 240px;
+  --chrome-row: 40px;
   display: grid;
-  grid-template-columns: var(--files-col) var(--outline-col) 1fr;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: var(--files-col) 1fr;
+  grid-template-rows: var(--chrome-row) 1fr;
   height: 100vh;
   margin: 0;
 }
 .markly-app.files-collapsed { --files-col: 40px; }
-.markly-app.outline-collapsed { --outline-col: 40px; }
-.markly-app.no-outline {
-  grid-template-columns: var(--files-col) 1fr;
-}
-.markly-app.no-outline .preview-area {
-  grid-column: 2;
-}
 .markly-app > .tab-bar {
-  grid-column: 1 / -1;
+  position: relative;
+  z-index: 20;
+  grid-column: 2;
   grid-row: 1;
+}
+/* 打开按钮留在文件树正上方。标签从文件树右缘开始，底边和正文连成一块 */
+.open-rail {
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  background: var(--markly-surface, #f6f8fa);
+  border-right: 1px solid var(--markly-border-color, #d0d7de);
+  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+}
+.markly-app.files-collapsed .open-label { display: none; }
+.markly-app.files-collapsed .open-main::before { content: '开'; }
+.markly-app.files-collapsed .open-caret { display: none; }
+.markly-app.files-collapsed .open-main {
+  border-radius: 6px;
+  min-width: 28px;
+  padding: 0 6px;
 }
 .chrome-btn {
   font-size: 12px;
@@ -638,7 +793,7 @@ html, body, #app {
   display: flex;
   align-items: stretch;
   align-self: center;
-  margin: 0 6px 0 8px;
+  min-width: 0;
 }
 .open-split .open-main {
   border-top-right-radius: 0;
@@ -664,69 +819,133 @@ html, body, #app {
   line-height: 1;
 }
 .tab-copy:disabled { opacity: 0.55; }
+/* 导出：紧挨复制，悬停或点击展开 PDF / HTML */
+.export-split {
+  position: relative;
+  align-self: center;
+  display: flex;
+  margin-right: 4px;
+}
+.export-split::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+.tab-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.export-caret {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 148px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: 8px;
+  background: var(--markly-background, #fff);
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+}
+.export-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--markly-text, #24292e);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
 
-.outline-sidebar {
+.preview-area {
   grid-column: 2;
   grid-row: 2;
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--markly-background, #fff);
+}
+/* 目录画在正文内部左侧，和正文同一张白底，不进顶层分栏 */
+.doc-outline {
+  flex: 0 0 200px;
+  width: 200px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border-right: 1px solid var(--markly-border-color, #d0d7de);
-  background: var(--markly-surface, #fafbfc);
+  min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
+  background: var(--markly-background, #fff);
+  border-right: 1px solid var(--markly-border-color, #d0d7de);
 }
-.outline-head {
+.doc-outline.collapsed {
+  flex-basis: 36px;
+  width: 36px;
+}
+.doc-outline-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 10px 10px 14px;
-  min-height: 40px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+  padding: 12px 8px 6px 14px;
   flex-shrink: 0;
 }
-.outline-head-title {
+.doc-outline.collapsed .doc-outline-head {
+  justify-content: center;
+  padding: 12px 4px;
+}
+.doc-outline-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--markly-text, #1f2328);
-  padding: 4px 0;
   line-height: 1.4;
+  color: var(--markly-textSecondary, #57606a);
 }
-.outline-toggle {
-  width: 28px;
-  height: 28px;
+.doc-outline-toggle {
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--markly-border-color, #d0d7de);
+  border: 0;
   border-radius: 6px;
-  background: var(--markly-background, #fff);
+  background: transparent;
+  color: var(--markly-textSecondary, #57606a);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
-  color: var(--markly-text, #24292e);
   flex-shrink: 0;
 }
-.outline-toggle:hover { background: var(--markly-surface, #f6f8fa); }
-.outline-sidebar.collapsed .outline-head {
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 8px 6px;
-  border-bottom: 0;
-  min-height: 0;
-  height: 100%;
-}
-.outline-list {
+.doc-outline-toggle:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.doc-outline-list {
   list-style: none;
-  padding: 8px 0 12px;
   margin: 0;
-  overflow-y: auto;
+  padding: 4px 0 16px;
+  overflow: auto;
   min-height: 0;
   flex: 1;
 }
-.outline-row {
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 6px 14px 6px 0;
+.doc-outline-row {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 5px 12px 5px 0;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -734,28 +953,19 @@ html, body, #app {
   color: var(--markly-text, #24292e);
   user-select: none;
 }
-.outline-row:hover { background: var(--markly-surfaceHover, #eaeef2); }
-.outline-row.level-1 { font-weight: 600; color: var(--markly-text, #1f2328); }
-.outline-row.level-2 { font-weight: 500; color: var(--markly-text, #2f363d); }
-.outline-row.level-3,
-.outline-row.level-4,
-.outline-row.level-5,
-.outline-row.level-6 { color: var(--markly-textSecondary, #57606a); }
-.outline-empty {
-  padding: 20px 14px;
-  color: var(--markly-textSecondary, #6a737d);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: center;
-}
-
-.preview-area {
-  grid-column: 3;
-  grid-row: 2;
+.doc-outline-row:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.doc-outline-row.level-1 { font-weight: 600; }
+.doc-outline-row.level-3,
+.doc-outline-row.level-4,
+.doc-outline-row.level-5,
+.doc-outline-row.level-6 { color: var(--markly-textSecondary, #57606a); }
+.doc-body {
   position: relative;
-  overflow: hidden;
+  flex: 1;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  background: var(--markly-background, #fff);
 }
 .preview-frame {
   width: 100%;

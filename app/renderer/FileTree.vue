@@ -5,6 +5,14 @@
       <span v-if="!collapsed" class="file-head-actions">
         <button
           type="button"
+          class="file-icon-btn file-up"
+          title="上一级目录"
+          aria-label="上一级目录"
+          :disabled="!canGoUp"
+          @click="goUp"
+        >↑</button>
+        <button
+          type="button"
           class="file-icon-btn"
           title="刷新目录树"
           :disabled="!root"
@@ -44,6 +52,7 @@
 import { computed, nextTick, onMounted, provide, reactive, ref, toRef, watch } from 'vue';
 import {
   ancestorDirs,
+  canGoToParent,
   filesystemRootOf,
   parentDir,
   parseFileTreeResult,
@@ -65,6 +74,7 @@ const loading = reactive<Record<string, boolean>>({});
 const errors = reactive<Record<string, string>>({});
 
 const rootName = computed(() => displayNameFromPath(root.value).fileName || root.value);
+const canGoUp = computed(() => canGoToParent(root.value));
 const rootEntries = computed(() => (root.value ? cache[root.value] ?? [] : []));
 const rootErr = computed(() => (root.value ? errors[root.value] ?? '' : ''));
 const rootBusy = computed(
@@ -121,17 +131,41 @@ async function applyRoot(next: string): Promise<void> {
   await reveal(props.activePath);
 }
 
-/**
- * 树根 = 当前文档所属的文件系统根（POSIX `/`、Windows 盘符根），完整文件夹树从根目录铺开。
- * 打开文档时自动跟随：只展开当前文档所在目录及其父目录，其余文件夹保持收起、可手动展开。
- */
-async function syncRoot(): Promise<void> {
-  const next = filesystemRootOf(props.activePath) || root.value || '/';
-  if (next !== root.value) {
-    await applyRoot(next);
+/** 打开的文档如果在当前目录下面，就展开到它；否则把树根挪到文档所在目录。 */
+async function followActiveFile(): Promise<void> {
+  const file = props.activePath;
+  if (!file) return;
+  if (root.value && isPathUnderRoot(root.value, file)) {
+    await reveal(file);
     return;
   }
-  await reveal(props.activePath);
+  const next = parentDir(file) || filesystemRootOf(file);
+  if (!next) return;
+  await applyRoot(next);
+}
+
+async function goUp(): Promise<void> {
+  const parent = parentDir(root.value);
+  if (!canGoToParent(root.value) || !parent) return;
+  const committed = await electronApp()?.setFileTreeRoot?.(parent);
+  const next = typeof committed === 'string' && committed.trim() ? committed.trim() : parent;
+  await applyRoot(next);
+}
+
+/**
+ * 第一次打开停在主进程给的目录（默认是用户主目录）。
+ * 当前文档不在这个目录里时，改到文档所在目录，方便在树里看到它。
+ */
+async function loadInitialRoot(): Promise<void> {
+  const fromHost = await electronApp()?.fileTreeRoot?.();
+  const hostRoot = typeof fromHost === 'string' ? fromHost.trim() : '';
+  const file = props.activePath;
+  let initial = hostRoot;
+  if (file && initial && !isPathUnderRoot(initial, file)) {
+    initial = parentDir(file) || initial;
+  }
+  if (!initial) initial = parentDir(file) || filesystemRootOf(file);
+  if (initial) await applyRoot(initial);
 }
 
 async function onRefresh(): Promise<void> {
@@ -168,15 +202,20 @@ const ctx: FileTreeContext = {
 };
 provide(FileTreeKey, ctx);
 
+let treeReady = false;
+
 watch(
   () => props.activePath,
   () => {
-    void syncRoot();
+    if (!treeReady) return;
+    void followActiveFile();
   }
 );
 
 onMounted(() => {
-  void syncRoot();
+  void loadInitialRoot().finally(() => {
+    treeReady = true;
+  });
 });
 </script>
 

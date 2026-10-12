@@ -109,21 +109,13 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-## 当前任务：把 JSON 树预览并进主干
-
-- [X] 解开和「选择即复制」的冲突，两套复制都留下
-- [X] 再合上工具栏 2.3.0，扩展版本保持 2.3.0
-- [X] 推送并合并到 main
-
-## 已完成（历史）
-
+- [X] **合并到主干**：导出下拉、标签贴文件树、正文内大纲，与主干上的 JSON 树预览、选择即复制、工具栏 2.3.0 合在一起。
+- [X] **顶栏与文件树**（独立应用 0.5.3）：打开按钮在文件树正上方；标签从文件树右缘起，和正文同一列。文档标题大纲画在正文内部左侧，不单独占一列。文件树默认用户主目录，标题栏有「上一级」。
+- [X] **独立应用导出 HTML/PDF**（0.5.0）：复制按钮旁「导出」，悬停与点击都下拉选 PDF/HTML；菜单打开时清空 `title`，避免系统提示盖住菜单。主进程保存对话框；HTML 走 exportToHtml（默认复制本地图片），PDF 走隐藏窗口 printToPDF。
 - [X] **JSON / JSONL 树形预览**（0.5.1）：圆角框用树线连接；箭头展开收起；JSONL 行号在框外；点框复制这一格。
-- [X] **插件工具栏排版 + 设置（2.3.0）**
-  - 两行排版；字号；每个按钮显隐。
-  - 默认图标模式：名称悬停才出现（`.toolbar--icon-only`）。设置「显示按钮名称」/`markly.editor.toolbarShowLabels`。
-  - 顶栏 Rich / Source / 预览 / 设置按钮高度 22px。
-- [X] **选择即复制**（独立桌面预览，0.5.0）：选区停稳后把正文放进系统剪贴板；设置「阅读」和 Edit 菜单可关；默认开。不改 VSCode 编辑器（编辑时自动覆盖剪贴板会碍事）。扩展 2.2.2 仅让标题「#」和代码「复制」按钮不可选中。
-- [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录文件分页 100 + 更多。
+- [X] **插件工具栏排版 + 设置（2.3.0）**：两行排版；字号；每个按钮显隐；默认图标模式。
+- [X] **选择即复制**（独立桌面预览，0.5.0）：选区停稳后把正文放进系统剪贴板；设置「阅读」和 Edit 菜单可关；默认开。
+- [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录 md 分页 100 + 更多。
 - [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。
 - [X] **工具栏收起/展开**：`Toolbar` 右侧「收起」、收起后单行「展开」；`SET_TOOLBAR_COLLAPSED` + `globalState` 跨文档/会话记忆；**2.0.3**。
 - [X] **2.0**：移除 **`EditorMode='ir'`**；仅 **Rich / Source / Preview**；`workspaceState` 与 **TRACK** 将遗留 `ir` 规范为 `source`。**版本 2.0.0**。
@@ -133,4 +125,6 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
 - Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。
 - **`npm run manual:vscode`**（当前脚本）会先编译 **`dist/extension` + `dist/webview`**；验收前若跳过脚本直接开 VS Code，改动的 webview 可能不会进宿主（症状：Toolbar 文案/z-index 等「完全没变」）。
+- 顶栏下拉菜单打开时不要留着按钮的 `title`：系统提示会盖住菜单。页面只应 import 不含 Node 的 `exportTypes`，不要从 `exportDocument.ts` 把写文件管线打进 renderer。
+- 独立应用里标签要从文件树右缘开始，和正文同一列。文档大纲要留着，但画在正文内部，不要和文件树并列成单独一列。
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。

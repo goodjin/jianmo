@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   ancestorDirs,
+  canGoToParent,
   filesystemRootOf,
   isPathUnderRoot,
   parentDir,
   parseFileTreeResult,
+  resolveFileTreeRoot,
   FILE_TREE_ERR_UNREADABLE,
 } from './fileTreeModel';
 
@@ -14,6 +16,22 @@ describe('fileTreeModel', () => {
     expect(isPathUnderRoot('/docs', '/docs')).toBe(true);
     expect(isPathUnderRoot('/docs', '/docs-other/a.md')).toBe(false);
     expect(isPathUnderRoot('', '/docs')).toBe(false);
+  });
+
+  it('文件系统根不能再向上，其它目录可以', () => {
+    expect(canGoToParent('/')).toBe(false);
+    expect(canGoToParent('C:\\')).toBe(false);
+    expect(canGoToParent('/home/me')).toBe(true);
+    expect(canGoToParent('/home')).toBe(true);
+    expect(parentDir('/home/me')).toBe('/home');
+  });
+
+  it('没记住目录时用用户主目录，记住的目录还在就优先用它', () => {
+    const exists = (dir: string) => dir === '/home/me' || dir === '/work';
+    expect(resolveFileTreeRoot('', '/home/me', exists)).toBe('/home/me');
+    expect(resolveFileTreeRoot('/work', '/home/me', exists)).toBe('/work');
+    expect(resolveFileTreeRoot('/gone', '/home/me', exists)).toBe('/home/me');
+    expect(resolveFileTreeRoot('/gone', '/missing', exists)).toBe('');
   });
 
   it('parentDir 去掉最后一段，根上的文件回到根', () => {

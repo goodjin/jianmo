@@ -118,7 +118,7 @@ export function createHostBridge(opts: HostBridgeOptions) {
         break;
       }
 
-      // TODO(P3): EXPORT(pdf via webContents.printToPDF / html via exportToHtml),
+      // 导出不走这条消息：顶栏按钮经 app:export-document（HTML 写文件，PDF 用 printToPDF）。
       //   SAVE_IMAGE/UPLOAD_IMAGE, AI_*_REQUEST, CHECK_LOCAL_IMAGE_REFS,
       //   LIST_ASSETS_IMAGE_FILES, DELETE_ASSETS_IMAGE_FILES, OPEN_IMAGE_DIRECTORY,
       //   OPEN_IMAGE_PREVIEW, OPEN_IMAGE_EDITOR, REPAIR_IMAGE_REF, OPEN_MARKDOWN_DOCUMENT(new window)

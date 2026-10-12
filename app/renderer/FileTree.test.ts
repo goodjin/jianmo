@@ -7,7 +7,10 @@ import type { FileTreeListResult } from '../electron/fileTreeModel';
 let mounted: { app: App; el: HTMLElement } | null = null;
 
 function install(bridge: Partial<ElectronAppBridge>): void {
-  (window as unknown as { electron: ElectronAppBridge }).electron = bridge;
+  (window as unknown as { electron: ElectronAppBridge }).electron = {
+    fileTreeRoot: async () => '/',
+    ...bridge,
+  };
 }
 
 async function flush(): Promise<void> {
@@ -67,14 +70,14 @@ function fakeList(): ReturnType<typeof vi.fn> {
   return vi.fn(async (dir: string) => TREE[dir] ?? { dir, entries: [], error: '' });
 }
 
-describe('FileTree（树根 = 文件系统根）', () => {
-  it('从根目录铺开完整文件夹树，并自动展开当前文档所在的目录链', async () => {
+describe('FileTree（树根由主进程给定，默认是用户目录）', () => {
+  it('从给定的根铺开文件夹树，并自动展开当前文档所在的目录链', async () => {
     const listFileTree = fakeList();
     install({ listFileTree });
     const el = mount({ activePath: '/docs/notes/b.md' });
     await flush();
 
-    // 树根是文件系统根，不是文档所在目录
+    // 树根是主进程给的目录，不是临时改成文档所在文件夹
     expect(listFileTree).toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('/');
     // 祖父、父目录与当前目录都展开：b.md 的行存在且标记为当前
@@ -123,6 +126,56 @@ describe('FileTree（树根 = 文件系统根）', () => {
     expect(listFileTree).toHaveBeenCalledWith('/other');
     const current = el.querySelector('.tree-row.current') as HTMLElement;
     expect(current?.getAttribute('data-path')).toBe('/other/c.md');
+  });
+
+  it('默认停在用户主目录，不从磁盘根铺开', async () => {
+    const listFileTree = vi.fn(async (dir: string) => {
+      if (dir === '/home/me') {
+        return {
+          dir,
+          entries: [
+            { name: 'docs', path: '/home/me/docs', kind: 'dir' },
+            { name: 'readme.md', path: '/home/me/readme.md', kind: 'file' },
+          ],
+          error: '',
+        };
+      }
+      if (dir === '/home/me/docs') {
+        return { dir, entries: [{ name: 'a.md', path: '/home/me/docs/a.md', kind: 'file' }], error: '' };
+      }
+      return { dir, entries: [], error: '' };
+    });
+    install({ fileTreeRoot: async () => '/home/me', listFileTree });
+    const el = mount({ activePath: '/home/me/docs/a.md' });
+    await flush();
+
+    expect(listFileTree).toHaveBeenCalledWith('/home/me');
+    expect(listFileTree).not.toHaveBeenCalledWith('/');
+    expect(el.querySelector('.file-root')!.textContent).toBe('me');
+    expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/home/me/docs/a.md');
+    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('向上按钮跳到父目录并记住，到磁盘根后按钮禁用', async () => {
+    const listFileTree = vi.fn(async (dir: string) => ({
+      dir,
+      entries: dir === '/' ? [{ name: 'home', path: '/home', kind: 'dir' as const }] : [],
+      error: '',
+    }));
+    const setFileTreeRoot = vi.fn(async (dir: string) => dir);
+    install({ fileTreeRoot: async () => '/home', listFileTree, setFileTreeRoot });
+    const el = mount({ activePath: '' });
+    await flush();
+
+    const up = el.querySelector('.file-up') as HTMLButtonElement;
+    expect(up.disabled).toBe(false);
+    up.click();
+    await flush();
+
+    expect(setFileTreeRoot).toHaveBeenCalledWith('/');
+    expect(listFileTree).toHaveBeenCalledWith('/');
+    expect(el.querySelector('.file-root')!.textContent).toBe('/');
+    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('收起后不渲染树，切换按钮通知外层', async () => {
