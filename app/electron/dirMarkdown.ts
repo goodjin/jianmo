@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { DIR_MD_PAGE_SIZE, isMarkdownFileName, paginateItems } from './recentFiles';
+import { isOpenableDocumentName } from './documentKind';
+import { DIR_MD_PAGE_SIZE, paginateItems } from './recentFiles';
 
 export interface DirMarkdownFile {
   path: string;
@@ -19,7 +20,7 @@ export function emptyDirMarkdownPage(dir: string, offset = 0): DirMarkdownPage {
 }
 
 /**
- * 列出目录下的 Markdown 文件（仅当前层，不递归），按文件名排序后分页。
+ * 列出目录下可打开的文件（Markdown / JSON / JSONL，仅当前层，不递归），按文件名排序后分页。
  * 目录不存在 / 不可读 → 空页，不抛。
  */
 export function listMarkdownFilesPage(
@@ -33,7 +34,7 @@ export function listMarkdownFilesPage(
   try {
     const entries = fs.readdirSync(resolved, { withFileTypes: true });
     names = entries
-      .filter((ent) => ent.isFile() && isMarkdownFileName(ent.name))
+      .filter((ent) => ent.isFile() && isOpenableDocumentName(ent.name))
       .map((ent) => ent.name)
       .sort((a, b) => a.localeCompare(b, 'zh'));
   } catch {

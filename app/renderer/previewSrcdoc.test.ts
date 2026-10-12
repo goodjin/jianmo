@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildStructuredPreviewHtml } from '../electron/jsonView';
 import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
 import { buildPreviewSrcdoc, visibleTextFromHtml } from './previewSrcdoc';
 
@@ -47,5 +48,32 @@ describe('buildPreviewSrcdoc', () => {
     expect(once.split('data-markly-selection-copy').length - 1).toBe(1);
     const twice = buildPreviewSrcdoc(once);
     expect(twice.split('data-markly-selection-copy').length - 1).toBe(1);
+  });
+
+  it('JSON 树的展开和点框脚本留着，选择即复制也只挂一次', () => {
+    const html = buildStructuredPreviewHtml('{"name":"甲","tags":["a"]}', 'json');
+    const once = buildPreviewSrcdoc(html);
+    const doc = new DOMParser().parseFromString(once, 'text/html');
+    const codes = [...doc.querySelectorAll('script')].map((script) => script.textContent || '');
+    expect(codes.some((code) => code.includes('MARKLY_COPY_BOX') && code.includes('is-collapsed'))).toBe(true);
+    expect(doc.querySelector('.twisty')).not.toBeNull();
+    expect(once.split('data-markly-selection-copy').length - 1).toBe(1);
+
+    const twice = buildPreviewSrcdoc(once);
+    const again = new DOMParser().parseFromString(twice, 'text/html');
+    const codesAgain = [...again.querySelectorAll('script')].map((script) => script.textContent || '');
+    expect(codesAgain.some((code) => code.includes('MARKLY_COPY_BOX'))).toBe(true);
+    expect(twice.split('data-markly-selection-copy').length - 1).toBe(1);
+  });
+
+  it('正文里冒充 JSON 复制的脚本仍然被删掉', () => {
+    const html =
+      '<html><body><div class="content"><script>MARKLY_COPY_BOX</script><p>正文</p></div><script>evil()</script></body></html>';
+    const out = buildPreviewSrcdoc(html);
+    const doc = new DOMParser().parseFromString(out, 'text/html');
+    const codes = [...doc.querySelectorAll('script')].map((script) => script.textContent || '');
+    expect(codes.some((code) => code.includes('MARKLY_COPY_BOX'))).toBe(false);
+    expect(codes.some((code) => code.includes('evil()'))).toBe(false);
+    expect(doc.body.textContent).toContain('正文');
   });
 });

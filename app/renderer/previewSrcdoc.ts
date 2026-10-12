@@ -20,6 +20,8 @@ function isTrustedPreviewScript(script: Element): boolean {
   const src = script.getAttribute('src') || '';
   const code = script.textContent || '';
   if (code.includes('文档运行时增强')) return true;
+  // JSON / JSONL 树：展开收起和点框复制。脚本在正文外面，不能被当成陌生脚本删掉。
+  if (code.includes('MARKLY_COPY_BOX')) return true;
   if (code.includes('mermaid.initialize')) return true;
   if (code.length > 8000 && code.includes('mermaid')) return true;
   return /mermaid/i.test(src);

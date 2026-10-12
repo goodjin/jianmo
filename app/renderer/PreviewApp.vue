@@ -16,7 +16,7 @@
     >
       <template #left>
         <div ref="openSplitRef" class="open-split">
-          <button class="chrome-btn open-main" type="button" title="打开 Markdown 文件" @click="onOpen">打开…</button>
+          <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">打开…</button>
           <button
             class="chrome-btn open-caret"
             type="button"
@@ -99,9 +99,11 @@ import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
+import { structuredKindFromName } from '../electron/documentKind';
+import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
-import { collectDroppedMarkdownPaths, type DroppedFileLike } from './dropFiles';
+import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import {
   electronApp,
   parseAppearance,
@@ -146,8 +148,9 @@ const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
 
+const copiedHint = ref('已复制到剪贴板');
 const copyTitle = computed(() => {
-  if (copied.value) return '已复制到剪贴板（Markdown + 富文本）';
+  if (copied.value) return copiedHint.value;
   if (copyFailed.value) return '复制失败';
   return '复制全文（Markdown 源 + 预览 HTML）';
 });
@@ -165,8 +168,10 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 文档没有标题时整栏不出现（连同展开/收起按钮），预览区占满宽度。 */
-const hasOutline = computed(() => outline.value.length > 0);
+/** 文档没有标题时整栏不出现（连同展开/收起按钮），预览区占满宽度。JSON 没有 Markdown 标题。 */
+const hasOutline = computed(
+  () => structuredKindFromName(activeFilePath.value) === null && outline.value.length > 0
+);
 
 /**
  * 父→子：通过 postMessage 让 iframe 滚动到目标 heading。
@@ -332,22 +337,23 @@ function onDragOver(ev: DragEvent): void {
   ev.preventDefault();
 }
 
-/** 拖 Markdown 文档进界面 → 自动打开；多份按拖入顺序逐个开标签。 */
+/** 拖 Markdown / JSON / JSONL 进界面 → 自动打开；多份按拖入顺序逐个开标签。 */
 async function onDrop(ev: DragEvent): Promise<void> {
   ev.preventDefault();
   const files = ev.dataTransfer?.files;
   if (!files || files.length === 0) return;
-  const paths = collectDroppedMarkdownPaths(files as unknown as ArrayLike<DroppedFileLike>);
+  const paths = collectDroppedDocumentPaths(files as unknown as ArrayLike<DroppedFileLike>);
   for (const p of paths) {
     await electronApp()?.openPath?.(p);
   }
 }
 
-function flashCopyState(ok: boolean): void {
+function flashCopyState(ok: boolean, hint = '已复制到剪贴板'): void {
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  copiedHint.value = hint;
   copied.value = ok;
   copyFailed.value = !ok;
   copiedTimer = setTimeout(() => {
@@ -355,6 +361,29 @@ function flashCopyState(ok: boolean): void {
     copyFailed.value = false;
     copiedTimer = null;
   }, 1600);
+}
+
+/** 预览 iframe 里点中圆角框：只认当前预览窗口发来的复制消息。 */
+function onBoxCopyMessage(ev: MessageEvent): void {
+  const frameWindow = frameRef.value?.contentWindow ?? null;
+  if (!frameWindow || ev.source !== frameWindow) return;
+  const text = readBoxCopyPayload(ev.data);
+  if (text === null) return;
+  void copyBoxText(text);
+}
+
+async function copyBoxText(text: string): Promise<void> {
+  const api = electronApp();
+  if (!api?.copyExactText) {
+    flashCopyState(false);
+    return;
+  }
+  try {
+    const ok = await api.copyExactText(text);
+    flashCopyState(ok !== false, '已复制');
+  } catch {
+    flashCopyState(false);
+  }
 }
 
 function flashSelectionToast(text: string): void {
@@ -413,7 +442,7 @@ async function onCopy(): Promise<void> {
       contentHtml: extractPreviewContentHtml(previewHtml.value),
     });
     const ok = await api.copyToClipboard(payload);
-    flashCopyState(ok !== false);
+    flashCopyState(ok !== false, '已复制到剪贴板（Markdown + 富文本）');
   } catch {
     flashCopyState(false);
   } finally {
@@ -534,6 +563,7 @@ onMounted(() => {
   document.addEventListener('keydown', onDocKeydown);
   document.addEventListener('dragover', onDragOver);
   document.addEventListener('drop', onDrop);
+  window.addEventListener('message', onBoxCopyMessage);
   postMessage({ type: 'READY', payload: undefined });
 });
 
@@ -546,6 +576,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onDocKeydown);
   document.removeEventListener('dragover', onDragOver);
   document.removeEventListener('drop', onDrop);
+  window.removeEventListener('message', onBoxCopyMessage);
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;

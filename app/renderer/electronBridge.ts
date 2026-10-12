@@ -24,6 +24,7 @@ export interface ElectronAppBridge {
   openPath?: (filePath: string) => Promise<string | null>;
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
+  copyExactText?: (text: string) => Promise<boolean>;
   copySelection?: (payload: { text: string }) => Promise<boolean>;
   onCopyRequest?: (handler: () => void) => () => void;
   listRecentFiles?: () => Promise<unknown>;

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 桌面版
 
+- **JSON / JSONL 树形预览**（0.5.1）：打开 `.json` / `.jsonl` 时，键、值和数组元素各自一个圆角框，用树线连起来。点箭头（JSONL 也可点行号）展开或收起；点框复制这一格。行号在框外面。
 - **选择即复制**（0.5.0）：在预览里选中文字后自动放进剪贴板。默认开启，可在「设置 → 阅读」或 Edit 菜单里关掉。
 
 ### Fixed

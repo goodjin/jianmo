@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electron', {
   },
   copyToClipboard: (payload: { text: string; html: string }): Promise<boolean> =>
     ipcRenderer.invoke('app:copy-document', payload),
+  copyExactText: (text: string): Promise<boolean> => ipcRenderer.invoke('app:copy-text', text),
   copySelection: (payload: { text: string }): Promise<boolean> =>
     ipcRenderer.invoke('app:copy-selection', payload),
   onCopyRequest: (handler: () => void): (() => void) => {
