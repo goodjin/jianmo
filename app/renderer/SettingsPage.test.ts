@@ -143,3 +143,23 @@ describe('设置页 · 外观栏目', () => {
     expect((el.querySelector('.sample') as HTMLElement).style.fontFamily).toBe('');
   });
 });
+
+describe('设置页 · 阅读', () => {
+  it('默认勾选选择即复制', () => {
+    const el = mount({});
+    const box = el.querySelector('#settings-copy-on-select') as HTMLInputElement;
+    expect(box).not.toBeNull();
+    expect(box.checked).toBe(true);
+    expect(el.querySelector('#settings-reading')!.textContent).toBe('阅读');
+  });
+
+  it('关掉时不勾选，再勾上会抛出布尔值', () => {
+    const onUpdateReader = vi.fn();
+    const el = mount({ copyOnSelect: false, onUpdateReader });
+    const box = el.querySelector('#settings-copy-on-select') as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    box.checked = true;
+    change(box);
+    expect(onUpdateReader).toHaveBeenCalledWith({ copyOnSelect: true });
+  });
+});

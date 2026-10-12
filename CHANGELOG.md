@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 桌面版
+
+- **选择即复制**（0.5.0）：在预览里选中文字后自动放进剪贴板。默认开启，可在「设置 → 阅读」或 Edit 菜单里关掉。
+
+### Fixed
+
+- 导出与预览里，标题前的「#」和代码块上的「复制」按钮不会再被鼠标选进正文。
+
 ## [2.3.0] - 2026-10-12
 
 ### Changed
