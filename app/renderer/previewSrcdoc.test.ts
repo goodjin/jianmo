@@ -76,4 +76,28 @@ describe('buildPreviewSrcdoc', () => {
     expect(codes.some((code) => code.includes('evil()'))).toBe(false);
     expect(doc.body.textContent).toContain('正文');
   });
+
+  it('脚本文本里含 </body> 时（如内联 mermaid 包），选择即复制脚本仍挂在文档尾部，不截断大脚本', () => {
+    // 复刻 DOMPurify `_initDocument` 的模式：JS 字符串里带着 "</body></html>"。
+    // 脚本带 mermaid.initialize 标记以通过受信检查（长包就是这样被保留下来的）。
+    const libCode = 'mermaid.initialize({});var s = "x" + $e + "</body></html>");TAIL_MARKER_LEAK();';
+    const html = `<html><head></head><body><div class="content"><p>正文</p></div><script>${libCode}</script></body></html>`;
+    const out = buildPreviewSrcdoc(html);
+    const doc = new DOMParser().parseFromString(out, 'text/html');
+
+    // 大脚本原样保留，没被插进来的脚本截断
+    const codes = [...doc.querySelectorAll('script')].map((s) => s.textContent || '');
+    const lib = codes.find((c) => c.includes('TAIL_MARKER_LEAK'));
+    expect(lib).toBeDefined();
+    expect(lib).toContain('</body></html>');
+
+    // 泄漏金丝雀：TAIL_MARKER_LEAK 若被当成正文渲染出来，visibleTextFromHtml 会看到它
+    expect(visibleTextFromHtml(out)).not.toContain('TAIL_MARKER_LEAK');
+    expect(visibleTextFromHtml(out)).toContain('正文');
+
+    // 注入脚本必须是 body 的最后一个节点（在长脚本之后），且全文档只有一个
+    const sel = doc.querySelectorAll('script[data-markly-selection-copy]');
+    expect(sel.length).toBe(1);
+    expect(doc.body.lastElementChild).toBe(sel[0]);
+  });
 });

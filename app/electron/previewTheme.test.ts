@@ -121,4 +121,17 @@ describe('applyPreviewTheme', () => {
     expect(out).toContain('font-family: Georgia, serif;');
     expect(out).toContain('font-size: 22px;');
   });
+
+  it('内联脚本里带字面 </head><body> 时（如 mermaid 包），主题仍注入到真实 head 末尾', () => {
+    // lastIndexOf('</head>') 会命中脚本里 DOMPurify 风格的假边界，把样式注进脚本文本。
+    const tricky =
+      '<!DOCTYPE html><html><head>\n<style>p{}</style>\n</head>\n<body>\n<p>正文</p>\n<script>var fake = "<head></head><body>";</script>\n</body></html>';
+    const out = applyPreviewTheme(tricky, DRACULA);
+    const markerAt = out.indexOf(PREVIEW_THEME_MARKER);
+    expect(markerAt).toBeGreaterThan(-1);
+    // 必须落在真实 head 里（脚本之前），而不是脚本文本中间
+    expect(markerAt).toBeLessThan(out.indexOf('<script>'));
+    const scriptText = out.slice(out.indexOf('<script>'), out.indexOf('</script>'));
+    expect(scriptText).not.toContain(PREVIEW_THEME_MARKER);
+  });
 });

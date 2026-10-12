@@ -51,6 +51,11 @@ export function buildPreviewThemeCss(palette: EditorPalette, font: PreviewFontOp
     }
     body {
 ${bodyFont}
+      /* 预览列宽跟随窗口：导出管线的 860px 书页宽在全屏下挤在中间。
+         上限 1360px 保证大屏上的行宽仍可读；导出 HTML 不受此覆盖影响。 */
+      max-width: min(1360px, 100%);
+      padding-left: clamp(28px, 6vw, 88px);
+      padding-right: clamp(28px, 6vw, 88px);
     }
     h1, h2, h3, h4, h5, h6 {
       color: ${c.heading};
@@ -78,8 +83,15 @@ export function applyPreviewTheme(
   font: PreviewFontOptions = {}
 ): string {
   const source = typeof html === 'string' ? html : '';
-  const closing = source.toLowerCase().lastIndexOf('</head>');
-  if (closing < 0) return source;
   const style = `  <style ${PREVIEW_THEME_MARKER}>\n${buildPreviewThemeCss(palette, font)}\n  </style>\n`;
+  // 优先认自家模板的「换行 </head> 换行 <body」边界：内联 mermaid 包里 DOMPurify 的
+  // 字符串带着字面 `</head><body>`，无脑 lastIndexOf('</head>') 会把主题样式注进脚本中间，
+  // 让主题（连同列宽覆盖）静默失效。
+  const boundary = source.indexOf('\n</head>\n<body');
+  if (boundary >= 0) {
+    return source.slice(0, boundary) + `\n${style}` + source.slice(boundary);
+  }
+  const closing = source.toLowerCase().indexOf('</head>');
+  if (closing < 0) return source;
   return source.slice(0, closing) + style + source.slice(closing);
 }
