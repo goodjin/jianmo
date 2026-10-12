@@ -7,13 +7,12 @@ function copyText(el: Element): string {
   return JSON.parse(el.getAttribute('data-markly-copy') || 'null') as string;
 }
 
-function directBoxes(parent: Element, role: string): HTMLElement[] {
-  return [...parent.children].filter((el) => el.classList.contains(`box-${role}`)) as HTMLElement[];
-}
-
-function rowKey(row: Element): string {
-  const key = row.querySelector(':scope > .box-key');
-  return key ? copyText(key) : '';
+function nodeByKey(root: ParentNode, key: string): HTMLElement {
+  const keys = [...root.querySelectorAll('.box-key')] as HTMLElement[];
+  const found = keys.find((el) => copyText(el) === key);
+  const node = found?.closest('.node');
+  if (!node) throw new Error(`missing node ${key}`);
+  return node as HTMLElement;
 }
 
 describe('readBoxCopyPayload', () => {
@@ -47,28 +46,26 @@ describe('buildStructuredPreviewHtml JSON', () => {
 
   it('键和值各自一框，字符串按原文复制，特殊字符只出现在文本里', () => {
     const doc = render();
-    const root = doc.querySelector('.json-view > .box') as HTMLElement;
+    const root = doc.querySelector('.tree > .node > .node-row .box-value') as HTMLElement;
     expect(root.classList.contains('box-object')).toBe(true);
     expect(copyText(root)).toBe(JSON.stringify(JSON.parse(sample)));
+    expect(doc.querySelector('.node-children')).not.toBeNull();
+    expect(doc.querySelector('.pair-link')).not.toBeNull();
 
-    const rows = [...root.querySelectorAll(':scope > .json-row')];
-    const nameRow = rows.find((row) => rowKey(row) === 'name')!;
-    const nameKey = nameRow.querySelector(':scope > .box-key') as HTMLElement;
-    const nameVal = nameRow.querySelector(':scope > .box-value') as HTMLElement;
+    const nameNode = nodeByKey(doc, 'name');
+    const nameKey = nameNode.querySelector('.box-key') as HTMLElement;
+    const nameVal = nameNode.querySelector('.box-value') as HTMLElement;
     expect(copyText(nameKey)).toBe('name');
     expect(copyText(nameVal)).toBe('雪\n<b>');
     expect(nameVal.textContent).toContain('雪');
     expect(nameVal.textContent).toContain('<b>');
     expect(nameVal.innerHTML).not.toContain('<b>');
-    expect(doc.body.innerHTML).not.toContain('<button');
+    expect(doc.querySelector('.box button')).toBeNull();
   });
 
   it('数字、布尔、null、空字符串各用自己的框和复制文本', () => {
     const doc = render();
-    const root = doc.querySelector('.json-view > .box') as HTMLElement;
-    const rows = [...root.querySelectorAll(':scope > .json-row')];
-    const valueOf = (key: string) =>
-      rows.find((row) => rowKey(row) === key)!.querySelector(':scope > .box-value') as HTMLElement;
+    const valueOf = (key: string) => nodeByKey(doc, key).querySelector('.box-value') as HTMLElement;
 
     expect(copyText(valueOf('n'))).toBe('1');
     expect(valueOf('n').textContent).toBe('1');
@@ -78,29 +75,31 @@ describe('buildStructuredPreviewHtml JSON', () => {
     expect(valueOf('empty').textContent).toContain('空字符串');
   });
 
-  it('数组每个元素独立成框，对象值再拆成键和值', () => {
+  it('数组每个元素独立成框，对象值再拆成键和值，树枝可以收起', () => {
     const doc = render();
-    const root = doc.querySelector('.json-view > .box') as HTMLElement;
-    const rows = [...root.querySelectorAll(':scope > .json-row')];
-    const tags = rows.find((row) => rowKey(row) === 'tags')!.querySelector(':scope > .box-value') as HTMLElement;
-    expect(tags.classList.contains('box-array')).toBe(true);
-    expect(copyText(tags)).toBe('["a","b"]');
-    const items = directBoxes(tags, 'element');
+    const tags = nodeByKey(doc, 'tags');
+    const tagsBox = tags.querySelector(':scope > .node-row .box-value') as HTMLElement;
+    expect(tagsBox.classList.contains('box-array')).toBe(true);
+    expect(copyText(tagsBox)).toBe('["a","b"]');
+    const items = [...tags.querySelectorAll(':scope > .node-children > .node .box-element')] as HTMLElement[];
     expect(items.map(copyText)).toEqual(['a', 'b']);
+    expect(tags.querySelector('.twisty')).not.toBeNull();
 
-    const meta = rows.find((row) => rowKey(row) === 'meta')!.querySelector(':scope > .box-value') as HTMLElement;
-    expect(copyText(meta)).toBe('{"id":2}');
-    const idRow = meta.querySelector(':scope > .json-row') as HTMLElement;
-    expect(copyText(idRow.querySelector('.box-key')!)).toBe('id');
-    expect(copyText(idRow.querySelector('.box-value')!)).toBe('2');
+    const meta = nodeByKey(doc, 'meta');
+    expect(copyText(meta.querySelector(':scope > .node-row .box-value')!)).toBe('{"id":2}');
+    const idNode = nodeByKey(meta, 'id');
+    expect(copyText(idNode.querySelector('.box-key')!)).toBe('id');
+    expect(copyText(idNode.querySelector('.box-value')!)).toBe('2');
 
-    const bag = rows.find((row) => rowKey(row) === 'bag')!.querySelector(':scope > .box-value') as HTMLElement;
-    expect(copyText(bag)).toBe('[]');
-    expect(bag.textContent).toContain('空数组');
-    expect(directBoxes(bag, 'element')).toEqual([]);
+    const bag = nodeByKey(doc, 'bag');
+    const bagBox = bag.querySelector('.box-value') as HTMLElement;
+    expect(copyText(bagBox)).toBe('[]');
+    expect(bagBox.textContent).toContain('空数组');
+    expect(bag.querySelector('.box-element')).toBeNull();
+    expect(bag.querySelector('.twisty')).toBeNull();
 
-    const obj = rows.find((row) => rowKey(row) === 'obj')!.querySelector(':scope > .box-value') as HTMLElement;
-    expect(copyText(obj)).toBe('{}');
+    const obj = nodeByKey(doc, 'obj');
+    expect(copyText(obj.querySelector('.box-value')!)).toBe('{}');
     expect(obj.textContent).toContain('空对象');
   });
 
@@ -109,13 +108,15 @@ describe('buildStructuredPreviewHtml JSON', () => {
     const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://markly.local/preview.html' });
     const posted: unknown[] = [];
     dom.window.addEventListener('message', (ev: MessageEvent) => posted.push(ev.data));
-    const root = dom.window.document.querySelector('.json-view > .box') as HTMLElement;
+    const root = dom.window.document.querySelector('.tree > .node > .node-row .box-value') as HTMLElement;
     expect(copyText(root)).toBe('[{"name":"a"},2]');
-    const [objEl, numEl] = directBoxes(root, 'element');
-    expect(copyText(objEl!)).toBe('{"name":"a"}');
-    expect(copyText(numEl!)).toBe('2');
+    const elements = [...dom.window.document.querySelectorAll('.box-element')] as HTMLElement[];
+    const objEl = elements.find((el) => copyText(el) === '{"name":"a"}')!;
+    const numEl = elements.find((el) => copyText(el) === '2')!;
+    expect(objEl).toBeDefined();
+    expect(numEl).toBeDefined();
 
-    const key = objEl!.querySelector('.box-key') as HTMLElement;
+    const key = objEl!.closest('.node')!.querySelector('.box-key') as HTMLElement;
     key.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     expect(posted.map((data) => readBoxCopyPayload(data))).toEqual(['name']);
@@ -143,7 +144,7 @@ describe('buildStructuredPreviewHtml JSON', () => {
     sel?.removeAllRanges();
     sel?.addRange(range);
     value.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    const root = dom.window.document.querySelector('.json-view > .box') as HTMLElement;
+    const root = dom.window.document.querySelector('.tree > .node > .node-row .box-object') as HTMLElement;
     root.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     expect(posted.map((data) => readBoxCopyPayload(data))).toEqual(['{"name":"雪见"}']);
@@ -189,31 +190,70 @@ describe('buildStructuredPreviewHtml JSON', () => {
 });
 
 describe('buildStructuredPreviewHtml JSONL', () => {
-  it('每行一个框，空行跳过，坏行仍可复制原文', () => {
+  it('行号在框外，空行跳过，坏行仍可复制原文', () => {
     const source = '{"id":1}\n\nnot json\n{"id":2}\n';
     const doc = new JSDOM(buildStructuredPreviewHtml(source, 'jsonl')).window.document;
-    const records = [...doc.querySelectorAll('.json-view > .box-record')] as HTMLElement[];
-    expect(records).toHaveLength(3);
-    expect(records[0]!.textContent).toContain('第 1 行');
-    expect(copyText(records[0]!)).toBe('{"id":1}');
-    expect(copyText(records[0]!.querySelector('.box-key')!)).toBe('id');
-    expect(copyText(records[0]!.querySelector('.box-value')!)).toBe('1');
+    const lines = [...doc.querySelectorAll('.jsonl-line')] as HTMLElement[];
+    expect(lines).toHaveLength(3);
+    expect(lines.map((line) => line.querySelector('.line-no')!.textContent)).toEqual(['1', '3', '4']);
+    for (const line of lines) {
+      expect(line.querySelector('.line-no')!.closest('.box')).toBeNull();
+    }
+    expect(copyText(lines[0]!.querySelector('.box-record')!)).toBe('{"id":1}');
+    expect(copyText(lines[0]!.querySelector('.box-key')!)).toBe('id');
+    expect(copyText(lines[0]!.querySelector('.box-value')!)).toBe('1');
 
-    expect(records[1]!.textContent).toContain('第 3 行');
-    expect(records[1]!.textContent).toContain('无法解析');
-    expect(copyText(records[1]!)).toBe('not json');
+    expect(lines[1]!.textContent).toContain('无法解析');
+    expect(copyText(lines[1]!.querySelector('.kind-error')!)).toBe('not json');
 
-    expect(records[2]!.textContent).toContain('第 4 行');
-    expect(copyText(records[2]!)).toBe('{"id":2}');
+    expect(copyText(lines[2]!.querySelector('.box-record')!)).toBe('{"id":2}');
   });
 
   it('数组行的每个元素独立成框；基本类型行复制该值', () => {
     const doc = new JSDOM(buildStructuredPreviewHtml('["a","b"]\n"hi"\n', 'jsonl')).window.document;
-    const records = [...doc.querySelectorAll('.json-view > .box-record')] as HTMLElement[];
-    expect(copyText(records[0]!)).toBe('["a","b"]');
-    expect(directBoxes(records[0]!, 'element').map(copyText)).toEqual(['a', 'b']);
-    expect(copyText(records[1]!)).toBe('hi');
-    expect(records[1]!.textContent).toContain('第 2 行');
+    const lines = [...doc.querySelectorAll('.jsonl-line')] as HTMLElement[];
+    expect(copyText(lines[0]!.querySelector('.box-record')!)).toBe('["a","b"]');
+    const items = [...lines[0]!.querySelectorAll('.box-element')] as HTMLElement[];
+    expect(items.map(copyText)).toEqual(['a', 'b']);
+    expect(copyText(lines[1]!.querySelector('.box-record')!)).toBe('hi');
+    expect(lines[1]!.querySelector('.line-no')!.textContent).toBe('2');
+  });
+
+  it('点箭头收起节点，再点展开；点箭头不复制', async () => {
+    const html = buildStructuredPreviewHtml('{"tags":["a","b"]}', 'json');
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://markly.local/preview.html' });
+    const posted: unknown[] = [];
+    dom.window.addEventListener('message', (ev: MessageEvent) => posted.push(ev.data));
+    const tags = nodeByKey(dom.window.document, 'tags');
+    const twisty = tags.querySelector('.twisty') as HTMLElement;
+    expect(tags.querySelector('.node-children')).not.toBeNull();
+    twisty.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    expect(tags.classList.contains('is-collapsed')).toBe(true);
+    expect(twisty.getAttribute('aria-expanded')).toBe('false');
+    expect(twisty.textContent).toBe('▸');
+    twisty.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    expect(tags.classList.contains('is-collapsed')).toBe(false);
+    expect(twisty.getAttribute('aria-expanded')).toBe('true');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(posted).toEqual([]);
+  });
+
+  it('点行号收起这一行，行号仍在框外', async () => {
+    const html = buildStructuredPreviewHtml('{"id":1}\n"hi"\n', 'jsonl');
+    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://markly.local/preview.html' });
+    const posted: unknown[] = [];
+    dom.window.addEventListener('message', (ev: MessageEvent) => posted.push(ev.data));
+    const line = dom.window.document.querySelector('.jsonl-line') as HTMLElement;
+    const no = line.querySelector('.line-no') as HTMLElement;
+    expect(no.textContent).toBe('1');
+    expect(no.closest('.box')).toBeNull();
+    no.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    expect(line.classList.contains('is-collapsed')).toBe(true);
+    expect(line.querySelector('.twisty')!.getAttribute('aria-expanded')).toBe('false');
+    no.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    expect(line.classList.contains('is-collapsed')).toBe(false);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(posted).toEqual([]);
   });
 
   it('空文件给出说明，不抛错', () => {

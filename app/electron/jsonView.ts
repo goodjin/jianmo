@@ -1,13 +1,12 @@
 /**
- * 把 JSON / JSONL 渲染成「一个值一个圆角框」。
- * 纯函数：不碰 electron、不碰剪贴板。点选复制由页面脚本 postMessage 交给宿主。
+ * 把 JSON / JSONL 渲染成带连线的树。键、值、数组元素仍各是一个圆角框。
+ * 纯函数：不碰 electron、不碰剪贴板。点框复制；点箭头或 JSONL 行号展开/收起。
  *
  * 复制约定：
  * - 键：键名原文
  * - 字符串：字符串原文（不加引号）
  * - 数字 / 布尔 / null：JSON 字面量
  * - 对象 / 数组：这一支的 JSON 文本（JSON.stringify）
- * - 点到外层框复制整支，点到里面的框只复制里面那一格
  */
 import type { StructuredKind } from './documentKind';
 
@@ -54,93 +53,118 @@ function box(opts: {
   kind: string;
   copyText: string;
   inner: string;
-  /** 放在框内最前，本身不是可复制的框（例如 JSONL 行号）。 */
-  prefix?: string;
 }): string {
   return (
     `<div class="box box-${opts.role} box-${opts.shape} kind-${opts.kind}" role="button" tabindex="0" ` +
-    `title="点击复制" data-markly-copy="${copyAttr(opts.copyText)}">${opts.prefix ?? ''}${opts.inner}</div>`
+    `title="点击复制" data-markly-copy="${copyAttr(opts.copyText)}">${opts.inner}</div>`
   );
 }
 
-function renderLeaf(
-  role: 'value' | 'element' | 'record',
-  kind: 'string' | 'number' | 'boolean' | 'null',
-  display: string,
-  copyText: string,
-  emptyLabel: string,
-  prefix = ''
-): string {
-  return box({
-    role,
-    shape: 'leaf',
-    kind,
-    copyText,
-    prefix,
-    inner: leafBody(display, emptyLabel),
-  });
-}
-
-function renderPrimitive(
-  value: null | boolean | number | string,
-  role: 'value' | 'element' | 'record',
-  prefix = ''
-): string {
-  if (value === null) return renderLeaf(role, 'null', 'null', 'null', 'null', prefix);
+function renderPrimitiveBox(value: null | boolean | number | string, role: 'value' | 'element' | 'record'): string {
+  if (value === null) return box({ role, shape: 'leaf', kind: 'null', copyText: 'null', inner: 'null' });
   if (typeof value === 'boolean') {
     const text = value ? 'true' : 'false';
-    return renderLeaf(role, 'boolean', text, text, text, prefix);
+    return box({ role, shape: 'leaf', kind: 'boolean', copyText: text, inner: text });
   }
   if (typeof value === 'number') {
     const text = JSON.stringify(value);
-    return renderLeaf(role, 'number', text, text, text, prefix);
+    return box({ role, shape: 'leaf', kind: 'number', copyText: text, inner: text });
   }
-  return renderLeaf(role, 'string', value, value, '空字符串', prefix);
+  return box({ role, shape: 'leaf', kind: 'string', copyText: value, inner: leafBody(value, '空字符串') });
 }
 
 function renderKey(key: string): string {
-  return box({
-    role: 'key',
-    shape: 'leaf',
-    kind: 'key',
-    copyText: key,
-    inner: leafBody(key, '空键'),
-  });
+  return box({ role: 'key', shape: 'leaf', kind: 'key', copyText: key, inner: leafBody(key, '空键') });
 }
 
-function renderRows(value: { [key: string]: JsonValue }): string {
-  const keys = Object.keys(value);
-  if (keys.length === 0) return placeholder('空对象');
-  return keys
-    .map((key) => `<div class="json-row">${renderKey(key)}${renderNode(value[key] as JsonValue, 'value')}</div>`)
-    .join('');
+function twistyPad(): string {
+  return '<span class="twisty-pad" aria-hidden="true"></span>';
 }
 
-function renderElements(value: JsonValue[]): string {
-  if (value.length === 0) return placeholder('空数组');
-  return value.map((item) => renderNode(item, 'element')).join('');
+function twistyBtn(): string {
+  return '<button type="button" class="twisty" aria-expanded="true" aria-label="收起">▾</button>';
 }
 
-function renderNode(value: JsonValue, role: 'value' | 'element' | 'record'): string {
-  if (value === null || typeof value !== 'object') {
-    return renderPrimitive(value as null | boolean | number | string, role);
+function pair(keyHtml: string | null, valueHtml: string): string {
+  if (!keyHtml) return valueHtml;
+  return `<div class="pair">${keyHtml}<span class="pair-link" aria-hidden="true"></span>${valueHtml}</div>`;
+}
+
+function leafItem(keyHtml: string | null, valueHtml: string): string {
+  return `<li class="node node-leaf"><div class="node-row">${twistyPad()}${pair(keyHtml, valueHtml)}</div></li>`;
+}
+
+function branchItem(keyHtml: string | null, valueHtml: string, childrenHtml: string): string {
+  return (
+    `<li class="node node-branch">` +
+    `<div class="node-row">${twistyBtn()}${pair(keyHtml, valueHtml)}</div>` +
+    `<ul class="node-children">${childrenHtml}</ul>` +
+    `</li>`
+  );
+}
+
+function childCount(value: JsonValue[]): number;
+function childCount(value: { [key: string]: JsonValue }): number;
+function childCount(value: JsonValue[] | { [key: string]: JsonValue }): number {
+  return Array.isArray(value) ? value.length : Object.keys(value).length;
+}
+
+function renderAny(value: JsonValue, role: 'value' | 'element' | 'record', keyHtml: string | null): string {
+  if (value !== null && typeof value === 'object') {
+    return renderComposite(value, role, keyHtml);
   }
-  if (Array.isArray(value)) {
-    return box({
+  return leafItem(keyHtml, renderPrimitiveBox(value as null | boolean | number | string, role));
+}
+
+function renderComposite(
+  value: JsonValue[] | { [key: string]: JsonValue },
+  role: 'value' | 'element' | 'record',
+  keyHtml: string | null
+): string {
+  const count = childCount(value);
+  const shape = Array.isArray(value) ? 'array' : 'object';
+  if (count === 0) {
+    const label = shape === 'array' ? '空数组' : '空对象';
+    const emptyBox = box({
       role,
-      shape: 'array',
-      kind: 'array',
+      shape,
+      kind: shape,
       copyText: JSON.stringify(value),
-      inner: renderElements(value),
+      inner: placeholder(label),
     });
+    return leafItem(keyHtml, emptyBox);
   }
-  return box({
+  const summary = box({
     role,
-    shape: 'object',
-    kind: 'object',
+    shape,
+    kind: shape,
     copyText: JSON.stringify(value),
-    inner: renderRows(value),
+    inner: shape === 'array' ? `[${count}]` : `{${count}}`,
   });
+  const kids = Array.isArray(value)
+    ? value.map((item) => renderAny(item, 'element', null)).join('')
+    : Object.keys(value)
+        .map((key) => renderAny(value[key] as JsonValue, 'value', renderKey(key)))
+        .join('');
+  return branchItem(keyHtml, summary, kids);
+}
+
+function renderDocument(value: JsonValue): string {
+  if (value !== null && typeof value === 'object') {
+    if (childCount(value) === 0) {
+      const shape = Array.isArray(value) ? 'array' : 'object';
+      const label = shape === 'array' ? '空数组' : '空对象';
+      return box({
+        role: 'value',
+        shape,
+        kind: shape,
+        copyText: JSON.stringify(value),
+        inner: placeholder(label),
+      });
+    }
+    return `<ul class="tree">${renderComposite(value, 'value', null)}</ul>`;
+  }
+  return renderPrimitiveBox(value as null | boolean | number | string, 'value');
 }
 
 function page(body: string, extraClass: string): string {
@@ -155,7 +179,59 @@ function page(body: string, extraClass: string): string {
   .json-view { padding: 16px 20px 40px; }
   .json-hint { margin: 0 0 14px; font-size: 12px; line-height: 1.5; opacity: 0.72; }
   .json-error-msg { margin: 0 0 10px; color: #cf222e; font-size: 13px; line-height: 1.5; }
-  .json-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .tree, .node-children { list-style: none; margin: 0; padding: 0; }
+  .node-children {
+    margin-left: 8px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border-color, #c5cdd6);
+  }
+  .node { position: relative; margin: 0; padding: 3px 0; }
+  .node-children > .node::before {
+    content: "";
+    position: absolute;
+    left: -16px;
+    top: 16px;
+    width: 16px;
+    border-top: 1px solid var(--border-color, #c5cdd6);
+  }
+  .node-children > .node:last-child::after {
+    content: "";
+    position: absolute;
+    left: -18px;
+    top: 17px;
+    bottom: 0;
+    width: 3px;
+    background: var(--bg-color, #fff);
+  }
+  .node-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 26px;
+  }
+  .pair { display: inline-flex; align-items: center; max-width: 100%; min-width: 0; }
+  .pair-link {
+    width: 12px;
+    border-top: 1px solid var(--border-color, #c5cdd6);
+    flex: 0 0 12px;
+  }
+  .twisty, .twisty-pad {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    margin-top: 3px;
+  }
+  .twisty {
+    border: 1px solid var(--border-color, #d0d7de);
+    border-radius: 4px;
+    background: var(--code-bg, #f6f8fa);
+    color: var(--text-color, #24292f);
+    padding: 0;
+    line-height: 16px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .node.is-collapsed > .node-children { display: none; }
   .box {
     border: 1px solid var(--border-color, #d0d7de);
     border-radius: 10px;
@@ -163,7 +239,7 @@ function page(body: string, extraClass: string): string {
     color: inherit;
     font: inherit;
     line-height: 1.45;
-    padding: 4px 10px;
+    padding: 3px 10px;
     width: fit-content;
     max-width: 100%;
     box-sizing: border-box;
@@ -175,20 +251,38 @@ function page(body: string, extraClass: string): string {
     background: var(--code-bg, #f6f8fa);
     color: var(--link-color, #0969da);
   }
-  .box-object, .box-array {
-    display: flex;
-    gap: 8px;
-    padding: 8px;
+  .jsonl-view { display: flex; flex-direction: column; align-items: flex-start; }
+  .jsonl-line {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: start;
+    margin: 0 0 12px;
   }
-  .box-object { flex-direction: column; align-items: flex-start; }
-  .box-array { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
-  .jsonl-view { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
-  .record-label {
-    flex: 1 0 100%;
-    font-size: 12px;
+  .line-no {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 1.5em;
+    padding-top: 4px;
+    text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
     line-height: 1.4;
-    opacity: 0.65;
+    opacity: 0.72;
+    cursor: pointer;
+    user-select: none;
   }
+  .jsonl-line > .twisty { grid-column: 2; grid-row: 1; }
+  .jsonl-primitive > .jsonl-body { grid-column: 3; grid-row: 1; }
+  .jsonl-branch > .line-summary { grid-column: 3; grid-row: 1; }
+  .jsonl-branch > .jsonl-body {
+    grid-column: 2 / span 2;
+    grid-row: 2;
+    margin-left: 8px;
+  }
+  .jsonl-line.is-collapsed > .jsonl-body { display: none; }
   .kind-number, .kind-boolean, .kind-null, .kind-key {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
@@ -207,14 +301,17 @@ function page(body: string, extraClass: string): string {
 </head>
 <body>
 <div class="content json-view ${extraClass}">
-<p class="json-hint">点一下圆角框，这一格的内容就会复制到剪贴板。</p>
+<p class="json-hint">点圆角框复制这一格。点箭头展开或收起；JSONL 也可以点行号。</p>
 ${body}
 </div>
 <script>
 (function () {
   var TYPE = ${JSON.stringify(BOX_COPY_MESSAGE)};
+  function fromEvent(target) {
+    return target && target.nodeType === 1 ? target : (target && target.parentElement);
+  }
   function boxFrom(target) {
-    var node = target && target.nodeType === 1 ? target : (target && target.parentElement);
+    var node = fromEvent(target);
     return node && node.closest ? node.closest('[data-markly-copy]') : null;
   }
   function readCopy(el) {
@@ -227,6 +324,14 @@ ${body}
       return '';
     }
   }
+  function toggle(btn) {
+    var node = btn.closest('.node, .jsonl-line');
+    if (!node) return;
+    var collapsed = node.classList.toggle('is-collapsed');
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('aria-label', collapsed ? '展开' : '收起');
+    btn.textContent = collapsed ? '▸' : '▾';
+  }
   function activate(el) {
     var nodes = document.querySelectorAll('.box.is-selected');
     for (var i = 0; i < nodes.length; i++) nodes[i].classList.remove('is-selected');
@@ -234,10 +339,26 @@ ${body}
     parent.postMessage({ type: TYPE, text: readCopy(el) }, '*');
   }
   document.addEventListener('click', function (ev) {
+    var origin = fromEvent(ev.target);
+    if (!origin || !origin.closest) return;
+    var twisty = origin.closest('.twisty');
+    if (twisty) {
+      ev.preventDefault();
+      toggle(twisty);
+      return;
+    }
+    var lineNo = origin.closest('.line-no');
+    if (lineNo) {
+      var line = lineNo.closest('.jsonl-line');
+      var btn = line && line.querySelector('.twisty');
+      if (btn) {
+        ev.preventDefault();
+        toggle(btn);
+      }
+      return;
+    }
     var el = boxFrom(ev.target);
     if (!el) return;
-    // 正在这一格里拖选文字时，留给系统复制选区，不把整格盖掉。
-    // 点到外层格子仍复制外层，选区在里面不算点中外层。
     var sel = window.getSelection && window.getSelection();
     if (sel && String(sel) !== '' && boxFrom(sel.anchorNode) === el) return;
     ev.preventDefault();
@@ -245,6 +366,14 @@ ${body}
   });
   document.addEventListener('keydown', function (ev) {
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var origin = fromEvent(ev.target);
+    if (!origin || !origin.closest) return;
+    var twisty = origin.closest('.twisty');
+    if (twisty) {
+      ev.preventDefault();
+      toggle(twisty);
+      return;
+    }
     var el = boxFrom(ev.target);
     if (!el) return;
     ev.preventDefault();
@@ -283,7 +412,7 @@ function renderJson(source: string): string {
     const message = e instanceof Error ? e.message : String(e);
     return errorPage(`无法解析 JSON：${message}`, source);
   }
-  return page(renderNode(value, 'value'), '');
+  return page(renderDocument(value), '');
 }
 
 interface JsonlLine {
@@ -310,46 +439,60 @@ function parseJsonl(source: string): JsonlLine[] {
   return out;
 }
 
-function lineLabel(lineNo: number, broken = false): string {
-  return `<span class="record-label">第 ${lineNo} 行${broken ? ' · 无法解析' : ''}</span>`;
-}
-
 function renderJsonlRecord(row: JsonlLine): string {
+  const no = `<span class="line-no">${row.lineNo}</span>`;
+  const twisty = twistyBtn();
   if (!row.ok) {
-    return box({
+    const err = box({
       role: 'record',
       shape: 'leaf',
       kind: 'error',
       copyText: row.raw,
-      prefix: lineLabel(row.lineNo, true),
       inner:
-        `<span class="record-error">${escapeHtml(row.error || '无法解析')}</span>` +
+        `<span class="record-error">无法解析：${escapeHtml(row.error || '')}</span>` +
         `<span class="record-raw">${leafBody(row.raw, '空行')}</span>`,
     });
+    return `<div class="jsonl-line jsonl-primitive">${no}${twisty}<div class="jsonl-body">${err}</div></div>`;
   }
   const value = row.value as JsonValue;
-  const label = lineLabel(row.lineNo);
-  if (value !== null && typeof value === 'object') {
-    if (Array.isArray(value)) {
-      return box({
-        role: 'record',
-        shape: 'array',
-        kind: 'array',
-        copyText: JSON.stringify(value),
-        prefix: label,
-        inner: renderElements(value),
-      });
-    }
-    return box({
-      role: 'record',
-      shape: 'object',
-      kind: 'object',
-      copyText: JSON.stringify(value),
-      prefix: label,
-      inner: renderRows(value),
-    });
+  if (value !== null && typeof value === 'object' && childCount(value) > 0) {
+    const summary = Array.isArray(value)
+      ? box({
+          role: 'record',
+          shape: 'array',
+          kind: 'array',
+          copyText: JSON.stringify(value),
+          inner: `[${value.length}]`,
+        })
+      : box({
+          role: 'record',
+          shape: 'object',
+          kind: 'object',
+          copyText: JSON.stringify(value),
+          inner: `{${Object.keys(value).length}}`,
+        });
+    const kids = Array.isArray(value)
+      ? value.map((item) => renderAny(item, 'element', null)).join('')
+      : Object.keys(value)
+          .map((key) => renderAny(value[key] as JsonValue, 'value', renderKey(key)))
+          .join('');
+    return (
+      `<div class="jsonl-line jsonl-branch">${no}${twisty}` +
+      `<div class="line-summary">${summary}</div>` +
+      `<ul class="node-children jsonl-body">${kids}</ul></div>`
+    );
   }
-  return renderPrimitive(value as null | boolean | number | string, 'record', label);
+  const leaf =
+    value !== null && typeof value === 'object'
+      ? box({
+          role: 'record',
+          shape: Array.isArray(value) ? 'array' : 'object',
+          kind: Array.isArray(value) ? 'array' : 'object',
+          copyText: JSON.stringify(value),
+          inner: placeholder(Array.isArray(value) ? '空数组' : '空对象'),
+        })
+      : renderPrimitiveBox(value as null | boolean | number | string, 'record');
+  return `<div class="jsonl-line jsonl-primitive">${no}${twisty}<div class="jsonl-body">${leaf}</div></div>`;
 }
 
 function renderJsonl(source: string): string {
