@@ -57,12 +57,17 @@ export function buildPreviewSrcdoc(html: string): string {
         anchor.setAttribute('rel', 'noopener noreferrer');
       }
     });
-    let out = doc.documentElement.outerHTML;
-    if (!out.includes('data-markly-selection-copy')) {
-      const tag = `<script data-markly-selection-copy="1">${selectionCopyRuntimeSource()}</script>`;
-      out = out.includes('</body>') ? out.replace('</body>', `${tag}</body>`) : `${out}${tag}`;
+    // 注入也走 DOM：序列化文本里允许出现 "</body>"（如内联 mermaid 包里 DOMPurify 的
+    // `+"<body></body></html>"` 字符串），字符串 replace('</body>') 会把脚本插进包中间，
+    // 其自带的 </script> 会把大脚本拦腰截断，后半截全部漏成正文文本。
+    if (!doc.querySelector('script[data-markly-selection-copy]')) {
+      const runtime = doc.createElement('script');
+      runtime.setAttribute('data-markly-selection-copy', '1');
+      runtime.textContent = selectionCopyRuntimeSource();
+      const host = doc.body ?? doc.documentElement;
+      host.appendChild(runtime);
     }
-    return out;
+    return doc.documentElement.outerHTML;
   } catch {
     return html;
   }

@@ -2,7 +2,7 @@
 
 ## 已采取的轻量措施（实现层）
 
-- [`MilkdownEditor.vue`](../webview/src/components/MilkdownEditor.vue)：为表格容器提供 **`:focus-within` 可见轮廓**，便于键盘用户识别当前表格区域（颜色跟随 `focusBorder`）。
+- 表格不再用整圈 `:focus-within` 轮廓（一点进表就出现，容易看成选中框）。行或列被选中时，用边上的高亮和删除按钮表示当前范围。
 - 继续依赖 VS Code 主题变量，保证 **明暗模式** 对比度由宿主承担基线。
 
 ## DOM 与语义（ProseMirror 默认）

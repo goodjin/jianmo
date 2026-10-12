@@ -1,157 +1,105 @@
 <template>
   <div class="milkdown-shell" :class="{ 'is-rich-empty-guide': showRichEmptyGuide }">
-    <div class="milkdown-editor" ref="editorRef" @scroll="handleEditorScroll"></div>
-    <!-- Rich 表格：选中态与边缘快捷按钮（M-table-ui） -->
+    <div class="milkdown-editor" ref="editorRef"></div>
+    <!-- 表格操作放在边上：交界处加行/列，行头列头点选后删除。格子里不画选中框。 -->
     <div
-      v-if="tableUi.visible"
-      class="markly-table-ui"
+      v-if="tableEdge.visible"
+      class="markly-table-edge"
       :style="{
-        left: `${tableUi.tableRect.x}px`,
-        top: `${tableUi.tableRect.y}px`,
-        width: `${tableUi.tableRect.w}px`,
-        height: `${tableUi.tableRect.h}px`,
+        left: `${tableEdge.tableRect.x}px`,
+        top: `${tableEdge.tableRect.y}px`,
+        width: `${tableEdge.tableRect.w}px`,
+        height: `${tableEdge.tableRect.h}px`,
       }"
-      aria-hidden="true"
     >
-      <button
-        class="markly-table-ui-corner"
-        type="button"
-        :class="{ active: tableUi.tableSelected }"
-        title="选中表格（Delete/Backspace 删除）"
-        @mousedown.prevent
-        @click="selectWholeTableFromUi"
-      >
-        ⊞
-      </button>
-
       <div
-        v-if="tableUi.cellRect"
-        class="markly-table-ui-cell"
-        :style="{
-          left: `${tableUi.cellRect.x - tableUi.tableRect.x}px`,
-          top: `${tableUi.cellRect.y - tableUi.tableRect.y}px`,
-          width: `${tableUi.cellRect.w}px`,
-          height: `${tableUi.cellRect.h}px`,
-        }"
+        v-for="band in tableEdgeRowBands"
+        :key="`row-band-${band.index}`"
+        class="markly-table-band row"
+        :class="{ on: band.on, hot: band.hot }"
+        :style="{ top: `${band.top}px`, height: `${band.height}px` }"
+      ></div>
+      <div
+        v-for="band in tableEdgeColBands"
+        :key="`col-band-${band.index}`"
+        class="markly-table-band col"
+        :class="{ on: band.on, hot: band.hot }"
+        :style="{ left: `${band.left}px`, width: `${band.width}px` }"
       ></div>
 
-      <template v-if="tableUi.cellRect">
-        <!-- 行/列选择把手 (吸附在单元格边缘) -->
-        <button
-          class="markly-table-handle row"
-          type="button"
-          title="选中当前行"
-          :style="{
-            left: `${tableUi.cellRect.x - tableUi.tableRect.x - 12}px`,
-            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2}px`,
-          }"
-          @mousedown.prevent
-          @click="selectRowFromUi"
-        >
-          行
-        </button>
-        <button
-          class="markly-table-handle col"
-          type="button"
-          title="选中当前列"
-          :style="{
-            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2}px`,
-            top: `${tableUi.cellRect.y - tableUi.tableRect.y - 12}px`,
-          }"
-          @mousedown.prevent
-          @click="selectColFromUi"
-        >
-          列
-        </button>
+      <div class="markly-table-gutter row" @pointerdown="onTableEdgePointerDown"></div>
+      <div class="markly-table-gutter col" @pointerdown="onTableEdgePointerDown"></div>
 
-        <!-- 行：右侧加列 / 删列 (吸附在表格最右侧边框) -->
-        <button
-          class="markly-table-edge-btn"
-          type="button"
-          title="右侧插入列"
-          :style="{
-            left: `${tableUi.tableRect.w - 10}px`,
-            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 - 18}px`,
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('addColAfter')"
-        >
-          ＋列
-        </button>
-        <button
-          class="markly-table-edge-btn danger"
-          type="button"
-          title="删除当前列"
-          :style="{
-            left: `${tableUi.tableRect.w - 10}px`,
-            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 + 2}px`,
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('deleteCol')"
-        >
-          －列
-        </button>
-
-        <!-- 列：下方加行 / 删行 (吸附在表格最下方边框) -->
-        <button
-          class="markly-table-edge-btn"
-          type="button"
-          title="下方插入行"
-          :style="{
-            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 - 18}px`,
-            top: `${tableUi.tableRect.h - 10}px`,
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('addRowAfter')"
-        >
-          ＋行
-        </button>
-        <button
-          class="markly-table-edge-btn danger"
-          type="button"
-          title="删除当前行"
-          :style="{
-            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 + 2}px`,
-            top: `${tableUi.tableRect.h - 10}px`,
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('deleteRow')"
-        >
-          －行
-        </button>
-
-        <!-- 行/列选中时：补齐另一侧插入 (吸附在表格最左侧 / 最上方边框) -->
-        <button
-          v-if="tableUi.colSelected"
-          class="markly-table-edge-btn"
-          type="button"
-          title="左侧插入列"
-          :style="{
-            left: `-12px`,
-            top: `${tableUi.cellRect.y - tableUi.tableRect.y + tableUi.cellRect.h / 2 - 18}px`,
-            transform: 'translate(-50%, -50%)',
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('addColBefore')"
-        >
-          ＋列
-        </button>
-        <button
-          v-if="tableUi.rowSelected"
-          class="markly-table-edge-btn"
-          type="button"
-          title="上方插入行"
-          :style="{
-            left: `${tableUi.cellRect.x - tableUi.tableRect.x + tableUi.cellRect.w / 2 - 18}px`,
-            top: `-12px`,
-            transform: 'translate(-50%, -50%)',
-          }"
-          @mousedown.prevent
-          @click="runTableUiOp('addRowBefore')"
-        >
-          ＋行
-        </button>
-      </template>
+      <span
+        v-if="tableEdgeRowGrip"
+        class="markly-table-grip row"
+        :class="{ on: tableEdgeRowGrip.on }"
+        :style="{ top: `${tableEdgeRowGrip.center}px` }"
+        @pointerdown.stop.prevent="onGripPointerDown('row', $event)"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="6" cy="4.5" r="1.05" fill="currentColor" />
+          <circle cx="10" cy="4.5" r="1.05" fill="currentColor" />
+          <circle cx="6" cy="8" r="1.05" fill="currentColor" />
+          <circle cx="10" cy="8" r="1.05" fill="currentColor" />
+          <circle cx="6" cy="11.5" r="1.05" fill="currentColor" />
+          <circle cx="10" cy="11.5" r="1.05" fill="currentColor" />
+        </svg>
+      </span>
+      <span
+        v-if="tableEdgeColGrip"
+        class="markly-table-grip col"
+        :class="{ on: tableEdgeColGrip.on }"
+        :style="{ left: `${tableEdgeColGrip.center}px` }"
+        @pointerdown.stop.prevent="onGripPointerDown('col', $event)"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="4.5" cy="6" r="1.05" fill="currentColor" />
+          <circle cx="8" cy="6" r="1.05" fill="currentColor" />
+          <circle cx="11.5" cy="6" r="1.05" fill="currentColor" />
+          <circle cx="4.5" cy="10" r="1.05" fill="currentColor" />
+          <circle cx="8" cy="10" r="1.05" fill="currentColor" />
+          <circle cx="11.5" cy="10" r="1.05" fill="currentColor" />
+        </svg>
+      </span>
+      <span
+        v-if="tableEdgeRowAdd"
+        class="markly-table-add row"
+        :style="{ top: `${tableEdgeRowAdd.pos}px` }"
+        @pointerdown.stop.prevent="armTableGap('row', tableEdgeRowAdd.index, $event)"
+      >+</span>
+      <span
+        v-if="tableEdgeColAdd"
+        class="markly-table-add col"
+        :style="{ left: `${tableEdgeColAdd.pos}px` }"
+        @pointerdown.stop.prevent="armTableGap('col', tableEdgeColAdd.index, $event)"
+      >+</span>
+      <button
+        v-if="tableEdge.band?.axis === 'row'"
+        type="button"
+        class="markly-table-delete row"
+        :style="{ top: `${tableEdgeDeleteY}px` }"
+        aria-label="删除选中的行"
+        @pointerdown.stop.prevent
+        @click="onDeleteTableAxis"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4.6h8M6.2 4.5V3.5h3.6v1M5.2 4.6l.45 8h4.7l.45-8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <button
+        v-if="tableEdge.band?.axis === 'col'"
+        type="button"
+        class="markly-table-delete col"
+        :style="{ left: `${tableEdgeDeleteX}px` }"
+        aria-label="删除选中的列"
+        @pointerdown.stop.prevent
+        @click="onDeleteTableAxis"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4.6h8M6.2 4.5V3.5h3.6v1M5.2 4.6l.45 8h4.7l.45-8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
     </div>
     <p v-if="showRichEmptyGuide" class="markly-rich-empty-guide" aria-hidden="true">
       在此输入，或使用命令 「New Markdown from Template…」（<span class="kbd">templates</span>）从模板新建。
@@ -196,7 +144,25 @@ import { liftListItem, sinkListItem } from '@milkdown/prose/schema-list';
 import type { EditorView } from '@milkdown/prose/view';
 import type { ExtensionConfig } from '@types';
 import { isDarkEditorThemeSetting } from '@types';
-import { runRichTableOp, type RichTableOp } from '../core/richTableCommands';
+import {
+  deleteTableAxisSelection,
+  insertTableColumnAtGap,
+  insertTableRowAtGap,
+  readTableAxisSelection,
+  runRichTableOp,
+  selectTableColumns,
+  selectTableRows,
+  type RichTableOp,
+} from '../core/richTableCommands';
+import {
+  classifyEdgeAxis,
+  classifyTableEdgeHover,
+  indexForGapDrag,
+  measureTableEdges,
+  pickNearestTableIndex,
+  type TableEdgeHover,
+  type TableSelectionBand,
+} from '../core/tableEdgeUi';
 import type { RichPerfTier } from '../utils/richPerfTier';
 import { setRuntimeRichPerfTier } from '../utils/richPerfRuntime';
 import { decideTableGridSelectionFillMapping, parseTablePasteMatrix } from '../plugins/markly-table-rich';
@@ -325,7 +291,7 @@ const tableContextMilkdownPlugin = $prose(() => {
       queueMicrotask(() => emit('table-context', { inTable: init }));
       queueMicrotask(() => {
         try {
-          computeTableUiFromView(view);
+          refreshTableEdge(view);
         } catch {
           // ignore
         }
@@ -337,7 +303,7 @@ const tableContextMilkdownPlugin = $prose(() => {
             lastInTable = now;
             emit('table-context', { inTable: now });
           }
-          computeTableUiFromView(v);
+          refreshTableEdge(v);
         },
       };
     },
@@ -416,235 +382,379 @@ let tableContextMenuHandler: ((e: MouseEvent) => void) | null = null;
 let internalHoverHandler: ((e: MouseEvent) => void) | null = null;
 let internalLeaveHandler: ((e: MouseEvent) => void) | null = null;
 let tableDeleteKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+let tableEdgePointerMoveHandler: ((e: PointerEvent) => void) | null = null;
+let tableEdgePointerUpHandler: ((e: PointerEvent) => void) | null = null;
+let tableEdgeScrollHandler: ((e: Event) => void) | null = null;
 
 type TableUiRect = { x: number; y: number; w: number; h: number };
-const tableUi = ref<{
+type TableEdgeState = {
   visible: boolean;
-  tableSelected: boolean;
-  rowSelected: boolean;
-  colSelected: boolean;
-  activeRow: number;
-  activeCol: number;
+  hover: TableEdgeHover | null;
+  band: TableSelectionBand | null;
   tableRect: TableUiRect;
-  cellRect: TableUiRect | null;
-}>({
+  rowEdges: number[];
+  colEdges: number[];
+};
+
+const hiddenTableEdge = (): TableEdgeState => ({
   visible: false,
-  tableSelected: false,
-  rowSelected: false,
-  colSelected: false,
-  activeRow: -1,
-  activeCol: -1,
+  hover: null,
+  band: null,
   tableRect: { x: 0, y: 0, w: 0, h: 0 },
-  cellRect: null,
+  rowEdges: [],
+  colEdges: [],
 });
 
-function rectRelativeToRoot(root: HTMLElement, r: DOMRect): TableUiRect {
-  const rr = root.getBoundingClientRect();
-  return { x: r.left - rr.left, y: r.top - rr.top, w: r.width, h: r.height };
+const tableEdge = ref<TableEdgeState>(hiddenTableEdge());
+
+/** 鼠标正在靠近的表。离开后如果还有行/列选区，改显示那张表。 */
+let hotTableEl: HTMLTableElement | null = null;
+let bandTableEl: HTMLTableElement | null = null;
+let displayTableEl: HTMLTableElement | null = null;
+let lastPointer: { x: number; y: number } | null = null;
+let tableEdgeRaf = 0;
+let rowSelectAnchor: number | null = null;
+let colSelectAnchor: number | null = null;
+let axisDrag: { axis: 'row' | 'col'; anchor: number; tablePos: number } | null = null;
+let pendingGap: { axis: 'row' | 'col'; index: number; x: number; y: number } | null = null;
+
+const TABLE_EDGE_PICK_PAD = 44;
+
+function bandIndexes(band: TableSelectionBand | null, axis: 'row' | 'col'): number[] {
+  if (!band || band.axis !== axis) return [];
+  const out: number[] = [];
+  for (let i = band.from; i <= band.to; i++) out.push(i);
+  return out;
 }
 
-function findEnclosingTableDepthFromSel(sel: any): number {
-  const $pos = sel?.$from;
-  if (!$pos) return -1;
-  for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.name === 'table') return d;
-  return -1;
+function edgeCenter(edges: number[], index: number): number | null {
+  const top = edges[index];
+  const bottom = edges[index + 1];
+  if (top == null || bottom == null) return null;
+  return (top + bottom) / 2;
 }
 
-function findEnclosingCellDepthFromSel(sel: any): number {
-  const $pos = sel?.$from;
-  if (!$pos) return -1;
-  for (let d = $pos.depth; d > 0; d--) {
-    const n = $pos.node(d);
-    const t = n?.type?.name;
-    if (t === 'table_cell' || t === 'table_header') return d;
+function selectionCenter(edges: number[], from: number, to: number): number {
+  const start = edges[from] ?? 0;
+  const end = edges[to + 1] ?? edges[edges.length - 1] ?? start;
+  return (start + end) / 2;
+}
+
+const tableEdgeRowBands = computed(() => {
+  const edges = tableEdge.value.rowEdges;
+  const selected = new Set(bandIndexes(tableEdge.value.band, 'row'));
+  const hot =
+    tableEdge.value.hover?.axis === 'row' && tableEdge.value.hover.kind === 'head' ? tableEdge.value.hover.index : -1;
+  const indexes = new Set<number>(selected);
+  if (hot >= 0) indexes.add(hot);
+  const out: Array<{ index: number; top: number; height: number; on: boolean; hot: boolean }> = [];
+  for (const index of indexes) {
+    const top = edges[index];
+    const bottom = edges[index + 1];
+    if (top == null || bottom == null) continue;
+    out.push({
+      index,
+      top,
+      height: Math.max(0, bottom - top),
+      on: selected.has(index),
+      hot: index === hot && !selected.has(index),
+    });
   }
-  return -1;
-}
+  return out;
+});
 
-function computeActiveCellRowCol(view: EditorView): { tablePos: number; tableNode: PMNode; row: number; col: number } | null {
-  const sel: any = view.state.selection;
-  const tableDepth = findEnclosingTableDepthFromSel(sel);
-  if (tableDepth < 0) return null;
-  const cellDepth = findEnclosingCellDepthFromSel(sel);
-  if (cellDepth < 0) return null;
-
-  const $pos = sel.$from;
-  const tablePos = $pos.before(tableDepth);
-  const tableNode = $pos.node(tableDepth) as PMNode;
-  const cellPos = $pos.before(cellDepth);
-  const map = TableMap.get(tableNode as any);
-  const cellPosInTable = cellPos - tablePos - 1;
-  const cell = map.findCell(cellPosInTable);
-  return { tablePos, tableNode, row: cell.top, col: cell.left };
-}
-
-function computeTableUiFromView(view: EditorView): void {
-  const root = editorRef.value;
-  if (!root) return;
-  const sel = view.state.selection;
-  const inTable = isInTable(view.state);
-  if (!inTable) {
-    tableUi.value = {
-      ...tableUi.value,
-      visible: false,
-      cellRect: null,
-      tableSelected: false,
-      rowSelected: false,
-      colSelected: false,
-      activeRow: -1,
-      activeCol: -1,
-    };
-    return;
+const tableEdgeColBands = computed(() => {
+  const edges = tableEdge.value.colEdges;
+  const selected = new Set(bandIndexes(tableEdge.value.band, 'col'));
+  const hot =
+    tableEdge.value.hover?.axis === 'col' && tableEdge.value.hover.kind === 'head' ? tableEdge.value.hover.index : -1;
+  const indexes = new Set<number>(selected);
+  if (hot >= 0) indexes.add(hot);
+  const out: Array<{ index: number; left: number; width: number; on: boolean; hot: boolean }> = [];
+  for (const index of indexes) {
+    const left = edges[index];
+    const right = edges[index + 1];
+    if (left == null || right == null) continue;
+    out.push({
+      index,
+      left,
+      width: Math.max(0, right - left),
+      on: selected.has(index),
+      hot: index === hot && !selected.has(index),
+    });
   }
-  // domAtPos 在 table 内通常落到 text node；向上找 td/th/table
-  let domNode: any;
+  return out;
+});
+
+const tableEdgeRowGrip = computed(() => {
+  const hover = tableEdge.value.hover;
+  if (!hover || hover.axis !== 'row' || hover.kind !== 'head') return null;
+  const center = edgeCenter(tableEdge.value.rowEdges, hover.index);
+  if (center == null) return null;
+  const band = tableEdge.value.band;
+  const on = !!band && band.axis === 'row' && hover.index >= band.from && hover.index <= band.to;
+  return { center, on };
+});
+
+const tableEdgeColGrip = computed(() => {
+  const hover = tableEdge.value.hover;
+  if (!hover || hover.axis !== 'col' || hover.kind !== 'head') return null;
+  const center = edgeCenter(tableEdge.value.colEdges, hover.index);
+  if (center == null) return null;
+  const band = tableEdge.value.band;
+  const on = !!band && band.axis === 'col' && hover.index >= band.from && hover.index <= band.to;
+  return { center, on };
+});
+
+const tableEdgeRowAdd = computed(() => {
+  const hover = tableEdge.value.hover;
+  if (!hover || hover.axis !== 'row' || hover.kind !== 'gap') return null;
+  const y = tableEdge.value.rowEdges[hover.index];
+  return y == null ? null : { index: hover.index, pos: y };
+});
+
+const tableEdgeColAdd = computed(() => {
+  const hover = tableEdge.value.hover;
+  if (!hover || hover.axis !== 'col' || hover.kind !== 'gap') return null;
+  const x = tableEdge.value.colEdges[hover.index];
+  return x == null ? null : { index: hover.index, pos: x };
+});
+
+const tableEdgeDeleteY = computed(() => {
+  const band = tableEdge.value.band;
+  if (!band || band.axis !== 'row') return 0;
+  return selectionCenter(tableEdge.value.rowEdges, band.from, band.to);
+});
+
+const tableEdgeDeleteX = computed(() => {
+  const band = tableEdge.value.band;
+  if (!band || band.axis !== 'col') return 0;
+  return selectionCenter(tableEdge.value.colEdges, band.from, band.to);
+});
+
+function findTableNear(root: HTMLElement, x: number, y: number): HTMLTableElement | null {
+  const tables = Array.from(root.querySelectorAll('table'));
+  const rects = tables.map((table) => {
+    const r = table.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  });
+  const index = pickNearestTableIndex(rects, x, y, TABLE_EDGE_PICK_PAD);
+  return index >= 0 ? tables[index] : null;
+}
+
+function tableElementFromSelection(view: EditorView): HTMLTableElement | null {
   try {
-    domNode = view.domAtPos(sel.from).node as Node;
+    const dom = view.domAtPos(view.state.selection.from).node;
+    const el = (dom instanceof HTMLElement ? dom : dom?.parentElement) as HTMLElement | null;
+    return (el?.closest?.('table') as HTMLTableElement | null) ?? null;
   } catch {
-    domNode = null;
+    return null;
   }
-  const el = (domNode instanceof HTMLElement ? domNode : domNode?.parentElement) as HTMLElement | null;
-  const table = el?.closest?.('table') as HTMLElement | null;
-  if (!table) {
-    tableUi.value = { ...tableUi.value, visible: false, cellRect: null };
+}
+
+function resolveTablePos(view: EditorView, tableEl: HTMLElement): number | null {
+  let pos = 0;
+  try {
+    pos = view.posAtDOM(tableEl, 0);
+  } catch {
+    return null;
+  }
+  const size = view.state.doc.content.size;
+  const probes = [pos, pos + 1, Math.max(0, pos - 1)];
+  for (const probe of probes) {
+    const clamped = Math.max(0, Math.min(probe, size));
+    const $pos = view.state.doc.resolve(clamped);
+    for (let d = $pos.depth; d > 0; d--) {
+      if ($pos.node(d).type.name === 'table') return $pos.before(d);
+    }
+  }
+  return null;
+}
+
+function hoverFromPointer(table: HTMLTableElement, x: number, y: number): TableEdgeHover | null {
+  const measured = measureTableEdges(table);
+  if (!measured) return null;
+  const rect = table.getBoundingClientRect();
+  return classifyTableEdgeHover({
+    x: x - rect.left,
+    y: y - rect.top,
+    rowEdges: measured.rowEdges,
+    colEdges: measured.colEdges,
+  });
+}
+
+function refreshTableEdge(view: EditorView): void {
+  const root = editorRef.value;
+  const band = readTableAxisSelection(view.state);
+  if (band) {
+    const fromSel = tableElementFromSelection(view);
+    if (fromSel) bandTableEl = fromSel;
+  } else {
+    bandTableEl = null;
+  }
+  if (!root) {
+    displayTableEl = null;
+    tableEdge.value = hiddenTableEdge();
     return;
   }
-  const cell = el?.closest?.('td,th') as HTMLElement | null;
-
-  // 使用基于视口的边界矩形
-  // 并计算滚动容器( .milkdown-editor )的偏移量，让覆盖层和被覆盖元素在同一个坐标系
+  let table = hotTableEl && hotTableEl.isConnected ? hotTableEl : null;
+  if (!table && bandTableEl && bandTableEl.isConnected) table = bandTableEl;
+  if (!table) {
+    displayTableEl = null;
+    tableEdge.value = hiddenTableEdge();
+    return;
+  }
+  const measured = measureTableEdges(table);
+  if (!measured) {
+    displayTableEl = null;
+    tableEdge.value = hiddenTableEdge();
+    return;
+  }
+  displayTableEl = table;
   const rootRect = root.getBoundingClientRect();
   const tRect = table.getBoundingClientRect();
-  const cRect = cell ? cell.getBoundingClientRect() : null;
-
-  // tableUi 容器是绝对定位在 .milkdown-shell (relative) 中，而 table 是在 .milkdown-editor 内部随滚动条移动的
-  const tableRect = {
-    x: tRect.left - rootRect.left,
-    y: tRect.top - rootRect.top,
-    w: tRect.width,
-    h: tRect.height,
+  const hover = lastPointer ? hoverFromPointer(table, lastPointer.x, lastPointer.y) : null;
+  tableEdge.value = {
+    visible: true,
+    hover,
+    band: table === bandTableEl ? band : null,
+    tableRect: {
+      x: tRect.left - rootRect.left,
+      y: tRect.top - rootRect.top,
+      w: tRect.width,
+      h: tRect.height,
+    },
+    rowEdges: measured.rowEdges,
+    colEdges: measured.colEdges,
   };
-  const cellRect = cRect ? {
-    x: cRect.left - rootRect.left,
-    y: cRect.top - rootRect.top,
-    w: cRect.width,
-    h: cRect.height,
-  } : null;
+}
 
-  // 允许 UI 点击先行设置（随后用 selection 再校准）。避免偶发 map/rect 读取失败导致 UI 一闪即灭。
-  let rowSelected = tableUi.value.rowSelected;
-  let colSelected = tableUi.value.colSelected;
-  let activeRow = -1;
-  let activeCol = -1;
+function syncHotTableFromPointer(x: number, y: number): void {
+  lastPointer = { x, y };
+  const root = editorRef.value;
+  if (!root || !editor) return;
+  if (axisDrag || pendingGap) return;
+  hotTableEl = findTableNear(root, x, y);
   try {
-    const info = computeActiveCellRowCol(view);
-    if (info) {
-      activeRow = info.row;
-      activeCol = info.col;
-    }
-    if (view.state.selection instanceof CellSelection) {
-      const rect = selectedRect(view.state);
-      const map = (rect as any).map ? (rect as any).map : TableMap.get(rect.table as any);
-      // “整行/整列” 识别：矩形选区覆盖整个宽/高，且仅一行/一列
-      // 注意：selectedRect 的 right/bottom 为「exclusive」边界。
-      if (rect.left === 0 && rect.right === map.width && rect.bottom === rect.top + 1) rowSelected = true;
-      if (rect.top === 0 && rect.bottom === map.height && rect.right === rect.left + 1) colSelected = true;
-    } else {
-      rowSelected = false;
-      colSelected = false;
-    }
+    refreshTableEdge(editor.ctx.get(editorViewCtx));
   } catch {
     // ignore
   }
-  tableUi.value = {
-    ...tableUi.value,
-    visible: true,
-    tableRect,
-    cellRect,
-    rowSelected,
-    colSelected,
-    activeRow,
-    activeCol,
-  };
 }
 
 function handleEditorScroll() {
-  if (editor && tableUi.value.visible) {
-    // 当滚动时重新计算表格的位置信息，这样悬浮 UI 会一直跟着动
-    const view = editor.ctx.get(editorViewCtx);
-    computeTableUiFromView(view);
+  if (!lastPointer) {
+    if (editor && tableEdge.value.visible) {
+      try {
+        refreshTableEdge(editor.ctx.get(editorViewCtx));
+      } catch {
+        // ignore
+      }
+    }
+    return;
   }
+  syncHotTableFromPointer(lastPointer.x, lastPointer.y);
 }
 
-function runTableUiOp(op: RichTableOp): void {
-  if (!editor) return;
-  try {
-    const view = editor.ctx.get(editorViewCtx);
-    runRichTableOp(view, op);
-    // 操作后，表格仍应保持可见 UI
-    computeTableUiFromView(view);
-  } catch {
-    // ignore
-  }
+function activeTablePos(view: EditorView): number | null {
+  if (!displayTableEl || !displayTableEl.isConnected) return null;
+  return resolveTablePos(view, displayTableEl);
 }
 
-function selectWholeTableFromUi(): void {
-  if (!editor) return;
+function armTableGap(axis: 'row' | 'col', index: number, e: PointerEvent): void {
+  if (e.button !== 0) return;
+  pendingGap = { axis, index, x: e.clientX, y: e.clientY };
+}
+
+function beginHeadSelect(axis: 'row' | 'col', index: number, e: PointerEvent): void {
+  if (!editor || !displayTableEl || e.button !== 0) return;
+  const view = editor.ctx.get(editorViewCtx);
+  const tablePos = activeTablePos(view);
+  if (tablePos == null) return;
+  const anchor =
+    axis === 'row'
+      ? e.shiftKey && rowSelectAnchor != null
+        ? rowSelectAnchor
+        : index
+      : e.shiftKey && colSelectAnchor != null
+        ? colSelectAnchor
+        : index;
+  if (!e.shiftKey) {
+    if (axis === 'row') rowSelectAnchor = index;
+    else colSelectAnchor = index;
+  }
+  axisDrag = { axis, anchor, tablePos };
+  if (axis === 'row') selectTableRows(view, tablePos, anchor, index);
+  else selectTableColumns(view, tablePos, anchor, index);
+  view.focus();
+}
+
+function onGripPointerDown(axis: 'row' | 'col', e: PointerEvent): void {
+  const hover = tableEdge.value.hover;
+  if (!hover || hover.axis !== axis || hover.kind !== 'head') return;
+  beginHeadSelect(axis, hover.index, e);
+}
+
+function onTableEdgePointerDown(e: PointerEvent): void {
+  if (e.button !== 0 || !editor || !displayTableEl) return;
+  const target = e.target as HTMLElement | null;
+  if (target?.closest('.markly-table-delete, .markly-table-add, .markly-table-grip')) return;
+  const hit = hoverFromPointer(displayTableEl, e.clientX, e.clientY);
+  if (!hit) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (hit.kind === 'gap') {
+    armTableGap(hit.axis, hit.index, e);
+    return;
+  }
+  beginHeadSelect(hit.axis, hit.index, e);
+}
+
+function extendAxisDrag(clientX: number, clientY: number): void {
+  if (!axisDrag || !editor || !displayTableEl) return;
+  const rect = displayTableEl.getBoundingClientRect();
+  const measured = measureTableEdges(displayTableEl);
+  if (!measured) return;
+  const edges = axisDrag.axis === 'row' ? measured.rowEdges : measured.colEdges;
+  const pos = axisDrag.axis === 'row' ? clientY - rect.top : clientX - rect.left;
+  const hit = classifyEdgeAxis(pos, edges);
+  if (!hit) return;
+  const index = hit.kind === 'head' ? hit.index : indexForGapDrag(hit.index, edges.length - 1);
+  const view = editor.ctx.get(editorViewCtx);
+  const from = Math.min(axisDrag.anchor, index);
+  const to = Math.max(axisDrag.anchor, index);
+  const current = readTableAxisSelection(view.state);
+  if (current && current.axis === axisDrag.axis && current.from === from && current.to === to) return;
+  if (axisDrag.axis === 'row') selectTableRows(view, axisDrag.tablePos, axisDrag.anchor, index);
+  else selectTableColumns(view, axisDrag.tablePos, axisDrag.anchor, index);
+}
+
+function finishTableEdgePointer(e: PointerEvent): void {
+  const gap = pendingGap;
+  pendingGap = null;
+  axisDrag = null;
+  if (!gap || !editor || !displayTableEl) return;
   try {
+    const moved = Math.hypot(e.clientX - gap.x, e.clientY - gap.y);
+    if (moved >= 6) return;
     const view = editor.ctx.get(editorViewCtx);
-    // 通过把 selection 移到表格内第一格，确保 Delete 可以命中 deleteTable
-    const sel = view.state.selection;
-    const $pos = sel.$from;
-    const tableDepth = (() => {
-      for (let d = $pos.depth; d > 0; d--) if ($pos.node(d).type.name === 'table') return d;
-      return -1;
-    })();
-    if (tableDepth < 0) return;
-    const tablePos = $pos.before(tableDepth);
-    const tableNode = $pos.node(tableDepth);
-    const map = TableMap.get(tableNode as any);
-    const topLeftCell = tablePos + 1 + map.positionAt(0, 0, tableNode as any);
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, topLeftCell + 2)).scrollIntoView());
-    tableUi.value = { ...tableUi.value, tableSelected: true };
+    const tablePos = activeTablePos(view);
+    if (tablePos == null) return;
+    if (gap.axis === 'row') insertTableRowAtGap(view, tablePos, gap.index);
+    else insertTableColumnAtGap(view, tablePos, gap.index);
     view.focus();
   } catch {
     // ignore
   }
 }
 
-function selectRowFromUi(): void {
+function onDeleteTableAxis(): void {
   if (!editor) return;
   try {
     const view = editor.ctx.get(editorViewCtx);
-    const info = computeActiveCellRowCol(view);
-    if (!info) return;
-    const { tablePos, tableNode, row } = info;
-    const map = TableMap.get(tableNode as any);
-    // TableMap.positionAt(row, col, table)
-    const a = tablePos + 1 + map.positionAt(row, 0, tableNode as any);
-    const b = tablePos + 1 + map.positionAt(row, map.width - 1, tableNode as any);
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, a + 2, b + 2)).scrollIntoView());
-    tableUi.value = { ...tableUi.value, tableSelected: false, rowSelected: true, colSelected: false };
+    deleteTableAxisSelection(view);
     view.focus();
-  } catch {
-    // ignore
-  }
-}
-
-function selectColFromUi(): void {
-  if (!editor) return;
-  try {
-    const view = editor.ctx.get(editorViewCtx);
-    const info = computeActiveCellRowCol(view);
-    if (!info) return;
-    const { tablePos, tableNode, col } = info;
-    const map = TableMap.get(tableNode as any);
-    // TableMap.positionAt(row, col, table)
-    const a = tablePos + 1 + map.positionAt(0, col, tableNode as any);
-    const b = tablePos + 1 + map.positionAt(map.height - 1, col, tableNode as any);
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, a + 2, b + 2)).scrollIntoView());
-    tableUi.value = { ...tableUi.value, tableSelected: false, rowSelected: false, colSelected: true };
-    view.focus();
+    refreshTableEdge(view);
   } catch {
     // ignore
   }
@@ -1930,23 +2040,47 @@ function bindImageEvents(): void {
   editorRef.value.addEventListener('contextmenu', imageContextMenuHandler);
   editorRef.value.addEventListener('contextmenu', tableContextMenuHandler);
 
-  // Delete/Backspace：当“表格角标选中态”开启时，允许直接删除表格
+  // 整行/整列选中时，Delete / Backspace 删掉这些行或列（盖住整张表则删表）
   tableDeleteKeydownHandler = (e: KeyboardEvent) => {
-    if (!tableUi.value.tableSelected) return;
     if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (!editor) return;
     try {
       const view = editor.ctx.get(editorViewCtx);
-      if (!isInTable(view.state)) return;
+      if (!readTableAxisSelection(view.state)) return;
       e.preventDefault();
       e.stopPropagation();
-      runRichTableOp(view, 'deleteTable');
-      tableUi.value = { ...tableUi.value, tableSelected: false, visible: false, cellRect: null };
+      deleteTableAxisSelection(view);
+      refreshTableEdge(view);
     } catch {
       // ignore
     }
   };
-  editorRef.value.addEventListener('keydown', tableDeleteKeydownHandler);
+  editorRef.value.addEventListener('keydown', tableDeleteKeydownHandler, true);
+
+  tableEdgePointerMoveHandler = (e: PointerEvent) => {
+    if (axisDrag) {
+      extendAxisDrag(e.clientX, e.clientY);
+      return;
+    }
+    if (tableEdgeRaf) return;
+    const x = e.clientX;
+    const y = e.clientY;
+    tableEdgeRaf = requestAnimationFrame(() => {
+      tableEdgeRaf = 0;
+      syncHotTableFromPointer(x, y);
+    });
+  };
+  tableEdgePointerUpHandler = (e: PointerEvent) => {
+    if (!axisDrag && !pendingGap) return;
+    finishTableEdgePointer(e);
+  };
+  window.addEventListener('pointermove', tableEdgePointerMoveHandler);
+  window.addEventListener('pointerup', tableEdgePointerUpHandler);
+  tableEdgeScrollHandler = () => {
+    handleEditorScroll();
+  };
+  editorRef.value.addEventListener('scroll', tableEdgeScrollHandler, true);
 
   internalHoverHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement | null;
@@ -1990,9 +2124,25 @@ function unbindImageEvents(): void {
       internalLeaveHandler = null;
     }
     if (tableDeleteKeydownHandler) {
-      editorRef.value.removeEventListener('keydown', tableDeleteKeydownHandler);
+      editorRef.value.removeEventListener('keydown', tableDeleteKeydownHandler, true);
       tableDeleteKeydownHandler = null;
     }
+  }
+  if (tableEdgePointerMoveHandler) {
+    window.removeEventListener('pointermove', tableEdgePointerMoveHandler);
+    tableEdgePointerMoveHandler = null;
+  }
+  if (tableEdgePointerUpHandler) {
+    window.removeEventListener('pointerup', tableEdgePointerUpHandler);
+    tableEdgePointerUpHandler = null;
+  }
+  if (tableEdgeRaf) {
+    cancelAnimationFrame(tableEdgeRaf);
+    tableEdgeRaf = 0;
+  }
+  if (tableEdgeScrollHandler && editorRef.value) {
+    editorRef.value.removeEventListener('scroll', tableEdgeScrollHandler, true);
+    tableEdgeScrollHandler = null;
   }
 }
 
@@ -2613,90 +2763,151 @@ defineExpose({
   word-break: break-word;
 }
 
-/* Rich 表格：选中态 overlay */
-.markly-table-ui {
+/* 表格边上的操作。容器本身不挡编辑，只有边槽和删除按钮能点。 */
+.markly-table-edge {
   position: absolute;
   z-index: 3;
   pointer-events: none;
-  border: 2px solid color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 70%, transparent);
-  border-radius: 6px;
   box-sizing: border-box;
 }
 
-.markly-table-ui-corner {
-  pointer-events: auto;
+.markly-table-band {
   position: absolute;
-  left: -12px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.markly-table-band.row {
+  left: 0;
+  right: 0;
+}
+
+.markly-table-band.col {
+  top: 0;
+  bottom: 0;
+}
+
+.markly-table-band.hot {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 12%, transparent);
+}
+
+.markly-table-band.on {
+  background: color-mix(in srgb, var(--vscode-editor-selectionBackground, rgba(0, 120, 212, 0.28)) 78%, transparent);
+}
+
+.markly-table-band.row.on {
+  box-shadow: inset 2px 0 0 var(--vscode-focusBorder, #007fd4);
+}
+
+.markly-table-band.col.on {
+  box-shadow: inset 0 2px 0 var(--vscode-focusBorder, #007fd4);
+}
+
+.markly-table-gutter {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.markly-table-gutter.row {
+  left: -22px;
+  width: 26px;
   top: -12px;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(120, 120, 120, 0.35));
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-  font-size: 14px;
-  line-height: 20px;
+  bottom: -12px;
+}
+
+.markly-table-gutter.col {
+  top: -22px;
+  height: 26px;
+  left: 0;
+  right: 0;
+}
+
+.markly-table-grip,
+.markly-table-add,
+.markly-table-delete {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: 0;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-}
-
-.markly-table-ui-corner.active {
-  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 22%, var(--vscode-editor-background));
-  border-color: var(--vscode-focusBorder, #007fd4);
-}
-
-.markly-table-ui-cell {
-  position: absolute;
-  border: 2px solid color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 35%, transparent);
-  border-radius: 4px;
-  box-sizing: border-box;
-}
-
-.markly-table-edge-btn {
-  pointer-events: auto;
-  position: absolute;
-  min-width: 42px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 6px;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(120, 120, 120, 0.35));
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-  font-size: 12px;
-  line-height: 20px;
-  cursor: pointer;
-  transform: translate(50%, -50%);
-}
-
-.markly-table-edge-btn.danger {
-  background: color-mix(in srgb, var(--vscode-errorForeground, #ff5f56) 14%, var(--vscode-editor-background));
-}
-
-.markly-table-handle {
-  pointer-events: auto;
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  padding: 0;
   border-radius: 999px;
-  border: 1px solid var(--vscode-editorWidget-border, rgba(120, 120, 120, 0.35));
-  background: var(--vscode-editor-background);
+  box-sizing: border-box;
   color: var(--vscode-foreground);
-  font-size: 11px;
-  line-height: 20px;
+  background: var(--vscode-editor-background, #fff);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(120, 120, 120, 0.45));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.markly-table-grip,
+.markly-table-add {
+  pointer-events: auto;
   cursor: pointer;
+}
+
+.markly-table-grip svg,
+.markly-table-delete svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.markly-table-grip.row {
+  left: 0;
   transform: translate(-50%, -50%);
 }
 
-.markly-table-handle.row {
-  opacity: 0.9;
+.markly-table-grip.col {
+  top: 0;
+  transform: translate(-50%, -50%);
 }
 
-.markly-table-handle.col {
-  opacity: 0.9;
+.markly-table-grip.on {
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 22%, var(--vscode-editor-background, #fff));
+  border-color: var(--vscode-focusBorder, #007fd4);
+  color: var(--vscode-focusBorder, #007fd4);
+}
+
+.markly-table-add {
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 650;
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #007fd4);
+  border-color: transparent;
+}
+
+.markly-table-add.row {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.markly-table-add.col {
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+.markly-table-delete {
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--vscode-errorForeground, #d13b3b);
+}
+
+.markly-table-delete:hover {
+  background: color-mix(in srgb, var(--vscode-errorForeground, #d13b3b) 14%, var(--vscode-editor-background, #fff));
+}
+
+.markly-table-delete.row {
+  left: -14px;
+  transform: translate(-50%, -50%);
+}
+
+.markly-table-delete.col {
+  top: -14px;
+  transform: translate(-50%, -50%);
 }
 
 /* ProseMirror 编辑器样式 */
@@ -3004,12 +3215,6 @@ defineExpose({
   width: max-content;
   min-width: 100%;
   margin: 0.5em 0;
-}
-
-/* M28：表格区域键盘焦点可见轮廓 */
-.milkdown-editor table:focus-within {
-  outline: 2px solid var(--vscode-focusBorder, #007fd4);
-  outline-offset: 2px;
 }
 
 .milkdown-editor th,
