@@ -66,20 +66,16 @@ afterEach(() => {
 });
 
 describe('PreviewApp 顶栏与大纲', () => {
-  it('文档有标题时显示大纲栏；没标题时整栏连展开/收起按钮一起消失', async () => {
+  it('文档即使有标题，也不在文件树和正文之间再开一列目录', async () => {
     const el = mount();
     await flush();
 
-    pushMsg('CONTENT_UPDATE', { content: '# 标题一\n\n正文' });
-    await flush();
-    expect(el.querySelector('.outline-sidebar')).not.toBeNull();
-    expect(el.querySelector('.markly-app')!.classList.contains('no-outline')).toBe(false);
-
-    pushMsg('CONTENT_UPDATE', { content: '只有正文，没有任何标题' });
+    pushMsg('CONTENT_UPDATE', { content: '# 标题一\n\n## 小节\n\n正文' });
     await flush();
     expect(el.querySelector('.outline-sidebar')).toBeNull();
     expect(el.querySelector('.outline-toggle')).toBeNull();
-    expect(el.querySelector('.markly-app')!.classList.contains('no-outline')).toBe(true);
+    expect(el.querySelector('.tab-bar')).not.toBeNull();
+    expect(el.querySelector('.preview-area')).not.toBeNull();
   });
 
   it('打开按钮在文件树上方，标签从文件树右侧开始排', async () => {

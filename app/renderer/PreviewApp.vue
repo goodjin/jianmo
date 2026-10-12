@@ -3,8 +3,6 @@
     class="markly-app"
     :class="{
       'files-collapsed': fileTreeCollapsed,
-      'outline-collapsed': outlineCollapsed,
-      'no-outline': isSettingsTab || !hasOutline,
     }"
   >
     <div ref="openSplitRef" class="open-rail">
@@ -75,30 +73,6 @@
       :active-path="activeFilePath"
       @toggle="toggleFileTree"
     />
-    <aside v-if="!isSettingsTab && hasOutline" class="outline-sidebar" :class="{ collapsed: outlineCollapsed }">
-      <div class="outline-head">
-        <span v-if="!outlineCollapsed" class="outline-head-title">目录</span>
-        <button
-          class="outline-toggle"
-          type="button"
-          :title="outlineCollapsed ? '展开目录' : '收起目录'"
-          :aria-label="outlineCollapsed ? '展开目录' : '收起目录'"
-          :aria-expanded="!outlineCollapsed"
-          @click="toggleOutline"
-        >{{ outlineCollapsed ? '›' : '‹' }}</button>
-      </div>
-      <ul v-if="!outlineCollapsed" class="outline-list">
-        <li
-          v-for="item in outline"
-          :key="item.id"
-          class="outline-row"
-          :class="['level-' + item.level]"
-          :style="{ paddingLeft: (item.level - 1) * 12 + 12 + 'px' }"
-          :title="item.text"
-          @click="jumpToHeading(item.id)"
-        >{{ item.text }}</li>
-      </ul>
-    </aside>
     <main class="preview-area">
       <SettingsPage v-if="isSettingsTab" :appearance="appearance" @update="onUpdateAppearance" />
       <div v-else-if="loading" class="status">加载中…</div>
@@ -119,8 +93,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useVSCode } from '@wv/composables/useVSCode';
-import { headingNodeId, parseHeadings } from '@wv/shared/outline';
-import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
@@ -156,7 +128,6 @@ const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
-const outlineCollapsed = ref(false);
 const fileTreeCollapsed = ref(false);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
@@ -185,31 +156,6 @@ const exportTitle = computed(() => {
   if (exportHint.value) return exportHint.value;
   return '导出为 PDF 或 HTML';
 });
-
-/**
- * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
- * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底，保证 outline headingId 与 iframe 内 heading.id 完全匹配。
- * 统一走 `@wv/shared/outline` 的 headingNodeId，避免三处锚点规则各自漂移。
- */
-interface OutlineEntry extends HeadingNode {
-  id: string;
-}
-
-const outline = computed<OutlineEntry[]>(() =>
-  parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
-);
-
-/** 文档没有标题时整栏不出现（连同展开/收起按钮），预览区占满宽度。 */
-const hasOutline = computed(() => outline.value.length > 0);
-
-/**
- * 父→子：通过 postMessage 让 iframe 滚动到目标 heading。
- * iframe 内联监听见 src/core/export/htmlExport.ts 的 inline <script>。
- * 跨 sandbox（无 allow-same-origin）下唯一可靠的通信方式。
- */
-function jumpToHeading(headingId: string): void {
-  frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
-}
 
 /**
  * 给外部链接加 target=_blank rel=noopener，使主进程 setWindowOpenHandler 能拦截到新窗口请求并 shell.openExternal。
@@ -300,19 +246,6 @@ function onCloseTab(id: string): void {
 function onNewTab(): void {
   closeRecent();
   void electronApp()?.newTab?.();
-}
-
-function persistOutlineCollapsed(): void {
-  try {
-    electronApp()?.storeSet?.('outlineCollapsed', outlineCollapsed.value);
-  } catch {
-    /* ignore */
-  }
-}
-
-function toggleOutline(): void {
-  outlineCollapsed.value = !outlineCollapsed.value;
-  persistOutlineCollapsed();
 }
 
 function toggleFileTree(): void {
@@ -597,11 +530,6 @@ onMounted(() => {
   refreshTabs();
   refreshAppearance();
   try {
-    outlineCollapsed.value = electronApp()?.storeGet?.('outlineCollapsed') === true;
-  } catch {
-    outlineCollapsed.value = false;
-  }
-  try {
     fileTreeCollapsed.value = electronApp()?.storeGet?.('fileTreeCollapsed') === true;
   } catch {
     fileTreeCollapsed.value = false;
@@ -641,33 +569,21 @@ html, body, #app {
 }
 .markly-app {
   --files-col: 220px;
-  --outline-col: 240px;
   --chrome-row: 40px;
   display: grid;
-  grid-template-columns: var(--files-col) var(--outline-col) 1fr;
+  grid-template-columns: var(--files-col) 1fr;
   grid-template-rows: var(--chrome-row) 1fr;
   height: 100vh;
   margin: 0;
 }
 .markly-app.files-collapsed { --files-col: 40px; }
-.markly-app.outline-collapsed { --outline-col: 40px; }
-.markly-app.no-outline {
-  grid-template-columns: var(--files-col) 1fr;
-}
-.markly-app.no-outline .preview-area {
-  grid-column: 2;
-}
 .markly-app > .tab-bar {
   position: relative;
   z-index: 20;
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 1;
 }
-/* 没有目录时，标签贴着文件树右缘，和正文同一列 */
-.markly-app.no-outline > .tab-bar {
-  grid-column: 2;
-}
-/* 打开按钮留在文件树正上方。有目录时标签只盖住正文，底边和正文连成一块 */
+/* 打开按钮留在文件树正上方。标签从文件树右缘开始，底边和正文连成一块 */
 .open-rail {
   grid-column: 1;
   grid-row: 1;
@@ -797,91 +713,8 @@ html, body, #app {
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
 
-.outline-sidebar {
-  grid-column: 2;
-  grid-row: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-right: 1px solid var(--markly-border-color, #d0d7de);
-  background: var(--markly-surface, #fafbfc);
-  min-height: 0;
-}
-.outline-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: var(--chrome-row, 40px);
-  min-height: var(--chrome-row, 40px);
-  padding: 0 8px 0 14px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
-  flex-shrink: 0;
-}
-.outline-head-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--markly-text, #1f2328);
-  padding: 4px 0;
-  line-height: 1.4;
-}
-.outline-toggle {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
-  background: var(--markly-background, #fff);
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  color: var(--markly-text, #24292e);
-  flex-shrink: 0;
-}
-.outline-toggle:hover { background: var(--markly-surface, #f6f8fa); }
-.outline-sidebar.collapsed .outline-head {
-  justify-content: center;
-  padding: 0;
-  height: var(--chrome-row, 40px);
-  min-height: var(--chrome-row, 40px);
-}
-.outline-list {
-  list-style: none;
-  padding: 8px 0 12px;
-  margin: 0;
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-}
-.outline-row {
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 6px 14px 6px 0;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--markly-text, #24292e);
-  user-select: none;
-}
-.outline-row:hover { background: var(--markly-surfaceHover, #eaeef2); }
-.outline-row.level-1 { font-weight: 600; color: var(--markly-text, #1f2328); }
-.outline-row.level-2 { font-weight: 500; color: var(--markly-text, #2f363d); }
-.outline-row.level-3,
-.outline-row.level-4,
-.outline-row.level-5,
-.outline-row.level-6 { color: var(--markly-textSecondary, #57606a); }
-.outline-empty {
-  padding: 20px 14px;
-  color: var(--markly-textSecondary, #6a737d);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: center;
-}
-
 .preview-area {
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 2;
   position: relative;
   overflow: hidden;
