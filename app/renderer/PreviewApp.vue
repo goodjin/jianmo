@@ -75,17 +75,45 @@
     />
     <main class="preview-area">
       <SettingsPage v-if="isSettingsTab" :appearance="appearance" @update="onUpdateAppearance" />
-      <div v-else-if="loading" class="status">加载中…</div>
-      <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
-      <iframe
-        v-else
-        ref="frameRef"
-        class="preview-frame"
-        :srcdoc="safeHtml"
-        sandbox="allow-scripts allow-popups"
-        referrerpolicy="no-referrer"
-        @load="onFrameLoad"
-      ></iframe>
+      <template v-else>
+        <aside v-if="hasOutline" class="doc-outline" :class="{ collapsed: outlineCollapsed }">
+          <div class="doc-outline-head">
+            <span v-if="!outlineCollapsed" class="doc-outline-title">目录</span>
+            <button
+              class="doc-outline-toggle"
+              type="button"
+              :title="outlineCollapsed ? '展开目录' : '收起目录'"
+              :aria-label="outlineCollapsed ? '展开目录' : '收起目录'"
+              :aria-expanded="!outlineCollapsed"
+              @click="toggleOutline"
+            >{{ outlineCollapsed ? '›' : '‹' }}</button>
+          </div>
+          <ul v-if="!outlineCollapsed" class="doc-outline-list">
+            <li
+              v-for="item in outline"
+              :key="item.id"
+              class="doc-outline-row"
+              :class="'level-' + item.level"
+              :style="{ paddingLeft: (item.level - 1) * 12 + 12 + 'px' }"
+              :title="item.text"
+              @click="jumpToHeading(item.id)"
+            >{{ item.text }}</li>
+          </ul>
+        </aside>
+        <div class="doc-body">
+          <div v-if="loading" class="status">加载中…</div>
+          <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
+          <iframe
+            v-else
+            ref="frameRef"
+            class="preview-frame"
+            :srcdoc="safeHtml"
+            sandbox="allow-scripts allow-popups"
+            referrerpolicy="no-referrer"
+            @load="onFrameLoad"
+          ></iframe>
+        </div>
+      </template>
     </main>
   </div>
 </template>
@@ -93,6 +121,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useVSCode } from '@wv/composables/useVSCode';
+import { headingNodeId, parseHeadings } from '@wv/shared/outline';
+import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
@@ -128,6 +158,7 @@ const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
+const outlineCollapsed = ref(false);
 const fileTreeCollapsed = ref(false);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
@@ -156,6 +187,25 @@ const exportTitle = computed(() => {
   if (exportHint.value) return exportHint.value;
   return '导出为 PDF 或 HTML';
 });
+
+/**
+ * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
+ * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底。
+ */
+interface OutlineEntry extends HeadingNode {
+  id: string;
+}
+
+const outline = computed<OutlineEntry[]>(() =>
+  parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
+);
+
+/** 没有标题就不显示目录。目录画在正文里面，不单独占一列。 */
+const hasOutline = computed(() => outline.value.length > 0);
+
+function jumpToHeading(headingId: string): void {
+  frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
+}
 
 /**
  * 给外部链接加 target=_blank rel=noopener，使主进程 setWindowOpenHandler 能拦截到新窗口请求并 shell.openExternal。
@@ -246,6 +296,19 @@ function onCloseTab(id: string): void {
 function onNewTab(): void {
   closeRecent();
   void electronApp()?.newTab?.();
+}
+
+function persistOutlineCollapsed(): void {
+  try {
+    electronApp()?.storeSet?.('outlineCollapsed', outlineCollapsed.value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function toggleOutline(): void {
+  outlineCollapsed.value = !outlineCollapsed.value;
+  persistOutlineCollapsed();
 }
 
 function toggleFileTree(): void {
@@ -530,6 +593,11 @@ onMounted(() => {
   refreshTabs();
   refreshAppearance();
   try {
+    outlineCollapsed.value = electronApp()?.storeGet?.('outlineCollapsed') === true;
+  } catch {
+    outlineCollapsed.value = false;
+  }
+  try {
     fileTreeCollapsed.value = electronApp()?.storeGet?.('fileTreeCollapsed') === true;
   } catch {
     fileTreeCollapsed.value = false;
@@ -716,10 +784,91 @@ html, body, #app {
 .preview-area {
   grid-column: 2;
   grid-row: 2;
-  position: relative;
-  overflow: hidden;
+  display: flex;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  background: var(--markly-background, #fff);
+}
+/* 目录画在正文内部左侧，和正文同一张白底，不进顶层分栏 */
+.doc-outline {
+  flex: 0 0 200px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  background: var(--markly-background, #fff);
+  border-right: 1px solid var(--markly-border-color, #d0d7de);
+}
+.doc-outline.collapsed {
+  flex-basis: 36px;
+  width: 36px;
+}
+.doc-outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 8px 6px 14px;
+  flex-shrink: 0;
+}
+.doc-outline.collapsed .doc-outline-head {
+  justify-content: center;
+  padding: 12px 4px;
+}
+.doc-outline-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--markly-textSecondary, #57606a);
+}
+.doc-outline-toggle {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--markly-textSecondary, #57606a);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.doc-outline-toggle:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.doc-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 16px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+.doc-outline-row {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 5px 12px 5px 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--markly-text, #24292e);
+  user-select: none;
+}
+.doc-outline-row:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.doc-outline-row.level-1 { font-weight: 600; }
+.doc-outline-row.level-3,
+.doc-outline-row.level-4,
+.doc-outline-row.level-5,
+.doc-outline-row.level-6 { color: var(--markly-textSecondary, #57606a); }
+.doc-body {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--markly-background, #fff);
 }
 .preview-frame {

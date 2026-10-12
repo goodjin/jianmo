@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
+import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import PreviewApp from './PreviewApp.vue';
 import { installVsCodeShim } from './vscodeShim';
 import type { ElectronAppBridge } from './electronBridge';
@@ -66,16 +67,59 @@ afterEach(() => {
 });
 
 describe('PreviewApp 顶栏与大纲', () => {
-  it('文档即使有标题，也不在文件树和正文之间再开一列目录', async () => {
+  it('有标题时目录画在正文里面，没有标题时目录消失', async () => {
     const el = mount();
     await flush();
 
     pushMsg('CONTENT_UPDATE', { content: '# 标题一\n\n## 小节\n\n正文' });
     await flush();
-    expect(el.querySelector('.outline-sidebar')).toBeNull();
-    expect(el.querySelector('.outline-toggle')).toBeNull();
-    expect(el.querySelector('.tab-bar')).not.toBeNull();
-    expect(el.querySelector('.preview-area')).not.toBeNull();
+    const outline = el.querySelector('.preview-area .doc-outline');
+    expect(outline).not.toBeNull();
+    expect(el.querySelector('.markly-app > .doc-outline')).toBeNull();
+    expect(outline!.textContent).toContain('标题一');
+    expect(outline!.textContent).toContain('小节');
+
+    pushMsg('CONTENT_UPDATE', { content: '只有正文，没有任何标题' });
+    await flush();
+    expect(el.querySelector('.doc-outline')).toBeNull();
+    expect(el.querySelector('.doc-body')).not.toBeNull();
+  });
+
+  it('点目录里的标题会让正文滚到那一节', async () => {
+    const el = mount();
+    await flush();
+    const markdown = '# 标题一\n\n## 小节\n\n正文';
+    pushMsg('CONTENT_UPDATE', { content: markdown });
+    pushMsg('PREVIEW_HTML', { html: '<h2 id="小节">小节</h2>' });
+    await flush();
+
+    const frame = el.querySelector('iframe') as HTMLIFrameElement;
+    const post = vi.fn();
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, value: { postMessage: post } });
+    const row = [...el.querySelectorAll('.doc-outline-row')].find((node) => node.textContent?.includes('小节'));
+    expect(row).toBeTruthy();
+    (row as HTMLElement).click();
+
+    const headings = parseHeadings(markdown);
+    expect(post).toHaveBeenCalledWith(
+      { type: 'SCROLL_TO_HEADING', headingId: headingNodeId(headings[1], 2) },
+      '*'
+    );
+  });
+
+  it('收起目录后列表消失，并记住这个选择', async () => {
+    const storeSet = vi.fn();
+    (window as unknown as { electron: ElectronAppBridge }).electron.storeSet = storeSet;
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 标题一\n\n正文' });
+    await flush();
+
+    (el.querySelector('.doc-outline-toggle') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.doc-outline-list')).toBeNull();
+    expect(el.querySelector('.doc-outline.collapsed')).not.toBeNull();
+    expect(storeSet).toHaveBeenCalledWith('outlineCollapsed', true);
   });
 
   it('打开按钮在文件树上方，标签从文件树右侧开始排', async () => {
