@@ -22,6 +22,13 @@ import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
 import {
+  bindWindowRevealEvents,
+  handleAppActivate,
+  handleExternalFileOpen,
+  revealAppWindow,
+  scheduleHiddenWindowReveal,
+} from './fileOpenWindow';
+import {
   DIR_MD_PAGE_SIZE,
   parseRecentFiles,
   removeRecentFile,
@@ -453,11 +460,44 @@ function installAppMenu(): void {
   );
 }
 
+function hasLiveMainWindow(): boolean {
+  return !!mainWindow && !mainWindow.isDestroyed();
+}
+
+/** 把主窗口显示出来并拿到前台。窗口已经在前面时只是再聚焦一次。 */
+function revealMainWindow(): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  revealAppWindow(win, app, process.platform);
+}
+
+function attachForegroundRecovery(win: BrowserWindow): void {
+  const revealThis = (): void => {
+    if (mainWindow !== win || win.isDestroyed()) return;
+    revealMainWindow();
+  };
+  // 第一次 show 若发生在应用还没激活时，macOS 会把它丢掉；加载完成和稍后补一次。
+  bindWindowRevealEvents(win, revealThis);
+  scheduleHiddenWindowReveal(
+    () => mainWindow === win && !win.isDestroyed() && (!win.isVisible() || win.isMinimized()),
+    (delayMs) => {
+      if (delayMs > 0) console.error('[Markly] 窗口仍未显示，再次拉到前台');
+      revealThis();
+    },
+    (fn, ms) => {
+      setTimeout(fn, ms);
+    },
+    process.platform
+  );
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     title: 'Markly',
+    // 等内容能画出来再显示。macOS 从访达打开时，构造函数里立刻显示经常不会出现在屏幕上。
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -465,6 +505,11 @@ function createWindow(): void {
       sandbox: false,
     },
   });
+  const created = mainWindow;
+  created.on('closed', () => {
+    if (mainWindow === created) mainWindow = null;
+  });
+  attachForegroundRecovery(created);
   // 拦截 iframe 内 target=_blank 的新窗口请求，转交系统浏览器；renderer 负责给外部 <a> 加 target=_blank
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
@@ -499,18 +544,16 @@ function createWindow(): void {
 // macOS：通过 “用 Markly 打开” 触发；多选多个文件会连续触发多次，各自进一个标签
 app.on('open-file', (e, p) => {
   e.preventDefault();
-  if (!app.isReady()) {
+  handleExternalFileOpen(p, {
+    appReady: app.isReady(),
+    hasLiveWindow: hasLiveMainWindow(),
     // 冷启动：留给 app.whenReady() 消费（loadFile + createWindow）
-    pendingFiles.push(p);
-    return;
-  }
-  loadFile(p);
-  // 主窗口被关掉后 darwin 下进程仍存活；此时 BrowserWindow 引用为销毁态，需要重建
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createWindow();
-  } else {
-    emitActiveDocument();
-  }
+    queueFile: (filePath) => pendingFiles.push(filePath),
+    loadFile,
+    createWindow,
+    emitActiveDocument,
+    revealWindow: revealMainWindow,
+  });
 });
 
 app.whenReady().then(() => {
@@ -644,7 +687,14 @@ app.whenReady().then(() => {
   // 应用菜单：File → Open（Cmd/Ctrl+O）+ Edit（系统复制角色，否则 macOS 上 Cmd+C 无效）
   installAppMenu();
 
-  createWindow();
+  // open-file 若赶在本回调之前已经建过窗口，这里不能再盖一个空白窗口。
+  // 那种窗口可能先起来、文件稍后才读进标签，所以要再推一次正文。
+  if (hasLiveMainWindow()) {
+    emitActiveDocument();
+    revealMainWindow();
+  } else {
+    createWindow();
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -652,5 +702,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  // 点程序坞，或系统在启动后把应用变为当前应用。ready 之前不能创建窗口。
+  handleAppActivate({
+    appReady: app.isReady(),
+    hasLiveWindow: hasLiveMainWindow(),
+    createWindow,
+    revealWindow: revealMainWindow,
+  });
 });
