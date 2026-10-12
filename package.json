@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "publisher": "jinshan",
   "repository": {
     "type": "git",

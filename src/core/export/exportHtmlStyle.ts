@@ -228,6 +228,7 @@ const TYPOGRAPHY_CSS = `
       text-decoration: none;
       opacity: 0;
       transition: opacity 0.12s ease;
+      user-select: none;
     }
 
     h1:hover .markly-anchor,
@@ -413,6 +414,7 @@ const TYPOGRAPHY_CSS = `
       cursor: pointer;
       opacity: 0;
       transition: opacity 0.12s ease;
+      user-select: none;
     }
 
     .markly-codeblock:hover .markly-code-copy,

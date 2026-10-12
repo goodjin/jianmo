@@ -75,6 +75,13 @@ describe('loadAppConfig', () => {
     expect(p).toMatch(/\.markly[\\/]config\.json$/);
   });
 
+  it('reader.copyOnSelect 这类应用自有字段会留下来', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ reader: { copyOnSelect: false } }));
+    const cfg = loadAppConfig() as unknown as { reader: { copyOnSelect: boolean } };
+    expect(cfg.reader.copyOnSelect).toBe(false);
+  });
+
   it('saveAppConfigPatch 把 editor.theme 写入 config.json', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     saveAppConfigPatch({ editor: { theme: 'nord' } });
