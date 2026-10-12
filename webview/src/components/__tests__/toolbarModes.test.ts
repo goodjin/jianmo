@@ -56,6 +56,45 @@ describe('Toolbar structure', () => {
     });
 
     expect(w.find('.mode-switch').exists()).toBe(false);
+    expect(w.find('.toolbar-row-primary .toolbar-btn[aria-label="Undo (Ctrl+Z)"]').exists()).toBe(true);
+    expect(w.find('.toolbar-row-secondary .toolbar-btn[title="Link"]').exists()).toBe(true);
+    expect(w.find('.toolbar-row-primary .toolbar-btn[title="Link"]').exists()).toBe(false);
+  });
+
+  it('hides a button when visibility is false and applies toolbar font size', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+        fontSize: 16,
+        buttonVisibility: { bold: false, math: false },
+      },
+    });
+    expect(w.find('.toolbar-btn[title="Bold"]').exists()).toBe(false);
+    expect(w.find('.toolbar-btn[title="Math Formula"]').exists()).toBe(false);
+    expect(w.find('.toolbar-btn[title="Italic"]').exists()).toBe(true);
+    expect(w.find('.toolbar').classes()).toContain('toolbar--icon-only');
+    expect(w.find('.toolbar-btn[title="Italic"] .btn-label').text()).toBe('斜体');
+  });
+
+  it('keeps names on the buttons when showLabels is on', () => {
+    const w = mount(Toolbar as any, {
+      props: {
+        mode: 'rich',
+        richTableActive: false,
+        zoomPercent: 100,
+        showOutline: false,
+        showLineNumbers: false,
+        findPanelOpen: false,
+        showLabels: true,
+      },
+    });
+    expect(w.find('.toolbar').classes()).not.toContain('toolbar--icon-only');
+    expect(w.find('.toolbar-btn[title="Bold"] .btn-label').text()).toBe('加粗');
   });
 
   it('exposes delete-table control when rich table is active', () => {

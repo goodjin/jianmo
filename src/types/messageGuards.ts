@@ -12,6 +12,7 @@ import type {
   ImageAssetCommandValue,
 } from './index';
 import { isEditorThemeSetting } from './editorTheme';
+import { isToolbarButtonId, isToolbarFontSize } from './toolbarPrefs';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
@@ -107,6 +108,17 @@ export function isExtensionConfig(x: unknown): x is ExtensionConfig {
   const theme = editor.theme;
   if (!isEditorThemeSetting(theme)) return false;
   if (!isNumber(editor.fontSize)) return false;
+  const toolbarFontSize = (editor as { toolbarFontSize?: unknown }).toolbarFontSize;
+  if (toolbarFontSize !== undefined && !isToolbarFontSize(toolbarFontSize)) return false;
+  const toolbarShowLabels = (editor as { toolbarShowLabels?: unknown }).toolbarShowLabels;
+  if (toolbarShowLabels !== undefined && typeof toolbarShowLabels !== 'boolean') return false;
+  const toolbarButtons = (editor as { toolbarButtons?: unknown }).toolbarButtons;
+  if (toolbarButtons !== undefined) {
+    if (!isRecord(toolbarButtons) || Array.isArray(toolbarButtons)) return false;
+    for (const [key, val] of Object.entries(toolbarButtons)) {
+      if (!isToolbarButtonId(key) || typeof val !== 'boolean') return false;
+    }
+  }
   if (!isString(editor.fontFamily)) return false;
   if (!isString(image.saveDirectory)) return false;
   if (!isNumber(image.compressThreshold)) return false;
@@ -579,6 +591,30 @@ export function isWebViewMessage(
     case 'SET_EDITOR_THEME': {
       const p = msg.payload;
       return isRecord(p) && isEditorThemeSetting(p.theme);
+    }
+    case 'SET_TOOLBAR_SETTINGS': {
+      const p = msg.payload;
+      if (!isRecord(p)) return false;
+      const keys = Object.keys(p);
+      if (keys.length === 0) return false;
+      for (const key of keys) {
+        if (key !== 'fontSize' && key !== 'buttons' && key !== 'resetButtons' && key !== 'showLabels') return false;
+      }
+      if (p.fontSize !== undefined && !isToolbarFontSize(p.fontSize)) return false;
+      if (p.resetButtons !== undefined && typeof p.resetButtons !== 'boolean') return false;
+      if (p.showLabels !== undefined && typeof p.showLabels !== 'boolean') return false;
+      if (p.buttons !== undefined) {
+        if (!isRecord(p.buttons) || Array.isArray(p.buttons)) return false;
+        for (const [key, val] of Object.entries(p.buttons)) {
+          if (!isToolbarButtonId(key) || typeof val !== 'boolean') return false;
+        }
+      }
+      return (
+        p.fontSize !== undefined ||
+        p.buttons !== undefined ||
+        p.resetButtons === true ||
+        typeof p.showLabels === 'boolean'
+      );
     }
     case 'REQUEST_PREVIEW_HTML':
       return msg.payload === undefined || msg.payload === null || isRecord(msg.payload);

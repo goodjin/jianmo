@@ -110,6 +110,7 @@ export class ModeController implements vscode.Disposable {
       case 'TRACK_EDITOR_MODE':
       case 'REQUEST_PREVIEW_HTML':
       case 'SET_EDITOR_THEME':
+      case 'SET_TOOLBAR_SETTINGS':
         break;
       default:
         console.log(`[ModeController] Unknown message type: ${message.type}`);

@@ -67,7 +67,14 @@
       v-if="hostInitReceived && settingsOpen"
       :theme="config?.editor?.theme ?? 'auto'"
       :prefers-dark="systemPrefersDark"
+      :toolbar-font-size="toolbarFontSize"
+      :toolbar-show-labels="toolbarShowLabels"
+      :toolbar-buttons="toolbarButtonVisibility"
       @select-theme="onSelectEditorTheme"
+      @update-toolbar-font-size="onUpdateToolbarFontSize"
+      @update-toolbar-show-labels="onUpdateToolbarShowLabels"
+      @toggle-toolbar-button="onToggleToolbarButton"
+      @reset-toolbar-buttons="onResetToolbarButtons"
       @close="settingsOpen = false"
     />
     <Toolbar
@@ -81,6 +88,9 @@
       :rich-table-active="richTableInTable"
       :can-undo="toolbarCanUndo"
       :can-redo="toolbarCanRedo"
+      :font-size="toolbarFontSize"
+      :show-labels="toolbarShowLabels"
+      :button-visibility="toolbarButtonVisibility"
       @format="handleFormat"
       @insert="handleInsert"
       @undo="handleUndo"
@@ -713,8 +723,14 @@ import { parseHeadings, headingNodeId, isHeadingSlugAmbiguous } from './shared/o
 import { reorderMarkdownTopLevelSections } from './shared/outlineReorder';
 import { mockRewriteSelection } from './utils/mockRewriteSelection';
 import { jumpCaretIntoView, jumpRichWithRetry } from './utils/outlineJump';
-import type { EditorMode, EditorPaletteId, ExtensionConfig, ExtensionMessage, LocalImageRefCheckResult } from '../../src/types';
+import type { EditorMode, EditorPaletteId, ExtensionConfig, ExtensionMessage, LocalImageRefCheckResult, ToolbarButtonId } from '../../src/types';
 import { isDarkEditorThemeSetting } from '../../src/types';
+import {
+  compactHiddenToolbarButtons,
+  normalizeToolbarButtonMap,
+  normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
+} from '../../src/types/toolbarPrefs';
 import { applyEditorPalette, resolveEditorPalette } from './shared/themeConfig';
 import { undoDepth, redoDepth } from '@codemirror/commands';
 
@@ -1549,6 +1565,61 @@ function onSelectEditorTheme(theme: EditorPaletteId): void {
   }
   try {
     sendMessage({ type: 'SET_EDITOR_THEME', payload: { theme } });
+  } catch {
+    /* ignore */
+  }
+}
+
+const toolbarFontSize = computed(() => normalizeToolbarFontSize(config.value?.editor?.toolbarFontSize));
+const toolbarShowLabels = computed(() => normalizeToolbarShowLabels(config.value?.editor?.toolbarShowLabels));
+const toolbarButtonVisibility = computed(() =>
+  normalizeToolbarButtonMap(config.value?.editor?.toolbarButtons)
+);
+
+function patchToolbarEditor(editorPatch: Partial<ExtensionConfig['editor']>): void {
+  if (!config.value) return;
+  config.value = {
+    ...config.value,
+    editor: { ...config.value.editor, ...editorPatch },
+  };
+}
+
+function onUpdateToolbarFontSize(fontSize: number): void {
+  const size = normalizeToolbarFontSize(fontSize);
+  patchToolbarEditor({ toolbarFontSize: size });
+  try {
+    sendMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { fontSize: size } });
+  } catch {
+    /* ignore */
+  }
+}
+
+function onUpdateToolbarShowLabels(showLabels: boolean): void {
+  patchToolbarEditor({ toolbarShowLabels: showLabels });
+  try {
+    sendMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { showLabels } });
+  } catch {
+    /* ignore */
+  }
+}
+
+function onToggleToolbarButton(id: ToolbarButtonId, visible: boolean): void {
+  const next = compactHiddenToolbarButtons({
+    ...toolbarButtonVisibility.value,
+    [id]: visible,
+  });
+  patchToolbarEditor({ toolbarButtons: next });
+  try {
+    sendMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { buttons: { [id]: visible } } });
+  } catch {
+    /* ignore */
+  }
+}
+
+function onResetToolbarButtons(): void {
+  patchToolbarEditor({ toolbarButtons: {} });
+  try {
+    sendMessage({ type: 'SET_TOOLBAR_SETTINGS', payload: { resetButtons: true } });
   } catch {
     /* ignore */
   }
@@ -4892,8 +4963,8 @@ onUnmounted(() => {
 .markly-mode-rail {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 3px 8px;
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
 }
@@ -4902,15 +4973,15 @@ onUnmounted(() => {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
   border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.25));
   border-radius: var(--markly-radius-md, 6px);
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -4942,15 +5013,15 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   width: auto;
-  height: 28px;
-  padding: 0 12px;
-  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  gap: 4px;
   border: none;
   border-radius: 0;
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
   transition: background-color 0.15s;
 }
@@ -4977,11 +5048,11 @@ onUnmounted(() => {
 }
 
 .mode-btn .btn-icon {
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .mode-btn .btn-label {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .editor-main {

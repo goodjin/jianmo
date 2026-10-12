@@ -3,6 +3,11 @@ import * as path from 'path';
 import type { DocumentStore } from '@core/documentStore';
 import type { ModeController } from '@core/modeController';
 import type { ExtensionConfig, HostDiagnostics, WebViewMessage, ExtensionMessage, EditorMode } from '@types';
+import {
+  compactHiddenToolbarButtons,
+  normalizeToolbarButtonMap,
+  normalizeToolbarFontSize,
+} from '@types';
 import { registerWebview, unregisterWebview } from '../commands';
 import { showExportFailureWithDiagnostics } from '@extension/export/exportFailureUi';
 import { exportToPdf, pdfExportOptionsFromPdfConfig } from '@core/export/pdfExport';
@@ -617,6 +622,33 @@ export class MarkdownEditorProvider implements vscode.CustomEditorProvider {
           );
         } catch (err) {
           console.warn('[Markly] persist editor.theme failed', err);
+        }
+        break;
+      }
+
+      case 'SET_TOOLBAR_SETTINGS': {
+        const cfg = vscode.workspace.getConfiguration('markly');
+        const payload = message.payload;
+        try {
+          if (typeof payload.fontSize === 'number') {
+            await cfg.update(
+              'editor.toolbarFontSize',
+              normalizeToolbarFontSize(payload.fontSize),
+              vscode.ConfigurationTarget.Global
+            );
+          }
+          if (typeof payload.showLabels === 'boolean') {
+            await cfg.update('editor.toolbarShowLabels', payload.showLabels, vscode.ConfigurationTarget.Global);
+          }
+          if (payload.resetButtons) {
+            await cfg.update('editor.toolbarButtons', {}, vscode.ConfigurationTarget.Global);
+          } else if (payload.buttons) {
+            const current = normalizeToolbarButtonMap(cfg.get('editor.toolbarButtons'));
+            const next = compactHiddenToolbarButtons({ ...current, ...payload.buttons });
+            await cfg.update('editor.toolbarButtons', next, vscode.ConfigurationTarget.Global);
+          }
+        } catch (err) {
+          console.warn('[Markly] persist toolbar settings failed', err);
         }
         break;
       }
