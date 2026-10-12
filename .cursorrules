@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **顶栏与文件树**（独立应用 0.5.1）：打开按钮在文件树正上方；有目录时标签只盖住正文，活动标签白底盖住底边，和正文连成一片；没有目录时标签贴着文件树右缘。文件树默认用户主目录，标题栏有「上一级」。
 - [X] **独立应用导出 HTML/PDF**（0.5.0）：复制按钮旁「导出」，悬停与点击都下拉选 PDF/HTML；菜单打开时清空 `title`，避免系统提示盖住菜单。主进程保存对话框；HTML 走 exportToHtml（默认复制本地图片），PDF 走隐藏窗口 printToPDF。
 - [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录 md 分页 100 + 更多。
 - [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。

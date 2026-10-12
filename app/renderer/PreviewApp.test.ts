@@ -82,13 +82,17 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.markly-app')!.classList.contains('no-outline')).toBe(true);
   });
 
-  it('打开按钮在标签栏最左，复制是新建标签页左侧的小图标', async () => {
+  it('打开按钮在文件树上方，标签从文件树右侧开始排', async () => {
     const el = mount();
     await flush();
 
-    const bar = el.querySelector('.tab-bar')!;
-    const first = bar.firstElementChild as HTMLElement;
-    expect(first.classList.contains('open-split')).toBe(true);
+    const rail = el.querySelector('.open-rail') as HTMLElement;
+    const bar = el.querySelector('.tab-bar') as HTMLElement;
+    expect(rail.querySelector('.open-split')).not.toBeNull();
+    expect(bar.querySelector('.open-split')).toBeNull();
+    // 标签栏里第一块就是标签条，左边不再放打开按钮
+    expect(bar.firstElementChild!.classList.contains('tab-strip')).toBe(true);
+    expect(el.querySelector('.tab.active')).not.toBeNull();
 
     const copy = el.querySelector('.tab-copy') as HTMLElement;
     const exp = el.querySelector('.export-split') as HTMLElement;

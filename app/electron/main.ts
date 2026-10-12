@@ -26,6 +26,7 @@ import {
   upsertRecentFile,
   type RecentFileRecord,
 } from './recentFiles';
+import { resolveFileTreeRoot } from './fileTreeModel';
 import {
   activateTab,
   closeTab,
@@ -115,17 +116,33 @@ function writeRecent(list: RecentFileRecord[]): RecentFileRecord[] {
   return list;
 }
 
+function directoryExists(dir: string): boolean {
+  try {
+    return !!dir && fs.existsSync(dir) && fs.statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function homeDir(): string {
+  try {
+    return app.getPath('home');
+  } catch {
+    return '';
+  }
+}
+
+/** 没选过文件夹时，目录树从用户主目录开始，而不是整块磁盘。 */
 function readFileTreeRoot(): string {
   const raw = store?.get(FILE_TREE_ROOT_KEY);
   const saved = typeof raw === 'string' ? raw.trim() : '';
-  if (!saved) return '';
-  try {
-    if (fs.existsSync(saved) && fs.statSync(saved).isDirectory()) return path.resolve(saved);
-  } catch {
-    /* ignore */
-  }
-  store?.delete(FILE_TREE_ROOT_KEY);
-  return '';
+  if (saved && !directoryExists(saved)) store?.delete(FILE_TREE_ROOT_KEY);
+  const resolved = resolveFileTreeRoot(
+    saved && directoryExists(saved) ? saved : '',
+    homeDir(),
+    directoryExists
+  );
+  return resolved ? path.resolve(resolved) : '';
 }
 
 /** 只接受真实存在的目录。非法路径不改已记住的根。 */

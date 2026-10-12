@@ -1,7 +1,5 @@
 <template>
   <div class="tab-bar">
-    <!-- 左槽：打开按钮（标签栏最左） -->
-    <slot name="left" />
     <div class="tab-strip" role="tablist">
       <div
         v-for="tab in tabs"
@@ -50,24 +48,38 @@ const emit = defineEmits<{
 
 <style scoped>
 .tab-bar {
+  position: relative;
   display: flex;
-  align-items: stretch;
+  align-items: flex-end;
   gap: 4px;
-  padding: 0 8px;
-  min-height: 34px;
+  padding: 0 8px 0 0;
+  min-height: 40px;
   box-sizing: border-box;
-  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
   background: var(--markly-surface, #f6f8fa);
+}
+/* 底部分界线单独画，活动标签用白底盖住自己脚下的那一段，和正文连成一片 */
+.tab-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--markly-border-color, #d0d7de);
+  z-index: 0;
 }
 /* 标签自身横向滚动，"+" 不会被挤出视野 */
 .tab-strip {
   display: flex;
-  align-items: stretch;
-  gap: 4px;
+  align-items: flex-end;
+  align-self: stretch;
+  gap: 2px;
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
+  z-index: 1;
 }
 .tab-strip::-webkit-scrollbar { display: none; }
 .tab {
@@ -78,22 +90,29 @@ const emit = defineEmits<{
   min-width: 90px;
   max-width: 220px;
   padding: 0 6px 0 10px;
-  margin: 4px 0;
+  margin-top: 6px;
+  height: calc(100% - 6px);
   box-sizing: border-box;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
   font-size: 12px;
   line-height: 1.4;
   color: var(--markly-textSecondary, #57606a);
   cursor: pointer;
   user-select: none;
+  position: relative;
+  z-index: 1;
 }
 .tab:hover { background: var(--markly-surfaceHover, #eaeef2); }
 .tab.active {
+  height: 100%;
+  margin-top: 0;
   background: var(--markly-background, #fff);
   border-color: var(--markly-border-color, #d0d7de);
   color: var(--markly-text, #1f2328);
   font-weight: 600;
+  z-index: 2;
 }
 .tab-title {
   flex: 1;

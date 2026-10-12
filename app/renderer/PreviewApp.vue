@@ -7,6 +7,22 @@
       'no-outline': isSettingsTab || !hasOutline,
     }"
   >
+    <div ref="openSplitRef" class="open-rail">
+      <div class="open-split">
+        <button class="chrome-btn open-main" type="button" title="打开 Markdown 文件" @click="onOpen">
+          <span class="open-label">打开…</span>
+        </button>
+        <button
+          class="chrome-btn open-caret"
+          type="button"
+          title="最近打开"
+          aria-label="最近打开"
+          :aria-expanded="recentOpen"
+          @click="toggleRecent"
+        >▾</button>
+        <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" @settings="onOpenSettings" />
+      </div>
+    </div>
     <TabBar
       :tabs="tabs"
       :active-id="activeTabId"
@@ -14,20 +30,6 @@
       @close="onCloseTab"
       @new="onNewTab"
     >
-      <template #left>
-        <div ref="openSplitRef" class="open-split">
-          <button class="chrome-btn open-main" type="button" title="打开 Markdown 文件" @click="onOpen">打开…</button>
-          <button
-            class="chrome-btn open-caret"
-            type="button"
-            title="最近打开"
-            aria-label="最近打开"
-            :aria-expanded="recentOpen"
-            @click="toggleRecent"
-          >▾</button>
-          <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" @settings="onOpenSettings" />
-        </div>
-      </template>
       <template #pre-new>
         <button
           class="chrome-btn tab-copy"
@@ -640,9 +642,10 @@ html, body, #app {
 .markly-app {
   --files-col: 220px;
   --outline-col: 240px;
+  --chrome-row: 40px;
   display: grid;
   grid-template-columns: var(--files-col) var(--outline-col) 1fr;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: var(--chrome-row) 1fr;
   height: 100vh;
   margin: 0;
 }
@@ -657,8 +660,36 @@ html, body, #app {
 .markly-app > .tab-bar {
   position: relative;
   z-index: 20;
-  grid-column: 1 / -1;
+  grid-column: 3;
   grid-row: 1;
+}
+/* 没有目录时，标签贴着文件树右缘，和正文同一列 */
+.markly-app.no-outline > .tab-bar {
+  grid-column: 2;
+}
+/* 打开按钮留在文件树正上方。有目录时标签只盖住正文，底边和正文连成一块 */
+.open-rail {
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  background: var(--markly-surface, #f6f8fa);
+  border-right: 1px solid var(--markly-border-color, #d0d7de);
+  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+}
+.markly-app.files-collapsed .open-label { display: none; }
+.markly-app.files-collapsed .open-main::before { content: '开'; }
+.markly-app.files-collapsed .open-caret { display: none; }
+.markly-app.files-collapsed .open-main {
+  border-radius: 6px;
+  min-width: 28px;
+  padding: 0 6px;
 }
 .chrome-btn {
   font-size: 12px;
@@ -683,7 +714,7 @@ html, body, #app {
   display: flex;
   align-items: stretch;
   align-self: center;
-  margin: 0 6px 0 8px;
+  min-width: 0;
 }
 .open-split .open-main {
   border-top-right-radius: 0;
@@ -768,7 +799,7 @@ html, body, #app {
 
 .outline-sidebar {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -781,8 +812,9 @@ html, body, #app {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 10px 10px 14px;
-  min-height: 40px;
+  height: var(--chrome-row, 40px);
+  min-height: var(--chrome-row, 40px);
+  padding: 0 8px 0 14px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--markly-border-color, #d0d7de);
   flex-shrink: 0;
@@ -809,12 +841,10 @@ html, body, #app {
 }
 .outline-toggle:hover { background: var(--markly-surface, #f6f8fa); }
 .outline-sidebar.collapsed .outline-head {
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 8px 6px;
-  border-bottom: 0;
-  min-height: 0;
-  height: 100%;
+  justify-content: center;
+  padding: 0;
+  height: var(--chrome-row, 40px);
+  min-height: var(--chrome-row, 40px);
 }
 .outline-list {
   list-style: none;
@@ -857,6 +887,7 @@ html, body, #app {
   overflow: hidden;
   min-width: 0;
   min-height: 0;
+  background: var(--markly-background, #fff);
 }
 .preview-frame {
   width: 100%;
