@@ -110,9 +110,9 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 # Scratchpad
 
 - [X] **插件工具栏排版 + 设置（2.3.0）**
-  - 第一行：标题 / 格式 / 列表 / 撤销。第二行：插入 / 表格 / 查找 / 缩放 / 视图 / 导出 / 收起。
-  - 按钮按文字收窄（不再固定 44px），默认两行约 74px。Chrome 实测 620–1100px 都是两行。
-  - 设置：面板 + `markly.editor.toolbarFontSize`（10–18）+ `markly.editor.toolbarButtons`（只存 false）。消息 `SET_TOOLBAR_SETTINGS`。
+  - 两行排版；字号；每个按钮显隐。
+  - 默认图标模式：名称悬停才出现（`.toolbar--icon-only`）。设置「显示按钮名称」/`markly.editor.toolbarShowLabels`。
+  - 顶栏 Rich / Source / 预览 / 设置按钮高度 22px。
 - [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录 md 分页 100 + 更多。
 - [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。
 - [X] **工具栏收起/展开**：`Toolbar` 右侧「收起」、收起后单行「展开」；`SET_TOOLBAR_COLLAPSED` + `globalState` 跨文档/会话记忆；**2.0.3**。
