@@ -8,6 +8,13 @@ import { loadAppConfig, saveAppConfigPatch } from './config';
 import { normalizeAppearancePatch, readAppearance } from './appearance';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { normalizeCopyPayload } from './copyPayload';
+import {
+  exportMarkdownDocument,
+  isAppExportFormat,
+  suggestExportPath,
+  type ExportIpcResult,
+} from './exportDocument';
+import { printHtmlToPdfFile } from './printPdf';
 import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
@@ -39,6 +46,7 @@ const RECENT_STORE_KEY = 'recentFiles';
 const FILE_TREE_ROOT_KEY = 'fileTreeRoot';
 
 let mainWindow: BrowserWindow | null = null;
+let exportBusy = false;
 /** 唯一文档状态源：活动标签即"当前文档"，hostBridge 因此无需感知标签。 */
 let tabs: TabsState = createInitialState(nextTabId());
 let pendingFiles: string[] = [];
@@ -254,6 +262,70 @@ async function writeDocumentClipboard(payload?: { text?: unknown; html?: unknown
   return true;
 }
 
+function exportFailureMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error ?? '');
+  return text.trim() || '导出失败';
+}
+
+async function reportExportError(error: string): Promise<ExportIpcResult> {
+  console.error('[Markly] export failed', error);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: '导出失败',
+      message: '导出失败',
+      detail: error,
+    });
+  }
+  return { ok: false, error };
+}
+
+/**
+ * 弹出保存对话框，HTML 写文件，PDF 用隐藏窗口打印。
+ * 取消不提示；失败弹错误框，并把结果交回按钮（菜单调用时同样弹框）。
+ */
+async function runExport(format: unknown): Promise<ExportIpcResult> {
+  if (!isAppExportFormat(format)) return reportExportError('请选择 PDF 或 HTML');
+  const tab = getActiveTab(tabs);
+  if (!tab || tab.kind === 'settings') return reportExportError('设置页不能导出');
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: '窗口不可用' };
+  if (exportBusy) return reportExportError('正在导出，请稍候');
+
+  exportBusy = true;
+  try {
+    const documentsDir = app.getPath('documents');
+    const suggested = suggestExportPath(tab.filePath || null, format, documentsDir);
+    const picked = await dialog.showSaveDialog(mainWindow, {
+      title: format === 'pdf' ? '导出 PDF' : '导出 HTML',
+      defaultPath: suggested,
+      filters: [{ name: format === 'pdf' ? 'PDF' : 'HTML', extensions: [format] }],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
+
+    const outputPath = await exportMarkdownDocument({
+      format,
+      markdown: tab.content,
+      tabKind: 'doc',
+      sourcePath: tab.filePath || null,
+      outputPath: picked.filePath,
+      documentDir: tab.filePath ? path.dirname(tab.filePath) : '',
+      includeToc: format === 'pdf' ? appConfig.export.pdf.includeToc !== false : true,
+      htmlTheme: appConfig.export.html?.theme === 'print-friendly' ? 'print-friendly' : 'default',
+      copyLocalImages: appConfig.export.html?.copyLocalImages !== false,
+      assetsSubdirectory: appConfig.export.html?.assetsSubdirectory,
+      mermaidScriptBundling:
+        appConfig.export.diagram?.mermaidScriptBundling === 'external' ? 'external' : 'embedded',
+      pdf: appConfig.export.pdf,
+      printPdf: printHtmlToPdfFile,
+    });
+    return { ok: true, path: outputPath, format };
+  } catch (error) {
+    return reportExportError(exportFailureMessage(error));
+  } finally {
+    exportBusy = false;
+  }
+}
+
 function requestRendererCopy(): void {
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('app:copy-request');
@@ -405,6 +477,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:copy-document', (_e, payload?: { text?: unknown; html?: unknown }) =>
     writeDocumentClipboard(payload)
   );
+  ipcMain.handle('app:export-document', (_e, format: unknown) => runExport(format));
   ipcMain.on('host:current-file-path', (e) => {
     e.returnValue = activeFilePath();
   });
@@ -468,6 +541,9 @@ app.whenReady().then(() => {
               });
             },
           },
+          { type: 'separator' },
+          { label: '导出 HTML…', click: () => void runExport('html') },
+          { label: '导出 PDF…', click: () => void runExport('pdf') },
           { type: 'separator' },
           { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
           { type: 'separator' },

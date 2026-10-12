@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('electron', {
   },
   copyToClipboard: (payload: { text: string; html: string }): Promise<boolean> =>
     ipcRenderer.invoke('app:copy-document', payload),
+  exportDocument: (format: 'pdf' | 'html'): Promise<unknown> =>
+    ipcRenderer.invoke('app:export-document', format),
   onCopyRequest: (handler: () => void): (() => void) => {
     const listener = () => handler();
     ipcRenderer.on('app:copy-request', listener);

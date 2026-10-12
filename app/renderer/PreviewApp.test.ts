@@ -53,6 +53,7 @@ beforeEach(() => {
     openPath: vi.fn(async () => '/x.md'),
     openSettingsTab: vi.fn(async () => undefined),
     listRecentFiles: vi.fn(async () => []),
+    exportDocument: vi.fn(async () => ({ ok: true, path: '/tmp/a.pdf', format: 'pdf' })),
   });
 });
 
@@ -90,12 +91,96 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(first.classList.contains('open-split')).toBe(true);
 
     const copy = el.querySelector('.tab-copy') as HTMLElement;
+    const exp = el.querySelector('.export-split') as HTMLElement;
     const plus = el.querySelector('.tab-new') as HTMLElement;
     expect(copy).not.toBeNull();
-    // 复制紧跟在 "+" 前面
-    expect(plus.previousElementSibling).toBe(copy);
+    expect(exp).not.toBeNull();
+    // 复制、导出依次排在 "+" 前面
+    expect(copy.nextElementSibling).toBe(exp);
+    expect(exp.nextElementSibling).toBe(plus);
     // 图标按钮：不再带「复制」文字
     expect(copy.textContent?.trim()).not.toContain('复制');
+    // 默认不展开格式菜单
+    expect(el.querySelector('.export-menu')).toBeNull();
+  });
+
+  it('导出按钮悬停和点击都会展开 PDF / HTML，点选后真正调用导出', async () => {
+    const el = mount();
+    await flush();
+
+    const split = el.querySelector('.export-split') as HTMLElement;
+    const button = el.querySelector('.tab-export') as HTMLButtonElement;
+    split.dispatchEvent(new MouseEvent('mouseenter'));
+    await flush();
+    expect(el.querySelector('.export-menu')).not.toBeNull();
+    expect(el.querySelector('[data-format="pdf"]')?.textContent).toContain('PDF');
+    expect(el.querySelector('[data-format="html"]')?.textContent).toContain('HTML');
+
+    // 没钉住时，鼠标离开就收起
+    vi.useFakeTimers();
+    split.dispatchEvent(new MouseEvent('mouseleave'));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(el.querySelector('.export-menu')).toBeNull();
+    vi.useRealTimers();
+
+    // 点击同样展开，并钉住：离开后仍在
+    button.click();
+    await flush();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(el.querySelector('.export-menu')).not.toBeNull();
+    vi.useFakeTimers();
+    split.dispatchEvent(new MouseEvent('mouseleave'));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(el.querySelector('.export-menu')).not.toBeNull();
+    vi.useRealTimers();
+
+    (el.querySelector('[data-format="html"]') as HTMLElement).click();
+    await flush();
+    expect(electronStub('exportDocument')).toHaveBeenCalledWith('html');
+    expect(el.querySelector('.export-menu')).toBeNull();
+    expect(button.title).toContain('已导出 HTML');
+
+    // 再点一次 PDF
+    button.click();
+    await flush();
+    (el.querySelector('[data-format="pdf"]') as HTMLElement).click();
+    await flush();
+    expect(electronStub('exportDocument')).toHaveBeenLastCalledWith('pdf');
+  });
+
+  it('点击导出按钮后再次点击收起；点到外面也收起', async () => {
+    const el = mount();
+    await flush();
+    const button = el.querySelector('.tab-export') as HTMLButtonElement;
+    button.click();
+    await flush();
+    expect(el.querySelector('.export-menu')).not.toBeNull();
+
+    button.click();
+    await flush();
+    expect(el.querySelector('.export-menu')).toBeNull();
+
+    button.click();
+    await flush();
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await flush();
+    expect(el.querySelector('.export-menu')).toBeNull();
+  });
+
+  it('设置页不能导出', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 's', kind: 'settings', title: '设置', filePath: '' }],
+      activeId: 's',
+    });
+    const el = mount();
+    await flush();
+    const button = el.querySelector('.tab-export') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    (el.querySelector('.export-split') as HTMLElement).dispatchEvent(new MouseEvent('mouseenter'));
+    button.click();
+    await flush();
+    expect(el.querySelector('.export-menu')).toBeNull();
+    expect(electronStub('exportDocument')).not.toHaveBeenCalled();
   });
 
   it('设置固定在「最近打开」面板最后一行，点击进设置页', async () => {

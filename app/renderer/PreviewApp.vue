@@ -37,6 +37,35 @@
           :aria-label="copyTitle"
           @click="onCopy"
         >⧉</button>
+        <div
+          ref="exportSplitRef"
+          class="export-split"
+          @mouseenter="onExportEnter"
+          @mouseleave="onExportLeave"
+        >
+          <button
+            class="chrome-btn tab-export"
+            type="button"
+            :disabled="exporting || isSettingsTab"
+            :title="exportOpen ? '' : exportTitle"
+            :aria-label="exportTitle"
+            aria-haspopup="menu"
+            :aria-expanded="exportOpen"
+            aria-controls="export-format-menu"
+            @click="onExportButtonClick"
+          >
+            <span>导出</span>
+            <span class="export-caret" aria-hidden="true">▾</span>
+          </button>
+          <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
+            <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
+              导出 PDF
+            </button>
+            <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
+              导出 HTML
+            </button>
+          </div>
+        </div>
       </template>
     </TabBar>
     <FileTree
@@ -86,12 +115,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useVSCode } from '@wv/composables/useVSCode';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
+import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { collectDroppedMarkdownPaths, type DroppedFileLike } from './dropFiles';
 import {
   electronApp,
@@ -121,6 +151,7 @@ const isSettingsTab = computed(
 );
 const frameRef = ref<HTMLIFrameElement | null>(null);
 const openSplitRef = ref<HTMLElement | null>(null);
+const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
 const outlineCollapsed = ref(false);
@@ -137,6 +168,20 @@ const copyTitle = computed(() => {
   if (copied.value) return '已复制到剪贴板（Markdown + 富文本）';
   if (copyFailed.value) return '复制失败';
   return '复制全文（Markdown 源 + 预览 HTML）';
+});
+
+const exportOpen = ref(false);
+const exportPinned = ref(false);
+const exporting = ref(false);
+const exportHint = ref('');
+let exportCloseTimer: ReturnType<typeof setTimeout> | null = null;
+let exportHintTimer: ReturnType<typeof setTimeout> | null = null;
+
+const exportTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能导出';
+  if (exporting.value) return '正在导出…';
+  if (exportHint.value) return exportHint.value;
+  return '导出为 PDF 或 HTML';
 });
 
 /**
@@ -281,7 +326,83 @@ function closeRecent(): void {
   recentOpen.value = false;
 }
 
+function clearExportCloseTimer(): void {
+  if (exportCloseTimer) {
+    clearTimeout(exportCloseTimer);
+    exportCloseTimer = null;
+  }
+}
+
+function closeExportMenu(): void {
+  exportOpen.value = false;
+  exportPinned.value = false;
+  clearExportCloseTimer();
+}
+
+/** 悬停就展开；离开后稍等再收起，给鼠标挪进菜单的时间。点击钉住的菜单不随鼠标离开关闭。 */
+function onExportEnter(): void {
+  if (exporting.value || isSettingsTab.value) return;
+  clearExportCloseTimer();
+  closeRecent();
+  exportOpen.value = true;
+}
+
+function onExportLeave(): void {
+  if (exportPinned.value) return;
+  clearExportCloseTimer();
+  exportCloseTimer = setTimeout(() => {
+    exportOpen.value = false;
+    exportCloseTimer = null;
+  }, 160);
+}
+
+/** 点击同样展开；已经钉住时再点一下收起。 */
+function onExportButtonClick(): void {
+  if (exporting.value || isSettingsTab.value) return;
+  clearExportCloseTimer();
+  if (exportPinned.value) {
+    closeExportMenu();
+    return;
+  }
+  closeRecent();
+  exportPinned.value = true;
+  exportOpen.value = true;
+}
+
+function flashExport(text: string): void {
+  if (exportHintTimer) {
+    clearTimeout(exportHintTimer);
+    exportHintTimer = null;
+  }
+  exportHint.value = text;
+  exportHintTimer = setTimeout(() => {
+    exportHint.value = '';
+    exportHintTimer = null;
+  }, 1600);
+}
+
+async function onPickExport(format: AppExportFormat): Promise<void> {
+  closeExportMenu();
+  const api = electronApp();
+  if (!api?.exportDocument) {
+    flashExport('导出失败');
+    return;
+  }
+  if (exporting.value || isSettingsTab.value) return;
+  exporting.value = true;
+  try {
+    const result = parseExportResult(await api.exportDocument(format));
+    if (result.ok) flashExport(format === 'pdf' ? '已导出 PDF' : '已导出 HTML');
+    else if (!('cancelled' in result)) flashExport(result.error);
+  } catch {
+    flashExport('导出失败');
+  } finally {
+    exporting.value = false;
+  }
+}
+
 async function toggleRecent(): Promise<void> {
+  closeExportMenu();
   recentOpen.value = !recentOpen.value;
   if (recentOpen.value) {
     await nextTick();
@@ -301,14 +422,22 @@ async function onOpenRecent(p: string): Promise<void> {
 }
 
 function onDocMouseDown(ev: MouseEvent): void {
-  if (!recentOpen.value) return;
-  const root = openSplitRef.value;
-  if (root && ev.target instanceof Node && root.contains(ev.target)) return;
-  closeRecent();
+  const target = ev.target instanceof Node ? ev.target : null;
+  if (recentOpen.value) {
+    const root = openSplitRef.value;
+    if (!(root && target && root.contains(target))) closeRecent();
+  }
+  if (exportOpen.value) {
+    const root = exportSplitRef.value;
+    if (!(root && target && root.contains(target))) closeExportMenu();
+  }
 }
 
 function onDocKeydown(ev: KeyboardEvent): void {
-  if (ev.key === 'Escape') closeRecent();
+  if (ev.key === 'Escape') {
+    closeRecent();
+    closeExportMenu();
+  }
 }
 
 /** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。 */
@@ -458,6 +587,10 @@ const offTabsChanged = electronApp()?.onTabsChanged?.((view) => {
   applyTabsView(view);
 });
 
+watch(isSettingsTab, (isSettings) => {
+  if (isSettings) closeExportMenu();
+});
+
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
@@ -490,6 +623,11 @@ onUnmounted(() => {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  clearExportCloseTimer();
+  if (exportHintTimer) {
+    clearTimeout(exportHintTimer);
+    exportHintTimer = null;
+  }
 });
 </script>
 
@@ -517,6 +655,8 @@ html, body, #app {
   grid-column: 2;
 }
 .markly-app > .tab-bar {
+  position: relative;
+  z-index: 20;
   grid-column: 1 / -1;
   grid-row: 1;
 }
@@ -569,6 +709,62 @@ html, body, #app {
   line-height: 1;
 }
 .tab-copy:disabled { opacity: 0.55; }
+/* 导出：紧挨复制，悬停或点击展开 PDF / HTML */
+.export-split {
+  position: relative;
+  align-self: center;
+  display: flex;
+  margin-right: 4px;
+}
+.export-split::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+.tab-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.export-caret {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 148px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: 8px;
+  background: var(--markly-background, #fff);
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+}
+.export-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--markly-text, #24292e);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
 
 .outline-sidebar {
   grid-column: 2;

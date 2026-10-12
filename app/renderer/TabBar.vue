@@ -24,7 +24,7 @@
         >×</button>
       </div>
     </div>
-    <!-- 右槽：新建标签页按钮前的小图标（如复制） -->
+    <!-- 右槽：新建标签页按钮前的小图标（复制、导出） -->
     <slot name="pre-new" />
     <button
       class="tab-new"
