@@ -206,6 +206,48 @@ describe('预览 HTML 的主题与字体', () => {
     expect(lightHtml).toContain(`--bg-color: ${getEditorPalette('github-light').colors.background}`);
   });
 
+  it('JSON / JSONL 走圆角框预览，Markdown 仍走原来的渲染', async () => {
+    const json = makeBridge({
+      getCurrentContent: () => '{"name":"雪","tags":["a"]}',
+      getCurrentFilePath: () => '/docs/data.json',
+    });
+    await json.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const jsonHtml = String((json.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(jsonHtml).toContain('class="box box-key');
+    expect(jsonHtml).toContain('class="box box-element');
+    expect(jsonHtml).toContain('雪');
+    expect(jsonHtml).toContain('data-markly-preview-theme');
+    expect(jsonHtml).not.toContain('<h1');
+
+    const jsonl = makeBridge({
+      getCurrentContent: () => '{"id":1}\nnot-json\n',
+      getCurrentFilePath: () => '/docs/rows.jsonl',
+    });
+    await jsonl.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const jsonlMsg = jsonl.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html?: string; error?: string };
+    expect(jsonlMsg.error).toBeUndefined();
+    expect(jsonlMsg.html).toContain('box-record');
+    expect(jsonlMsg.html).toContain('无法解析');
+
+    const bad = makeBridge({
+      getCurrentContent: () => '{',
+      getCurrentFilePath: () => '/docs/bad.JSON',
+    });
+    await bad.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const badMsg = bad.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html?: string; error?: string };
+    expect(badMsg.error).toBeUndefined();
+    expect(badMsg.html).toContain('无法解析 JSON');
+
+    const md = makeBridge({
+      getCurrentContent: () => '# 标题\n\n正文',
+      getCurrentFilePath: () => '/docs/a.md',
+    });
+    await md.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const mdHtml = String((md.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(mdHtml).toContain('<h1');
+    expect(mdHtml).not.toContain('box-key');
+  });
+
   it('字体与字号一并注入正文', async () => {
     const config = defaultConfig();
     config.editor.fontFamily = 'Georgia, serif';

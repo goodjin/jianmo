@@ -7,13 +7,13 @@ import { createHostBridge } from './hostBridge';
 import { loadAppConfig, saveAppConfigPatch } from './config';
 import { normalizeAppearancePatch, readAppearance } from './appearance';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
+import { isOpenableDocumentName } from './documentKind';
 import { normalizeCopyPayload } from './copyPayload';
 import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
 import {
   DIR_MD_PAGE_SIZE,
-  isMarkdownFileName,
   parseRecentFiles,
   removeRecentFile,
   upsertRecentFile,
@@ -86,8 +86,12 @@ function emitActiveDocument(): void {
 async function pickAndLoadFile(): Promise<string | null> {
   if (!mainWindow) return null;
   const res = await dialog.showOpenDialog(mainWindow, {
-    title: '打开 Markdown',
-    filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] }],
+    title: '打开文件',
+    filters: [
+      { name: 'Markdown / JSON', extensions: ['md', 'markdown', 'mdx', 'json', 'jsonl'] },
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] },
+      { name: 'JSON', extensions: ['json', 'jsonl'] },
+    ],
     // 一次选多个文件 → 一次开多个标签
     properties: ['openFile', 'multiSelections'],
   });
@@ -292,7 +296,7 @@ function createWindow(): void {
     } catch {
       return;
     }
-    if (isMarkdownFileName(dropped)) loadFile(dropped);
+    if (isOpenableDocumentName(dropped)) loadFile(dropped);
   };
   mainWindow.webContents.on('will-navigate', (ev, url) => guardNavigation(ev, url));
   // 沙箱 iframe 里落下文件走的是 frame 级导航；老版本 Electron 没有该事件时自然不触发
@@ -333,8 +337,8 @@ app.whenReady().then(() => {
 
   appConfig = loadAppConfig();
 
-  // 初始文件来源：open-file 待处理 > 命令行 .md 参数 > 初始空白标签（占位正文见 tabs.BLANK_TAB_CONTENT）
-  const argFiles = process.argv.filter((a) => a.endsWith('.md') && fs.existsSync(a));
+  // 初始文件来源：open-file 待处理 > 命令行文档参数 > 初始空白标签（占位正文见 tabs.BLANK_TAB_CONTENT）
+  const argFiles = process.argv.filter((a) => isOpenableDocumentName(a) && fs.existsSync(a));
   const initial = pendingFiles.length > 0 ? pendingFiles : argFiles;
   for (const p of initial) loadFile(p);
   pendingFiles = [];
@@ -344,6 +348,7 @@ app.whenReady().then(() => {
     store,
     sendToRenderer: send,
     getCurrentContent: () => activeContent(),
+    getCurrentFilePath: () => activeFilePath(),
     getCurrentDocDir: () => {
       const p = activeFilePath();
       return p ? path.dirname(p) : process.cwd();
@@ -405,6 +410,12 @@ app.whenReady().then(() => {
   ipcMain.handle('app:copy-document', (_e, payload?: { text?: unknown; html?: unknown }) =>
     writeDocumentClipboard(payload)
   );
+  // 圆角框点选：原文写入剪贴板，空字符串也要能复制，不能退回整篇文档
+  ipcMain.handle('app:copy-text', (_e, text: unknown) => {
+    if (typeof text !== 'string') return false;
+    clipboard.writeText(text);
+    return true;
+  });
   ipcMain.on('host:current-file-path', (e) => {
     e.returnValue = activeFilePath();
   });

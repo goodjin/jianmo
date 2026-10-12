@@ -115,7 +115,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(electronStub('openSettingsTab')).toHaveBeenCalled();
   });
 
-  it('把 Markdown 文档拖进界面自动打开，其它类型忽略', async () => {
+  it('把 Markdown / JSON 拖进界面自动打开，其它类型忽略', async () => {
     mount();
     await flush();
 
@@ -123,11 +123,31 @@ describe('PreviewApp 顶栏与大纲', () => {
       { path: '/docs/a.md', name: 'a.md' },
       { path: '/docs/readme.txt', name: 'readme.txt' },
       { path: '/docs/b.markdown', name: 'b.markdown' },
+      { path: '/docs/data.json', name: 'data.json' },
+      { path: '/docs/rows.jsonl', name: 'rows.jsonl' },
     ]);
     await flush();
 
     const openPath = electronStub('openPath');
-    expect(openPath.mock.calls.map((c) => c[0])).toEqual(['/docs/a.md', '/docs/b.markdown']);
+    expect(openPath.mock.calls.map((c) => c[0])).toEqual([
+      '/docs/a.md',
+      '/docs/b.markdown',
+      '/docs/data.json',
+      '/docs/rows.jsonl',
+    ]);
+  });
+
+  it('打开 JSON 时不拿正文里的 # 当目录', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json' }],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 不是标题\n{"a":1}' });
+    await flush();
+    expect(el.querySelector('.outline-sidebar')).toBeNull();
+    expect(el.querySelector('.markly-app')!.classList.contains('no-outline')).toBe(true);
   });
 });
 

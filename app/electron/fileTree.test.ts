@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('listFileTree', () => {
-  it('文件夹在前，只含 Markdown，跳过隐藏项、node_modules 和非 md', () => {
+  it('文件夹在前，含 Markdown / JSON / JSONL，跳过隐藏项、node_modules 和其它类型', () => {
     const root = tmpDir();
     fs.mkdirSync(path.join(root, 'b-dir'));
     fs.mkdirSync(path.join(root, 'a-dir'));
@@ -35,6 +35,8 @@ describe('listFileTree', () => {
     fs.writeFileSync(path.join(root, 'item10.md'), '# 10');
     fs.writeFileSync(path.join(root, 'item2.md'), '# 2');
     fs.writeFileSync(path.join(root, 'notes.mdx'), '# x');
+    fs.writeFileSync(path.join(root, 'data.json'), '{}');
+    fs.writeFileSync(path.join(root, 'rows.JSONL'), '{}\n');
     fs.writeFileSync(path.join(root, 'skip.txt'), 'no');
     fs.writeFileSync(path.join(root, 'a-dir', 'inner.md'), '# in');
 
@@ -43,9 +45,11 @@ describe('listFileTree', () => {
     expect(page.entries.map((e) => `${e.kind}:${e.name}`)).toEqual([
       'dir:a-dir',
       'dir:b-dir',
+      'file:data.json',
       'file:item2.md',
       'file:item10.md',
       'file:notes.mdx',
+      'file:rows.JSONL',
     ]);
     expect(page.entries.find((e) => e.name === 'a-dir')?.path).toBe(path.join(root, 'a-dir'));
 
