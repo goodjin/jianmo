@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **设置按钮挪到导出旁边**：从「最近打开」列表最后一行移到顶栏导出按钮右侧。桌面版 **0.5.6**。
 - [X] **桌面版双击 md 不出现窗口**：访达打开文件时 macOS 不一定把应用拉到前台；关窗后进程还在，`open-file` 建了窗口也不 `show/focus`。`activate` 若在 ready 之前 `new BrowserWindow` 会抛错。要点程序坞才看得到。修：排队到 ready、建窗后显示并抢前台、点程序坞时也把已有窗口拉回来。桌面版 **0.5.5**。
 - [X] **合并剩余草稿**：复制成功打勾、最近打开点空白收起、Markdown 只读渲染说明。桌面版 **0.5.4**。
 - [X] **桌面版「最近打开」下拉**：点空白（含预览 iframe）要收起。全屏透明层接住 iframe 里的点击；同页按下与焦点进入预览也收起；菜单内部点击不关。

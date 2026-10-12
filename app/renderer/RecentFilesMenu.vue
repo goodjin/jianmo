@@ -70,15 +70,6 @@
         </div>
       </li>
     </ul>
-    <!-- 固定最后一行：设置入口始终可见，不随列表滚动 -->
-    <div class="recent-settings">
-      <button
-        type="button"
-        class="recent-settings-btn"
-        title="设置（Cmd/Ctrl+,）"
-        @click="emit('settings')"
-      >⚙ 设置</button>
-    </div>
   </div>
 </template>
 
@@ -91,7 +82,6 @@ import { electronApp } from './electronBridge';
 
 const emit = defineEmits<{
   (e: 'open', filePath: string): void;
-  (e: 'settings'): void;
 }>();
 
 const items = ref<RecentFileRecord[]>([]);
@@ -240,27 +230,6 @@ defineExpose({ refresh });
   color: var(--markly-textSecondary, #6a737d);
   line-height: 1.5;
 }
-.recent-settings {
-  position: sticky;
-  bottom: -10px;
-  margin-top: 8px;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--markly-border-color, #d0d7de);
-  background: var(--markly-background, #fff);
-}
-.recent-settings-btn {
-  width: 100%;
-  text-align: left;
-  font-size: 12px;
-  line-height: 1.3;
-  padding: 7px 10px;
-  border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
-  background: var(--markly-background, #fff);
-  color: var(--markly-text, #24292e);
-  cursor: pointer;
-}
-.recent-settings-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .recent-list {
   list-style: none;
   margin: 0;

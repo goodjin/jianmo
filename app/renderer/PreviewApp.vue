@@ -29,7 +29,7 @@
           :aria-expanded="recentOpen"
           @click="toggleRecent"
         >▾</button>
-        <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" @settings="onOpenSettings" />
+        <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" />
       </div>
     </div>
     <TabBar
@@ -83,6 +83,14 @@
             </button>
           </div>
         </div>
+        <button
+          class="chrome-btn tab-settings"
+          type="button"
+          title="设置（Cmd/Ctrl+,）"
+          aria-label="设置"
+          :class="{ active: isSettingsTab }"
+          @click="onOpenSettings"
+        >设置</button>
       </template>
     </TabBar>
     <FileTree
@@ -948,6 +956,14 @@ html, body, #app {
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
+  font-size: 12px;
+}
+.tab-settings {
+  align-self: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  margin-right: 4px;
   font-size: 12px;
 }
 .export-caret {

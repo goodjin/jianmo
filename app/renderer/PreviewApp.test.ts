@@ -137,12 +137,16 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const copy = el.querySelector('.tab-copy') as HTMLElement;
     const exp = el.querySelector('.export-split') as HTMLElement;
+    const settings = el.querySelector('.tab-settings') as HTMLElement;
     const plus = el.querySelector('.tab-new') as HTMLElement;
     expect(copy).not.toBeNull();
     expect(exp).not.toBeNull();
-    // 复制、导出依次排在 "+" 前面
+    expect(settings).not.toBeNull();
+    // 复制、导出、设置依次排在 "+" 前面
     expect(copy.nextElementSibling).toBe(exp);
-    expect(exp.nextElementSibling).toBe(plus);
+    expect(exp.nextElementSibling).toBe(settings);
+    expect(settings.nextElementSibling).toBe(plus);
+    expect(settings.textContent?.trim()).toBe('设置');
     // 图标按钮：不再带「复制」文字，空闲时是复制符号
     expect(copy.textContent?.trim()).not.toContain('复制');
     expect(copy.textContent).toContain('⧉');
@@ -272,7 +276,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     const el = mount();
     await flush();
     const button = el.querySelector('.tab-export') as HTMLButtonElement;
+    const settings = el.querySelector('.tab-settings') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+    expect(settings.disabled).toBe(false);
+    expect(settings.classList.contains('active')).toBe(true);
     (el.querySelector('.export-split') as HTMLElement).dispatchEvent(new MouseEvent('mouseenter'));
     button.click();
     await flush();
@@ -337,21 +344,26 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.recent-menu')).toBeNull();
   });
 
-  it('设置固定在「最近打开」面板最后一行，点击进设置页', async () => {
+  it('设置在导出旁边，最近打开里不再出现，点击进设置页', async () => {
     const el = mount();
     await flush();
+
+    const settings = el.querySelector('.tab-settings') as HTMLButtonElement;
+    const exp = el.querySelector('.export-split') as HTMLElement;
+    expect(settings).not.toBeNull();
+    expect(exp.nextElementSibling).toBe(settings);
+    expect(el.querySelector('.open-rail .tab-settings')).toBeNull();
 
     (el.querySelector('.open-caret') as HTMLElement).click();
     await flush();
     const menu = el.querySelector('.recent-menu')!;
-    const settings = menu.querySelector('.recent-settings-btn') as HTMLElement;
-    expect(settings).not.toBeNull();
-    // 固定最后一行：面板里它就是结尾
-    expect(menu.lastElementChild!.contains(settings)).toBe(true);
+    expect(menu.querySelector('.recent-settings-btn')).toBeNull();
+    expect(menu.textContent).not.toContain('设置');
 
     settings.click();
     await flush();
     expect(electronStub('openSettingsTab')).toHaveBeenCalled();
+    expect(el.querySelector('.recent-menu')).toBeNull();
   });
 
   it('把 Markdown / JSON 拖进界面自动打开，其它类型忽略', async () => {
