@@ -76,6 +76,22 @@
           </p>
         </div>
       </section>
+
+      <section class="settings-section" aria-labelledby="settings-reading">
+        <h3 id="settings-reading" class="section-title">阅读</h3>
+        <div class="field">
+          <label class="auto-row copy-on-select-row" for="settings-copy-on-select">
+            <input
+              id="settings-copy-on-select"
+              type="checkbox"
+              :checked="copyOnSelect"
+              @change="onToggleCopyOnSelect(($event.target as HTMLInputElement).checked)"
+            />
+            <span>选择即复制</span>
+          </label>
+          <p class="field-hint">在预览里选中文字后自动放进剪贴板。关掉后，仍可以用顶栏复制或快捷键。</p>
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -87,10 +103,14 @@ import { resolveEditorPaletteId } from '@types';
 import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS } from '../electron/appearance';
 import type { AppearanceState } from './electronBridge';
 
-const props = defineProps<{ appearance: AppearanceState }>();
+const props = withDefaults(
+  defineProps<{ appearance: AppearanceState; copyOnSelect?: boolean }>(),
+  { copyOnSelect: true }
+);
 
 const emit = defineEmits<{
   (e: 'update', patch: Partial<AppearanceState>): void;
+  (e: 'updateReader', patch: { copyOnSelect: boolean }): void;
 }>();
 
 const palettes = EDITOR_PALETTES;
@@ -105,6 +125,10 @@ const selectedPaletteId = computed(() =>
 /** 勾选回 auto；取消勾选则把当前实际生效的配色固定下来。 */
 function onToggleAuto(checked: boolean): void {
   emit('update', { theme: checked ? 'auto' : selectedPaletteId.value });
+}
+
+function onToggleCopyOnSelect(checked: boolean): void {
+  emit('updateReader', { copyOnSelect: checked });
 }
 </script>
 
@@ -131,6 +155,7 @@ function onToggleAuto(checked: boolean): void {
   padding: 18px 20px 8px;
   background: var(--markly-surface, #f6f8fa);
 }
+.settings-section + .settings-section { margin-top: 16px; }
 .section-title {
   margin: 0 0 16px;
   font-size: 14px;
@@ -209,6 +234,12 @@ function onToggleAuto(checked: boolean): void {
   font-size: 12px;
   color: var(--markly-textSecondary, #57606a);
   cursor: pointer;
+}
+.copy-on-select-row {
+  margin-top: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--markly-text, #1f2328);
 }
 .sample {
   margin: 0;

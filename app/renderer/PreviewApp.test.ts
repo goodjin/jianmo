@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
 import PreviewApp from './PreviewApp.vue';
 import { installVsCodeShim } from './vscodeShim';
+import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
 import type { ElectronAppBridge } from './electronBridge';
 
 let mounted: { app: App; el: HTMLElement } | null = null;
@@ -148,6 +149,43 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
     expect(el.querySelector('.outline-sidebar')).toBeNull();
     expect(el.querySelector('.markly-app')!.classList.contains('no-outline')).toBe(true);
+  });
+
+  it('预览框以外的选区消息不会写入剪贴板', async () => {
+    const copySelection = vi.fn(async () => true);
+    (window as unknown as { electron: ElectronAppBridge }).electron.copySelection = copySelection;
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<div class="content"><p>你好世界</p></div>' });
+    await flush();
+
+    window.dispatchEvent(
+      new MessageEvent('message', { data: { type: SELECTION_COPY_TYPE, text: '你好世界' } })
+    );
+    await flush();
+    expect(copySelection).not.toHaveBeenCalled();
+    expect(el.querySelector('.selection-toast')).toBeNull();
+  });
+
+  it('预览框里选中正文后写入剪贴板并提示已复制', async () => {
+    const copySelection = vi.fn(async () => true);
+    (window as unknown as { electron: ElectronAppBridge }).electron.copySelection = copySelection;
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<div class="content"><p>你好世界</p></div>' });
+    await flush();
+    const frame = el.querySelector('iframe');
+    expect(frame?.contentWindow).toBeTruthy();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: SELECTION_COPY_TYPE, text: '你好世界' },
+        source: frame?.contentWindow,
+      })
+    );
+    await flush();
+    expect(copySelection).toHaveBeenCalledWith({ text: '你好世界' });
+    expect(el.querySelector('.selection-toast')?.textContent).toBe('已复制');
   });
 });
 

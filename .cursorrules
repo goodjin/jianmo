@@ -109,17 +109,15 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-## 当前任务：JSON / JSONL 树形预览
+## 当前任务：把 JSON 树预览并进主干
 
-圆角框之间用树线连起来。对象和数组可以点箭头展开/收起。JSONL 每一行也能收起，行号在框外面。点框仍然复制这一格。
-
-- [X] 树线 + 展开收起
-- [X] JSONL 行号在框外，点行号或箭头收起该行
-- [X] 单测与截图
-- [X] 提交并更新 PR
+- [X] 解开和「选择即复制」的冲突，两套复制都留下
+- [X] 推送并合并到 main
 
 ## 已完成（历史）
 
+- [X] **JSON / JSONL 树形预览**（0.5.1）：圆角框用树线连接；箭头展开收起；JSONL 行号在框外；点框复制这一格。
+- [X] **选择即复制**（独立桌面预览，0.5.0）：选区停稳后把正文放进系统剪贴板；设置「阅读」和 Edit 菜单可关；默认开。不改 VSCode 编辑器（编辑时自动覆盖剪贴板会碍事）。扩展 2.2.2 仅让标题「#」和代码「复制」按钮不可选中。
 - [X] **独立应用 UI**：顶栏间距；目录收起；打开历史（最多 100、可删/清空、打开时间）；同目录文件分页 100 + 更多。
 - [X] **独立应用复制功能**：Edit 菜单让 Cmd+C 能复制选区；顶栏「复制」+ 菜单「复制全文」把 Markdown 纯文本 + 预览 HTML 写入系统剪贴板。
 - [X] **工具栏收起/展开**：`Toolbar` 右侧「收起」、收起后单行「展开」；`SET_TOOLBAR_COLLAPSED` + `globalState` 跨文档/会话记忆；**2.0.3**。
@@ -130,3 +128,4 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
 - Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。
 - **`npm run manual:vscode`**（当前脚本）会先编译 **`dist/extension` + `dist/webview`**；验收前若跳过脚本直接开 VS Code，改动的 webview 可能不会进宿主（症状：Toolbar 文案/z-index 等「完全没变」）。
+- 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。

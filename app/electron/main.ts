@@ -9,6 +9,8 @@ import { normalizeAppearancePatch, readAppearance } from './appearance';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { isOpenableDocumentName } from './documentKind';
 import { normalizeCopyPayload } from './copyPayload';
+import { normalizeReaderPatch, readReaderPrefs, type ReaderPrefs } from './readerPrefs';
+import { toSelectionClipboardText } from './selectionCopy';
 import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
@@ -45,6 +47,8 @@ let pendingFiles: string[] = [];
 let store: Store;
 /** hostBridge 持有同一个对象引用，改这里的字段即刻影响下一次预览渲染。 */
 let appConfig: ExtensionConfig;
+/** 阅读偏好：选择即复制。和 appConfig 一起从 ~/.markly/config.json 读出。 */
+let readerPrefs: ReaderPrefs = { copyOnSelect: true };
 
 function activeFilePath(): string | null {
   const p = getActiveTab(tabs)?.filePath ?? '';
@@ -227,6 +231,23 @@ function updateAppearance(raw: unknown) {
   return { ...readAppearance(appConfig), prefersDark: prefersDark() };
 }
 
+function updateReaderPrefs(raw: unknown): ReaderPrefs {
+  const patch = normalizeReaderPatch(raw);
+  if (patch) {
+    readerPrefs = { ...readerPrefs, ...patch };
+    saveAppConfigPatch({ reader: { copyOnSelect: readerPrefs.copyOnSelect } });
+    installAppMenu();
+  }
+  return { ...readerPrefs };
+}
+
+function writeSelectionClipboard(payload: unknown): boolean {
+  const text = toSelectionClipboardText(payload);
+  if (!text) return false;
+  clipboard.writeText(text);
+  return true;
+}
+
 function selectTab(id: string): void {
   const before = tabs;
   tabs = activateTab(tabs, String(id ?? ''));
@@ -264,6 +285,80 @@ function requestRendererCopy(): void {
     return;
   }
   void writeDocumentClipboard();
+}
+
+function installAppMenu(): void {
+  const isMac = process.platform === 'darwin';
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(isMac
+        ? [
+            {
+              label: app.name,
+              submenu: [
+                { role: 'about' as const },
+                { type: 'separator' as const },
+                { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
+                { type: 'separator' as const },
+                { role: 'quit' as const },
+              ],
+            },
+          ]
+        : []),
+      {
+        label: 'File',
+        submenu: [
+          { label: '新建标签页', accelerator: 'CmdOrCtrl+T', click: () => newBlankTab() },
+          { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => void pickAndLoadFile() },
+          {
+            label: '打开文件夹…',
+            accelerator: 'CmdOrCtrl+Shift+O',
+            click: () => {
+              void chooseFileTreeRoot().then((picked) => {
+                if (picked) publishFileTreeRoot(picked);
+              });
+            },
+          },
+          { type: 'separator' },
+          { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
+          { type: 'separator' },
+          // Cmd/Ctrl+W 关标签（标签式应用惯例）；关窗口退到 Shift+Cmd/Ctrl+W
+          { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => dropTab(tabs.activeId) },
+          // 非 mac 保留 role 自带的 Ctrl+Q 退出，不挪到 Shift+Ctrl+W
+          isMac
+            ? { label: '关闭窗口', accelerator: 'Shift+CmdOrCtrl+W', role: 'close' as const }
+            : { role: 'quit' as const },
+        ],
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' as const },
+          { role: 'redo' as const },
+          { type: 'separator' as const },
+          { role: 'cut' as const },
+          { role: 'copy' as const },
+          { role: 'paste' as const },
+          { role: 'selectAll' as const },
+          { type: 'separator' as const },
+          {
+            label: '复制全文',
+            accelerator: 'CmdOrCtrl+Shift+C',
+            click: () => requestRendererCopy(),
+          },
+          { type: 'separator' as const },
+          {
+            label: '选择即复制',
+            type: 'checkbox' as const,
+            checked: readerPrefs.copyOnSelect,
+            click: (item) => {
+              updateReaderPrefs({ copyOnSelect: item.checked });
+            },
+          },
+        ],
+      },
+    ])
+  );
 }
 
 function createWindow(): void {
@@ -336,6 +431,7 @@ app.whenReady().then(() => {
   store = new Store({ name: 'markly-state', cwd: stateDir });
 
   appConfig = loadAppConfig();
+  readerPrefs = readReaderPrefs(appConfig);
 
   // 初始文件来源：open-file 待处理 > 命令行文档参数 > 初始空白标签（占位正文见 tabs.BLANK_TAB_CONTENT）
   const argFiles = process.argv.filter((a) => isOpenableDocumentName(a) && fs.existsSync(a));
@@ -416,6 +512,7 @@ app.whenReady().then(() => {
     clipboard.writeText(text);
     return true;
   });
+  ipcMain.handle('app:copy-selection', (_e, payload: unknown) => writeSelectionClipboard(payload));
   ipcMain.on('host:current-file-path', (e) => {
     e.returnValue = activeFilePath();
   });
@@ -446,70 +543,13 @@ app.whenReady().then(() => {
     e.returnValue = { ...readAppearance(appConfig), prefersDark: prefersDark() };
   });
   ipcMain.handle('app:settings:update', (_e, patch: unknown) => updateAppearance(patch));
+  ipcMain.on('app:reader:get', (e) => {
+    e.returnValue = { ...readerPrefs };
+  });
+  ipcMain.handle('app:reader:update', (_e, patch: unknown) => updateReaderPrefs(patch));
 
   // 应用菜单：File → Open（Cmd/Ctrl+O）+ Edit（系统复制角色，否则 macOS 上 Cmd+C 无效）
-  const isMac = process.platform === 'darwin';
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      ...(isMac
-        ? [
-            {
-              label: app.name,
-              submenu: [
-                { role: 'about' as const },
-                { type: 'separator' as const },
-                { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
-                { type: 'separator' as const },
-                { role: 'quit' as const },
-              ],
-            },
-          ]
-        : []),
-      {
-        label: 'File',
-        submenu: [
-          { label: '新建标签页', accelerator: 'CmdOrCtrl+T', click: () => newBlankTab() },
-          { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => void pickAndLoadFile() },
-          {
-            label: '打开文件夹…',
-            accelerator: 'CmdOrCtrl+Shift+O',
-            click: () => {
-              void chooseFileTreeRoot().then((picked) => {
-                if (picked) publishFileTreeRoot(picked);
-              });
-            },
-          },
-          { type: 'separator' },
-          { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
-          { type: 'separator' },
-          // Cmd/Ctrl+W 关标签（标签式应用惯例）；关窗口退到 Shift+Cmd/Ctrl+W
-          { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => dropTab(tabs.activeId) },
-          // 非 mac 保留 role 自带的 Ctrl+Q 退出，不挪到 Shift+Ctrl+W
-          isMac
-            ? { label: '关闭窗口', accelerator: 'Shift+CmdOrCtrl+W', role: 'close' as const }
-            : { role: 'quit' as const },
-        ],
-      },
-      {
-        label: 'Edit',
-        submenu: [
-          { role: 'undo' as const },
-          { role: 'redo' as const },
-          { type: 'separator' as const },
-          { role: 'cut' as const },
-          { role: 'copy' as const },
-          { role: 'paste' as const },
-          { role: 'selectAll' as const },
-          { type: 'separator' as const },
-          {
-            label: '复制全文',
-            accelerator: 'CmdOrCtrl+Shift+C',
-            click: () => requestRendererCopy(),
-          },
-        ],
-      },
-    ])
-  );
+  installAppMenu();
 
   createWindow();
 });

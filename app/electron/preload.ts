@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('electron', {
   copyToClipboard: (payload: { text: string; html: string }): Promise<boolean> =>
     ipcRenderer.invoke('app:copy-document', payload),
   copyExactText: (text: string): Promise<boolean> => ipcRenderer.invoke('app:copy-text', text),
+  copySelection: (payload: { text: string }): Promise<boolean> =>
+    ipcRenderer.invoke('app:copy-selection', payload),
   onCopyRequest: (handler: () => void): (() => void) => {
     const listener = () => handler();
     ipcRenderer.on('app:copy-request', listener);
@@ -56,6 +58,8 @@ contextBridge.exposeInMainWorld('electron', {
   getAppearance: (): unknown => ipcRenderer.sendSync('app:settings:get'),
   updateAppearance: (patch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('app:settings:update', patch),
+  getReaderPrefs: (): unknown => ipcRenderer.sendSync('app:reader:get'),
+  updateReaderPrefs: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('app:reader:update', patch),
   onTabsChanged: (handler: (view: unknown) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, view: unknown) => handler(view);
     ipcRenderer.on('app:tabs', listener);
