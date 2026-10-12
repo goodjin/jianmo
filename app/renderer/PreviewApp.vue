@@ -7,6 +7,17 @@
   >
     <div ref="openSplitRef" class="open-rail">
       <div class="open-split">
+        <!--
+          预览在沙箱 iframe 里，父页面收不到里面的空白点击。
+          菜单打开时铺一层全屏透明层，点到菜单和打开按钮以外就收起。
+        -->
+        <div
+          v-if="recentOpen"
+          class="recent-dismiss"
+          aria-hidden="true"
+          @pointerdown.stop.prevent="closeRecent"
+          @click.stop="closeRecent"
+        />
         <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">
           <span class="open-label">打开…</span>
         </button>
@@ -190,6 +201,7 @@ const copyOnSelect = ref(true);
 const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
+let blurCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 const copiedHint = ref('已复制到剪贴板');
 const copyTitle = computed(() => {
@@ -447,9 +459,11 @@ async function onOpenRecent(p: string): Promise<void> {
   await electronApp()?.openPath?.(p);
 }
 
-function onDocMouseDown(ev: MouseEvent): void {
+function onDocPointerDown(ev: MouseEvent): void {
   const target = ev.target instanceof Node ? ev.target : null;
   if (recentOpen.value) {
+    // 透明层自己的点击负责收起，这里不再关第二次
+    if (target instanceof Element && target.closest('.recent-dismiss')) return;
     const root = openSplitRef.value;
     if (!(root && target && root.contains(target))) closeRecent();
   }
@@ -464,6 +478,20 @@ function onDocKeydown(ev: KeyboardEvent): void {
     closeRecent();
     closeExportMenu();
   }
+}
+
+/**
+ * 点进预览 iframe 时，父页面收不到 pointerdown，窗口会失焦，activeElement 变成这个 frame。
+ * 延后一拍再看焦点，避免把普通失焦误当成“点了空白”。
+ */
+function onWindowBlur(): void {
+  if (!recentOpen.value) return;
+  if (blurCloseTimer) clearTimeout(blurCloseTimer);
+  blurCloseTimer = setTimeout(() => {
+    blurCloseTimer = null;
+    if (!recentOpen.value) return;
+    if (document.activeElement instanceof HTMLIFrameElement) closeRecent();
+  }, 0);
 }
 
 /** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。 */
@@ -699,8 +727,10 @@ onMounted(() => {
   } catch {
     fileTreeCollapsed.value = false;
   }
-  document.addEventListener('mousedown', onDocMouseDown);
-  document.addEventListener('keydown', onDocKeydown);
+  window.addEventListener('pointerdown', onDocPointerDown, true);
+  document.addEventListener('mousedown', onDocPointerDown);
+  window.addEventListener('keydown', onDocKeydown);
+  window.addEventListener('blur', onWindowBlur);
   document.addEventListener('dragover', onDragOver);
   document.addEventListener('drop', onDrop);
   window.addEventListener('message', onBoxCopyMessage);
@@ -712,8 +742,10 @@ onUnmounted(() => {
   offCopyRequest?.();
   offTabsChanged?.();
   window.removeEventListener('message', onSelectionCopyMessage);
-  document.removeEventListener('mousedown', onDocMouseDown);
-  document.removeEventListener('keydown', onDocKeydown);
+  window.removeEventListener('pointerdown', onDocPointerDown, true);
+  document.removeEventListener('mousedown', onDocPointerDown);
+  window.removeEventListener('keydown', onDocKeydown);
+  window.removeEventListener('blur', onWindowBlur);
   document.removeEventListener('dragover', onDragOver);
   document.removeEventListener('drop', onDrop);
   window.removeEventListener('message', onBoxCopyMessage);
@@ -729,6 +761,10 @@ onUnmounted(() => {
   if (selectionToastTimer) {
     clearTimeout(selectionToastTimer);
     selectionToastTimer = null;
+  }
+  if (blurCloseTimer) {
+    clearTimeout(blurCloseTimer);
+    blurCloseTimer = null;
   }
 });
 </script>
@@ -799,10 +835,24 @@ html, body, #app {
 }
 .open-split {
   position: relative;
+  z-index: 40;
   display: flex;
   align-items: stretch;
   align-self: center;
   min-width: 0;
+}
+/* 盖住预览 iframe 与侧栏空白；低于按钮和菜单，点菜单本身不会被这层截走 */
+.recent-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: transparent;
+  cursor: default;
+}
+.open-split .open-main,
+.open-split .open-caret {
+  position: relative;
+  z-index: 2;
 }
 .open-split .open-main {
   border-top-right-radius: 0;

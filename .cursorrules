@@ -109,7 +109,9 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-- [X] **合并到主干**：导出下拉、标签贴文件树、正文内大纲，与主干上的 JSON 树预览、选择即复制、工具栏 2.3.0 合在一起。
+- [X] **合并剩余草稿**：复制成功打勾、最近打开点空白收起、Markdown 只读渲染说明。桌面版 **0.5.4**。
+- [X] **桌面版「最近打开」下拉**：点空白（含预览 iframe）要收起。全屏透明层接住 iframe 里的点击；同页按下与焦点进入预览也收起；菜单内部点击不关。
+- [X] **复制成功打勾**（0.5.4）：顶栏复制成功后绿色打勾约 1.6 秒，失败只把边框标红。
 - [X] **顶栏与文件树**（独立应用 0.5.3）：打开按钮在文件树正上方；标签从文件树右缘起，和正文同一列。文档标题大纲画在正文内部左侧，不单独占一列。文件树默认用户主目录，标题栏有「上一级」。
 - [X] **独立应用导出 HTML/PDF**（0.5.0）：复制按钮旁「导出」，悬停与点击都下拉选 PDF/HTML；菜单打开时清空 `title`，避免系统提示盖住菜单。主进程保存对话框；HTML 走 exportToHtml（默认复制本地图片），PDF 走隐藏窗口 printToPDF。
 - [X] **JSON / JSONL 树形预览**（0.5.1）：圆角框用树线连接；箭头展开收起；JSONL 行号在框外；点框复制这一格。
@@ -128,3 +130,4 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 顶栏下拉菜单打开时不要留着按钮的 `title`：系统提示会盖住菜单。页面只应 import 不含 Node 的 `exportTypes`，不要从 `exportDocument.ts` 把写文件管线打进 renderer。
 - 独立应用里标签要从文件树右缘开始，和正文同一列。文档大纲要留着，但画在正文内部，不要和文件树并列成单独一列。
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。
+- 最近打开菜单盖在预览 iframe 上时，父页面收不到 iframe 里的点击。要另铺一层透明遮罩来收起，不能只听文档上的 mousedown。

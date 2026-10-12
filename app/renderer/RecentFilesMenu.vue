@@ -203,7 +203,7 @@ defineExpose({ refresh });
   border: 1px solid var(--markly-border-color, #d0d7de);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
-  z-index: 30;
+  z-index: 3;
   padding: 8px 0 10px;
   text-align: left;
 }
