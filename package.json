@@ -2,7 +2,7 @@
   "name": "markly",
   "displayName": "%ext.displayName%",
   "description": "%ext.description%",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "publisher": "jinshan",
   "repository": {
     "type": "git",
@@ -504,6 +504,29 @@
           "type": "number",
           "default": 14,
           "description": "%config.markly.editor.fontSize.description%"
+        },
+        "markly.editor.toolbarFontSize": {
+          "type": "number",
+          "default": 11,
+          "minimum": 10,
+          "maximum": 18,
+          "description": "%config.markly.editor.toolbarFontSize.description%",
+          "markdownDescription": "%config.markly.editor.toolbarFontSize.markdownDescription%"
+        },
+        "markly.editor.toolbarShowLabels": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.markly.editor.toolbarShowLabels.description%",
+          "markdownDescription": "%config.markly.editor.toolbarShowLabels.markdownDescription%"
+        },
+        "markly.editor.toolbarButtons": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "%config.markly.editor.toolbarButtons.description%",
+          "markdownDescription": "%config.markly.editor.toolbarButtons.markdownDescription%"
         },
         "markly.editor.fontFamily": {
           "type": "string",

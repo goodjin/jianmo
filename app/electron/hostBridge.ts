@@ -4,6 +4,8 @@ import * as path from 'path';
 import type Store from 'electron-store';
 import type { ExtensionConfig, ExtensionMessage, WebViewMessage } from '../../src/types';
 import { buildExportHtmlString } from '../../src/core/export/htmlExport';
+import { structuredKindFromName } from './documentKind';
+import { buildStructuredPreviewHtml } from './jsonView';
 import { inlineLocalPreviewImages } from './previewImages';
 import { applyPreviewTheme } from './previewTheme';
 import { resolveEditorPalette } from '../../webview/src/shared/themeConfig';
@@ -21,6 +23,7 @@ export interface HostBridgeOptions {
   store: Store;
   sendToRenderer: (msg: ExtensionMessage) => void;
   getCurrentContent: () => string;
+  getCurrentFilePath?: () => string | null;
   getCurrentDocDir: () => string;
   setCurrentContent: (s: string) => void;
   /** 主题设为 auto 时据此挑明/暗配色；由 main 从 nativeTheme 提供，便于单测注入。 */
@@ -47,7 +50,22 @@ export function createHostBridge(opts: HostBridgeOptions) {
 
       case 'REQUEST_PREVIEW_HTML': {
         try {
-          let html = await buildExportHtmlString(opts.getCurrentContent(), {
+          const content = opts.getCurrentContent();
+          const palette = resolveEditorPalette(
+            opts.config.editor.theme,
+            opts.getPrefersDark?.() ?? false
+          );
+          const font = {
+            fontFamily: opts.config.editor.fontFamily,
+            fontSize: opts.config.editor.fontSize,
+          };
+          const structured = structuredKindFromName(opts.getCurrentFilePath?.() ?? '');
+          if (structured) {
+            const html = applyPreviewTheme(buildStructuredPreviewHtml(content, structured), palette, font);
+            opts.sendToRenderer({ type: 'PREVIEW_HTML', payload: { html } });
+            break;
+          }
+          let html = await buildExportHtmlString(content, {
             includeToc: true,
             title: 'Markly',
             htmlTheme: opts.config.export.html?.theme ?? 'default',
@@ -57,14 +75,7 @@ export function createHostBridge(opts: HostBridgeOptions) {
           if (docDir && fs.existsSync(docDir)) {
             html = inlineLocalPreviewImages(html, docDir);
           }
-          const palette = resolveEditorPalette(
-            opts.config.editor.theme,
-            opts.getPrefersDark?.() ?? false
-          );
-          html = applyPreviewTheme(html, palette, {
-            fontFamily: opts.config.editor.fontFamily,
-            fontSize: opts.config.editor.fontSize,
-          });
+          html = applyPreviewTheme(html, palette, font);
           opts.sendToRenderer({ type: 'PREVIEW_HTML', payload: { html } });
         } catch (e) {
           opts.sendToRenderer({

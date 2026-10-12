@@ -2,7 +2,7 @@
   "name": "markly-app",
   "version": "0.5.3",
   "private": true,
-  "description": "Markly 独立桌面 Markdown 查看编辑器（脱离 VSCode）",
+  "description": "Markly 独立桌面文档查看器（Markdown / JSON / JSONL，脱离 VSCode）",
   "author": "Markly <hi@agentlab.fun>",
   "homepage": "https://agentlab.fun/",
   "main": "dist/app/electron/main.cjs",

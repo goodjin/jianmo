@@ -22,7 +22,7 @@
     <ul v-if="entry.kind === 'dir' && open" class="tree-children" role="group">
       <li v-if="busy" class="tree-note">加载中…</li>
       <li v-else-if="err" class="tree-note">{{ err }}</li>
-      <li v-else-if="children.length === 0" class="tree-note">没有 Markdown 文档</li>
+      <li v-else-if="children.length === 0" class="tree-note">没有可打开的文档</li>
       <FileTreeNode
         v-for="child in children"
         :key="child.path"

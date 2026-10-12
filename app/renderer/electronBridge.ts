@@ -25,6 +25,8 @@ export interface ElectronAppBridge {
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
   exportDocument?: (format: 'pdf' | 'html') => Promise<unknown>;
+  copyExactText?: (text: string) => Promise<boolean>;
+  copySelection?: (payload: { text: string }) => Promise<boolean>;
   onCopyRequest?: (handler: () => void) => () => void;
   listRecentFiles?: () => Promise<unknown>;
   removeRecentFile?: (filePath: string) => Promise<unknown>;
@@ -43,6 +45,8 @@ export interface ElectronAppBridge {
   openSettingsTab?: () => Promise<unknown>;
   getAppearance?: () => unknown;
   updateAppearance?: (patch: Partial<AppearanceState>) => Promise<unknown>;
+  getReaderPrefs?: () => unknown;
+  updateReaderPrefs?: (patch: { copyOnSelect: boolean }) => Promise<unknown>;
   storeGet?: (key: string) => unknown;
   storeSet?: (key: string, val: unknown) => void;
 }

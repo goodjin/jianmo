@@ -3,6 +3,7 @@ import { createApp, nextTick, type App } from 'vue';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import PreviewApp from './PreviewApp.vue';
 import { installVsCodeShim } from './vscodeShim';
+import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
 import type { ElectronAppBridge } from './electronBridge';
 
 let mounted: { app: App; el: HTMLElement } | null = null;
@@ -244,7 +245,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(electronStub('openSettingsTab')).toHaveBeenCalled();
   });
 
-  it('把 Markdown 文档拖进界面自动打开，其它类型忽略', async () => {
+  it('把 Markdown / JSON 拖进界面自动打开，其它类型忽略', async () => {
     mount();
     await flush();
 
@@ -252,11 +253,68 @@ describe('PreviewApp 顶栏与大纲', () => {
       { path: '/docs/a.md', name: 'a.md' },
       { path: '/docs/readme.txt', name: 'readme.txt' },
       { path: '/docs/b.markdown', name: 'b.markdown' },
+      { path: '/docs/data.json', name: 'data.json' },
+      { path: '/docs/rows.jsonl', name: 'rows.jsonl' },
     ]);
     await flush();
 
     const openPath = electronStub('openPath');
-    expect(openPath.mock.calls.map((c) => c[0])).toEqual(['/docs/a.md', '/docs/b.markdown']);
+    expect(openPath.mock.calls.map((c) => c[0])).toEqual([
+      '/docs/a.md',
+      '/docs/b.markdown',
+      '/docs/data.json',
+      '/docs/rows.jsonl',
+    ]);
+  });
+
+  it('打开 JSON 时不拿正文里的 # 当目录', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json' }],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 不是标题\n{"a":1}' });
+    await flush();
+    expect(el.querySelector('.doc-outline')).toBeNull();
+    expect(el.querySelector('.doc-body')).not.toBeNull();
+  });
+
+  it('预览框以外的选区消息不会写入剪贴板', async () => {
+    const copySelection = vi.fn(async () => true);
+    (window as unknown as { electron: ElectronAppBridge }).electron.copySelection = copySelection;
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<div class="content"><p>你好世界</p></div>' });
+    await flush();
+
+    window.dispatchEvent(
+      new MessageEvent('message', { data: { type: SELECTION_COPY_TYPE, text: '你好世界' } })
+    );
+    await flush();
+    expect(copySelection).not.toHaveBeenCalled();
+    expect(el.querySelector('.selection-toast')).toBeNull();
+  });
+
+  it('预览框里选中正文后写入剪贴板并提示已复制', async () => {
+    const copySelection = vi.fn(async () => true);
+    (window as unknown as { electron: ElectronAppBridge }).electron.copySelection = copySelection;
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<div class="content"><p>你好世界</p></div>' });
+    await flush();
+    const frame = el.querySelector('iframe');
+    expect(frame?.contentWindow).toBeTruthy();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: SELECTION_COPY_TYPE, text: '你好世界' },
+        source: frame?.contentWindow,
+      })
+    );
+    await flush();
+    expect(copySelection).toHaveBeenCalledWith({ text: '你好世界' });
+    expect(el.querySelector('.selection-toast')?.textContent).toBe('已复制');
   });
 });
 

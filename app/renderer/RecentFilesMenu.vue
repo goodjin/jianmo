@@ -38,8 +38,8 @@
             type="button"
             class="recent-icon recent-arrow"
             :class="{ active: expandedPath === item.path }"
-            title="列出同目录 Markdown"
-            aria-label="列出同目录 Markdown"
+            title="列出同目录文件"
+            aria-label="列出同目录文件"
             :aria-expanded="expandedPath === item.path"
             @click.stop="toggleDir(item.path)"
           >→</button>
@@ -59,7 +59,7 @@
               >{{ f.name }}</button>
             </li>
           </ul>
-          <div v-else class="recent-empty">该目录没有 Markdown 文件</div>
+          <div v-else class="recent-empty">该目录没有可打开的文件</div>
           <button
             v-if="siblingHasMore"
             type="button"

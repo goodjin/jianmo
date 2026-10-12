@@ -41,7 +41,7 @@
             :entry="entry"
             :depth="0"
           />
-          <li v-if="rootEntries.length === 0" class="tree-note">没有 Markdown 文档</li>
+          <li v-if="rootEntries.length === 0" class="tree-note">没有可打开的文档</li>
         </ul>
       </div>
     </template>

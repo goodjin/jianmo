@@ -7,7 +7,7 @@
   >
     <div ref="openSplitRef" class="open-rail">
       <div class="open-split">
-        <button class="chrome-btn open-main" type="button" title="打开 Markdown 文件" @click="onOpen">
+        <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">
           <span class="open-label">打开…</span>
         </button>
         <button
@@ -74,7 +74,13 @@
       @toggle="toggleFileTree"
     />
     <main class="preview-area">
-      <SettingsPage v-if="isSettingsTab" :appearance="appearance" @update="onUpdateAppearance" />
+      <SettingsPage
+        v-if="isSettingsTab"
+        :appearance="appearance"
+        :copy-on-select="copyOnSelect"
+        @update="onUpdateAppearance"
+        @update-reader="onUpdateReader"
+      />
       <template v-else>
         <aside v-if="hasOutline" class="doc-outline" :class="{ collapsed: outlineCollapsed }">
           <div class="doc-outline-head">
@@ -114,6 +120,7 @@
           ></iframe>
         </div>
       </template>
+      <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
   </div>
 </template>
@@ -126,7 +133,11 @@ import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
-import { collectDroppedMarkdownPaths, type DroppedFileLike } from './dropFiles';
+import { structuredKindFromName } from '../electron/documentKind';
+import { readBoxCopyPayload } from '../electron/jsonView';
+import { readReaderPrefs } from '../electron/readerPrefs';
+import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
+import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import {
   electronApp,
   parseAppearance,
@@ -135,6 +146,7 @@ import {
   type TabSummary,
 } from './electronBridge';
 import { applyEditorPalette, resolveEditorPalette } from '@wv/shared/themeConfig';
+import { buildPreviewSrcdoc, visibleTextFromHtml } from './previewSrcdoc';
 import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
@@ -166,10 +178,14 @@ const activeFilePath = computed(
 const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
+const copyOnSelect = ref(true);
+const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
 
+const copiedHint = ref('已复制到剪贴板');
 const copyTitle = computed(() => {
-  if (copied.value) return '已复制到剪贴板（Markdown + 富文本）';
+  if (copied.value) return copiedHint.value;
   if (copyFailed.value) return '复制失败';
   return '复制全文（Markdown 源 + 预览 HTML）';
 });
@@ -200,34 +216,16 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 没有标题就不显示目录。目录画在正文里面，不单独占一列。 */
-const hasOutline = computed(() => outline.value.length > 0);
+/** 没有 Markdown 标题，或当前是 JSON，就不显示目录。目录画在正文里面。 */
+const hasOutline = computed(
+  () => structuredKindFromName(activeFilePath.value) === null && outline.value.length > 0
+);
 
 function jumpToHeading(headingId: string): void {
   frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
 }
 
-/**
- * 给外部链接加 target=_blank rel=noopener，使主进程 setWindowOpenHandler 能拦截到新窗口请求并 shell.openExternal。
- * 不可依赖访问 iframe contentDocument（sandbox 让 srcdoc origin opaque）。
- */
-function withExternalLinkTargets(html: string): string {
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    doc.querySelectorAll('a[href]').forEach((a) => {
-      const href = a.getAttribute('href') || '';
-      if (/^https?:\/\//i.test(href)) {
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener noreferrer');
-      }
-    });
-    return doc.documentElement.outerHTML;
-  } catch {
-    return html;
-  }
-}
-
-const safeHtml = computed(() => withExternalLinkTargets(previewHtml.value));
+const safeHtml = computed(() => buildPreviewSrcdoc(previewHtml.value));
 
 /**
  * 每个标签缓存一份已渲染的预览，key 是标签 id，value 连正文一起存。
@@ -267,6 +265,28 @@ async function onUpdateAppearance(patch: Partial<AppearanceState>): Promise<void
   applyShellPalette();
   // 配色与字体都进了预览 HTML，旧缓存全部作废
   previewCache.clear();
+}
+
+function refreshReaderPrefs(): void {
+  try {
+    copyOnSelect.value = readReaderPrefs(electronApp()?.getReaderPrefs?.() ?? {}).copyOnSelect;
+  } catch {
+    copyOnSelect.value = true;
+  }
+}
+
+async function onUpdateReader(patch: { copyOnSelect: boolean }): Promise<void> {
+  const api = electronApp();
+  if (!api?.updateReaderPrefs) {
+    copyOnSelect.value = patch.copyOnSelect;
+    return;
+  }
+  try {
+    copyOnSelect.value = readReaderPrefs(await api.updateReaderPrefs(patch)).copyOnSelect;
+  } catch (err) {
+    console.warn('[markly] 保存「选择即复制」失败', err);
+    copyOnSelect.value = patch.copyOnSelect;
+  }
 }
 
 function onOpenSettings(): void {
@@ -444,22 +464,23 @@ function onDragOver(ev: DragEvent): void {
   ev.preventDefault();
 }
 
-/** 拖 Markdown 文档进界面 → 自动打开；多份按拖入顺序逐个开标签。 */
+/** 拖 Markdown / JSON / JSONL 进界面 → 自动打开；多份按拖入顺序逐个开标签。 */
 async function onDrop(ev: DragEvent): Promise<void> {
   ev.preventDefault();
   const files = ev.dataTransfer?.files;
   if (!files || files.length === 0) return;
-  const paths = collectDroppedMarkdownPaths(files as unknown as ArrayLike<DroppedFileLike>);
+  const paths = collectDroppedDocumentPaths(files as unknown as ArrayLike<DroppedFileLike>);
   for (const p of paths) {
     await electronApp()?.openPath?.(p);
   }
 }
 
-function flashCopyState(ok: boolean): void {
+function flashCopyState(ok: boolean, hint = '已复制到剪贴板'): void {
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  copiedHint.value = hint;
   copied.value = ok;
   copyFailed.value = !ok;
   copiedTimer = setTimeout(() => {
@@ -467,6 +488,71 @@ function flashCopyState(ok: boolean): void {
     copyFailed.value = false;
     copiedTimer = null;
   }, 1600);
+}
+
+/** 预览 iframe 里点中圆角框：只认当前预览窗口发来的复制消息。 */
+function onBoxCopyMessage(ev: MessageEvent): void {
+  const frameWindow = frameRef.value?.contentWindow ?? null;
+  if (!frameWindow || ev.source !== frameWindow) return;
+  const text = readBoxCopyPayload(ev.data);
+  if (text === null) return;
+  void copyBoxText(text);
+}
+
+async function copyBoxText(text: string): Promise<void> {
+  const api = electronApp();
+  if (!api?.copyExactText) {
+    flashCopyState(false);
+    return;
+  }
+  try {
+    const ok = await api.copyExactText(text);
+    flashCopyState(ok !== false, '已复制');
+  } catch {
+    flashCopyState(false);
+  }
+}
+
+function flashSelectionToast(text: string): void {
+  if (selectionToastTimer) {
+    clearTimeout(selectionToastTimer);
+    selectionToastTimer = null;
+  }
+  selectionToast.value = text;
+  selectionToastTimer = setTimeout(() => {
+    selectionToast.value = '';
+    selectionToastTimer = null;
+  }, 1200);
+}
+
+async function onSelectionCopyMessage(ev: MessageEvent): Promise<void> {
+  const frame = frameRef.value?.contentWindow;
+  const payload = acceptSelectionCopyMessage({
+    enabled: copyOnSelect.value,
+    fromPreviewFrame: !!frame && ev.source === frame,
+    data: ev.data,
+    documentText: visibleTextFromHtml(previewHtml.value),
+  });
+  if (!payload) return;
+  const api = electronApp();
+  if (!api?.copySelection) {
+    flashSelectionToast('复制失败');
+    console.warn('[markly] 选择即复制没有剪贴板通道');
+    return;
+  }
+  try {
+    const ok = await api.copySelection(payload);
+    if (ok === false) {
+      flashSelectionToast('复制失败');
+      console.warn('[markly] 选择即复制被拒绝', { chars: payload.text.length });
+      return;
+    }
+    flashSelectionToast('已复制');
+    console.info('[markly] 已复制选中文字', { chars: payload.text.length });
+  } catch (err) {
+    flashSelectionToast('复制失败');
+    console.warn('[markly] 选择即复制失败', err);
+  }
 }
 
 async function onCopy(): Promise<void> {
@@ -483,7 +569,7 @@ async function onCopy(): Promise<void> {
       contentHtml: extractPreviewContentHtml(previewHtml.value),
     });
     const ok = await api.copyToClipboard(payload);
-    flashCopyState(ok !== false);
+    flashCopyState(ok !== false, '已复制到剪贴板（Markdown + 富文本）');
   } catch {
     flashCopyState(false);
   } finally {
@@ -592,6 +678,8 @@ watch(isSettingsTab, (isSettings) => {
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
+  refreshReaderPrefs();
+  window.addEventListener('message', onSelectionCopyMessage);
   try {
     outlineCollapsed.value = electronApp()?.storeGet?.('outlineCollapsed') === true;
   } catch {
@@ -606,6 +694,7 @@ onMounted(() => {
   document.addEventListener('keydown', onDocKeydown);
   document.addEventListener('dragover', onDragOver);
   document.addEventListener('drop', onDrop);
+  window.addEventListener('message', onBoxCopyMessage);
   postMessage({ type: 'READY', payload: undefined });
 });
 
@@ -613,10 +702,12 @@ onUnmounted(() => {
   off();
   offCopyRequest?.();
   offTabsChanged?.();
+  window.removeEventListener('message', onSelectionCopyMessage);
   document.removeEventListener('mousedown', onDocMouseDown);
   document.removeEventListener('keydown', onDocKeydown);
   document.removeEventListener('dragover', onDragOver);
   document.removeEventListener('drop', onDrop);
+  window.removeEventListener('message', onBoxCopyMessage);
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;
@@ -625,6 +716,10 @@ onUnmounted(() => {
   if (exportHintTimer) {
     clearTimeout(exportHintTimer);
     exportHintTimer = null;
+  }
+  if (selectionToastTimer) {
+    clearTimeout(selectionToastTimer);
+    selectionToastTimer = null;
   }
 });
 </script>
@@ -784,6 +879,7 @@ html, body, #app {
 .preview-area {
   grid-column: 2;
   grid-row: 2;
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -876,6 +972,21 @@ html, body, #app {
   height: 100%;
   border: 0;
   background: var(--markly-background, #fff);
+}
+.selection-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--markly-text, #24292e);
+  color: var(--markly-background, #fff);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 2;
 }
 .status { padding: 24px; color: var(--markly-textSecondary, #666); }
 .status.error { color: var(--markly-error, #d33); }

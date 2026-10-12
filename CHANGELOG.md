@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 桌面版
+
+- **JSON / JSONL 树形预览**（0.5.1）：打开 `.json` / `.jsonl` 时，键、值和数组元素各自一个圆角框，用树线连起来。点箭头（JSONL 也可点行号）展开或收起；点框复制这一格。行号在框外面。
+- **选择即复制**（0.5.0）：在预览里选中文字后自动放进剪贴板。默认开启，可在「设置 → 阅读」或 Edit 菜单里关掉。
+
+### Fixed
+
+- 导出与预览里，标题前的「#」和代码块上的「复制」按钮不会再被鼠标选进正文。
+
+## [2.3.0] - 2026-10-12
+
+### Changed
+
+- **工具栏改成两行**：标题、格式、列表和撤销留在第一行，插入、表格、查找、缩放、大纲和导出放在第二行。按钮按文字收窄、高度变矮，避免第二行只挤下几个按钮就再折出第三行。
+- **工具栏默认只显示图标**：鼠标停在按钮上才出现名称。设置里可以勾选「显示按钮名称」一直显示。顶栏的 Rich / Source / 预览和「设置」按钮也缩小了一档。
+- **设置里可以调工具栏**：编辑器「设置」和 VS Code 设置项 `markly.editor.toolbarFontSize`（10–18）可改工具栏字号；`markly.editor.toolbarShowLabels` 控制是否一直显示名称；`markly.editor.toolbarButtons` 可单独隐藏每个按钮。没写到的按钮默认仍然显示。
+
 ### Mid Phase (M305–M316) snapshot
 
 - Docs: Profiles support (`docs/CONFIG_PROFILES_M305.md`), enterprise managed settings (`docs/ENTERPRISE_POLICY_MANAGED_SETTINGS_M306.md`).

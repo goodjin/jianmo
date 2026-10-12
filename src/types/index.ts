@@ -5,6 +5,7 @@
 export type EditorMode = 'source' | 'rich' | 'preview';
 
 import type { EditorThemeSetting } from './editorTheme';
+import type { ToolbarButtonId } from './toolbarPrefs';
 export type {
   EditorPaletteId,
   EditorThemeSetting,
@@ -18,6 +19,24 @@ export {
   isDarkEditorPaletteId,
   isDarkEditorThemeSetting,
 } from './editorTheme';
+export type { ToolbarButtonId, ToolbarButtonGroupId, ToolbarButtonCatalogItem } from './toolbarPrefs';
+export {
+  TOOLBAR_BUTTON_IDS,
+  TOOLBAR_BUTTON_CATALOG,
+  TOOLBAR_GROUP_ORDER,
+  TOOLBAR_GROUP_LABELS,
+  TOOLBAR_FONT_SIZE_MIN,
+  TOOLBAR_FONT_SIZE_MAX,
+  DEFAULT_TOOLBAR_FONT_SIZE,
+  DEFAULT_TOOLBAR_SHOW_LABELS,
+  isToolbarButtonId,
+  isToolbarFontSize,
+  normalizeToolbarFontSize,
+  normalizeToolbarShowLabels,
+  normalizeToolbarButtonMap,
+  isToolbarButtonShown,
+  compactHiddenToolbarButtons,
+} from './toolbarPrefs';
 
 export type RichTableCommandValue =
   | 'addRowBefore'
@@ -102,6 +121,21 @@ export interface EditorConfig {
    * - on / off：强制开启或关闭（设置项 `markly.editor.richTableColumnResize`）
    */
   richTableColumnResize: 'auto' | 'on' | 'off';
+  /**
+   * 工具栏字号（10–18，整数）。设置项 `markly.editor.toolbarFontSize`。
+   * 缺省为 11。
+   */
+  toolbarFontSize?: number;
+  /**
+   * 每个工具栏按钮是否显示。未列出的 id 视为显示。
+   * 设置项 `markly.editor.toolbarButtons`。
+   */
+  toolbarButtons?: Partial<Record<ToolbarButtonId, boolean>>;
+  /**
+   * 是否在工具栏按钮上一直显示名称。默认 false：只显示图标，悬停再出现名称。
+   * 设置项 `markly.editor.toolbarShowLabels`。
+   */
+  toolbarShowLabels?: boolean;
 }
 
 export interface ImageConfig {
@@ -400,6 +434,20 @@ export type WebViewMessage = ProtocolVersionEnvelope & (
   | { type: 'SET_TOOLBAR_COLLAPSED'; payload: { collapsed: boolean } }
   /** 同步编辑器配色（写入 `markly.editor.theme` / 独立应用 `~/.markly/config.json`） */
   | { type: 'SET_EDITOR_THEME'; payload: { theme: EditorThemeSetting } }
+  /**
+   * 同步工具栏字号与按钮显隐（写入 `markly.editor.toolbarFontSize` / `toolbarButtons`）。
+   * `buttons` 为增量；`resetButtons: true` 时清空隐藏列表（全部显示）。
+   */
+  | {
+      type: 'SET_TOOLBAR_SETTINGS';
+      payload: {
+        fontSize?: number;
+        buttons?: Partial<Record<ToolbarButtonId, boolean>>;
+        resetButtons?: boolean;
+        /** 是否一直显示按钮名称 */
+        showLabels?: boolean;
+      };
+    }
   | { type: 'UPLOAD_IMAGE'; payload: { base64: string; filename: string; requestId?: string } }
   | { type: 'CHECK_LOCAL_IMAGE_REFS'; payload: { requestId: string; refs: string[] } }
   | { type: 'LIST_ASSETS_IMAGE_FILES'; payload: { requestId: string } }

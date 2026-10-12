@@ -1,10 +1,10 @@
 /**
- * 列出目录树的一层：子文件夹 + Markdown 文件。
+ * 列出目录树的一层：子文件夹 + Markdown / JSON / JSONL 文件。
  * 只允许落在用户选定根目录之内；符号链接整项跳过，避免指到根外面。
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { isMarkdownFileName } from './recentFiles';
+import { isOpenableDocumentName } from './documentKind';
 import {
   FILE_TREE_ERR_NO_ROOT,
   FILE_TREE_ERR_OUTSIDE,
@@ -82,7 +82,7 @@ export function listFileTree(dir: string, root: string): FileTreeListResult {
     if (locate(full, rootAbs) !== 'inside') continue;
     if (ent.isDirectory()) {
       dirs.push({ name: ent.name, path: full, kind: 'dir' });
-    } else if (ent.isFile() && isMarkdownFileName(ent.name)) {
+    } else if (ent.isFile() && isOpenableDocumentName(ent.name)) {
       files.push({ name: ent.name, path: full, kind: 'file' });
     }
   }

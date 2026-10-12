@@ -12,9 +12,9 @@ export const SETTINGS_TAB_TITLE = '设置';
 
 /** 空白标签正文。故意不用 `#` heading，避免 generateToc() 产出一个无意义的"Markly"锚点链接。 */
 export const BLANK_TAB_CONTENT =
-  '**Markly** · 独立 Markdown 查看编辑器\n\n从左侧 **文件** 栏选择文件夹，在目录树里点开文档；或用 **File → 打开…**（`Cmd/Ctrl+O`）直接选择一个 `.md` 文件。';
+  '**Markly** · 独立文档查看器\n\n从左侧 **文件** 栏选择文件夹，在目录树里点开文档；或用 **File → 打开…**（`Cmd/Ctrl+O`）直接选择 `.md`、`.json` 或 `.jsonl` 文件。';
 
-/** doc 承载 Markdown 文档；settings 是应用内设置页，全局至多一个。 */
+/** doc 承载打开的文档；settings 是应用内设置页，全局至多一个。 */
 export type TabKind = 'doc' | 'settings';
 
 export interface DocTab {
