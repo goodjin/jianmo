@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版边角更圆**（0.5.8）：按钮、菜单、输入框、卡片、文件树行、标签共用 `app/chromeRadius.ts` 一套半径。不改插件 webview 的 `--markly-radius-*`。
 - [X] **打开文稿里的文档会退出**：macOS 读「文稿 / 桌面 / 下载」时，如果安装包没写用途说明，系统会直接杀掉进程，try/catch 接不住。要在桌面版 Info.plist 里声明这三项目录。**0.5.7**。
 - [X] **设置按钮挪到导出旁边**：从「最近打开」列表最后一行移到顶栏导出按钮右侧。桌面版 **0.5.6**。
 - [X] **桌面版双击 md 不出现窗口**：访达打开文件时 macOS 不一定把应用拉到前台；关窗后进程还在，`open-file` 建了窗口也不 `show/focus`。`activate` 若在 ready 之前 `new BrowserWindow` 会抛错。要点程序坞才看得到。修：排队到 ready、建窗后显示并抢前台、点程序坞时也把已有窗口拉回来。桌面版 **0.5.5**。
@@ -128,6 +129,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 ## Lessons（项目）
 
+- 桌面壳层圆角只走 `app/chromeRadius.ts`（`--app-radius-*`）。不要改 webview 的 `--markly-radius-*`，否则 VS Code 插件会一起变圆。
 - **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
 - Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。
 - **`npm run manual:vscode`**（当前脚本）会先编译 **`dist/extension` + `dist/webview`**；验收前若跳过脚本直接开 VS Code，改动的 webview 可能不会进宿主（症状：Toolbar 文案/z-index 等「完全没变」）。

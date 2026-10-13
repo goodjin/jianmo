@@ -11,7 +11,7 @@
         current: entry.kind === 'file' && entry.path === activePath,
         dir: entry.kind === 'dir',
       }"
-      :style="{ paddingLeft: 8 + depth * 14 + 'px' }"
+      :style="{ paddingLeft: 12 + depth * 14 + 'px' }"
       :title="entry.path"
       :data-path="entry.path"
       @click="onClick"
@@ -67,11 +67,12 @@ function onClick(): void {
   display: flex;
   align-items: center;
   gap: 4px;
-  width: 100%;
-  margin: 0;
+  width: calc(100% - 12px);
+  margin: 0 6px;
   padding-top: 5px;
   padding-bottom: 5px;
-  padding-right: 10px;
+  padding-right: 12px;
+  border-radius: var(--app-radius-sm);
   box-sizing: border-box;
   border: 0;
   background: transparent;

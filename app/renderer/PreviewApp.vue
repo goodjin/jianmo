@@ -1,6 +1,7 @@
 <template>
   <div
     class="markly-app"
+    :style="chromeRadiusStyle"
     :class="{
       'files-collapsed': fileTreeCollapsed,
     }"
@@ -172,6 +173,7 @@ import {
 } from './electronBridge';
 import { applyEditorPalette, resolveEditorPalette } from '@wv/shared/themeConfig';
 import { buildPreviewSrcdoc, visibleTextFromHtml } from './previewSrcdoc';
+import { chromeRadiusStyle } from '../chromeRadius';
 import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
@@ -819,7 +821,7 @@ html, body, #app {
 .markly-app.files-collapsed .open-main::before { content: '开'; }
 .markly-app.files-collapsed .open-caret { display: none; }
 .markly-app.files-collapsed .open-main {
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   min-width: 28px;
   padding: 0 6px;
 }
@@ -830,7 +832,7 @@ html, body, #app {
   min-height: 32px;
   box-sizing: border-box;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: var(--markly-text, #24292e);
   cursor: pointer;
@@ -978,9 +980,9 @@ html, body, #app {
   z-index: 30;
   min-width: 148px;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
 }
@@ -993,8 +995,8 @@ html, body, #app {
   color: var(--markly-text, #24292e);
   font-size: 12px;
   line-height: 1.4;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 7px 12px;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
@@ -1048,7 +1050,7 @@ html, body, #app {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--markly-textSecondary, #57606a);
   cursor: pointer;
@@ -1068,6 +1070,8 @@ html, body, #app {
 .doc-outline-row {
   font-size: 13px;
   line-height: 1.45;
+  margin: 0 6px;
+  border-radius: var(--app-radius-sm);
   padding: 5px 12px 5px 0;
   cursor: pointer;
   white-space: nowrap;
@@ -1103,7 +1107,7 @@ html, body, #app {
   transform: translateX(-50%);
   margin: 0;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--app-radius-pill);
   background: var(--markly-text, #24292e);
   color: var(--markly-background, #fff);
   font-size: 12px;

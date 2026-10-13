@@ -151,7 +151,7 @@ function onToggleCopyOnSelect(checked: boolean): void {
 }
 .settings-section {
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 10px;
+  border-radius: var(--app-radius-lg);
   padding: 18px 20px 8px;
   background: var(--markly-surface, #f6f8fa);
 }
@@ -179,7 +179,7 @@ function onToggleCopyOnSelect(checked: boolean): void {
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: inherit;
 }
@@ -194,7 +194,7 @@ function onToggleCopyOnSelect(checked: boolean): void {
   gap: 6px;
   padding: 8px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   color: inherit;
   cursor: pointer;
@@ -213,11 +213,11 @@ function onToggleCopyOnSelect(checked: boolean): void {
   height: 46px;
   padding: 6px 8px;
   border: 1px solid;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
 }
 .swatch-bar {
   height: 5px;
-  border-radius: 3px;
+  border-radius: var(--app-radius-pill);
 }
 .swatch-bar:nth-child(1) { width: 100%; }
 .swatch-bar:nth-child(2) { width: 62%; }
@@ -245,7 +245,7 @@ function onToggleCopyOnSelect(checked: boolean): void {
   margin: 0;
   padding: 14px 16px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   line-height: 1.7;
 }

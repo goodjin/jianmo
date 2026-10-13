@@ -255,7 +255,7 @@ onMounted(() => {
 .file-icon-btn,
 .file-toggle {
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: var(--markly-text, #24292e);
   cursor: pointer;
