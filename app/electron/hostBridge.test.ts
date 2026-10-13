@@ -248,15 +248,27 @@ describe('预览 HTML 的主题与字体', () => {
     expect(mdHtml).not.toContain('box-key');
   });
 
-  it('字体与字号一并注入正文', async () => {
+  it('思源黑体连同字体文件写进正文，系统默认则不用这套字', async () => {
+    const { READING_FONT_STACK } = await import('./appearance');
     const config = defaultConfig();
-    config.editor.fontFamily = 'Georgia, serif';
+    config.editor.fontFamily = READING_FONT_STACK;
     config.editor.fontSize = 21 as never;
     const { bridge, sent } = makeBridge({ config });
     await bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
     const html = String((sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
-    expect(html).toContain('font-family: Georgia, serif;');
+    expect(html).toContain('Noto Sans SC');
+    expect(html).toContain('@font-face');
     expect(html).toContain('font-size: 21px;');
+    expect(html).toContain('font-weight:700');
+
+    const system = defaultConfig();
+    system.editor.fontFamily = '';
+    const sys = makeBridge({ config: system });
+    await sys.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const sysHtml = String((sys.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(sysHtml).toContain('-apple-system');
+    expect(sysHtml).not.toContain('Noto Sans SC');
+    expect(sysHtml).not.toContain('@font-face');
   });
 
   it('改主题后重新出图会换成新配色', async () => {

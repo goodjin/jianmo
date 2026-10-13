@@ -14,6 +14,7 @@ vi.mock('fs', async (actual) => {
 
 import * as fs from 'fs';
 import { loadAppConfig, getConfigPath, saveAppConfigPatch } from './config';
+import { READING_FONT_STACK } from './appearance';
 
 /**
  * 行为测试：mock fs，验证 loadAppConfig 的真实分支（默认 / 合并 / 容错）。
@@ -32,6 +33,7 @@ describe('loadAppConfig', () => {
     const cfg = loadAppConfig();
     expect(cfg.editor.theme).toBe('auto');
     expect(cfg.editor.fontSize).toBe(14);
+    expect(cfg.editor.fontFamily).toBe(READING_FONT_STACK);
     expect(cfg.editor.enableMermaid).toBe(true);
     expect(cfg.editor.enableShiki).toBe(false);
     expect(cfg.image.saveDirectory).toBe('./assets');
@@ -80,6 +82,28 @@ describe('loadAppConfig', () => {
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ reader: { copyOnSelect: false } }));
     const cfg = loadAppConfig() as unknown as { reader: { copyOnSelect: boolean } };
     expect(cfg.reader.copyOnSelect).toBe(false);
+  });
+
+  it('正文字体写入后能原样读回来', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    saveAppConfigPatch({ editor: { fontFamily: '' } });
+    const written = String(vi.mocked(fs.writeFileSync).mock.calls[0]?.[1] ?? '');
+    const saved = JSON.parse(written) as { editor: { fontFamily: string } };
+    expect(saved.editor.fontFamily).toBe('');
+
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(written);
+    expect(loadAppConfig().editor.fontFamily).toBe('');
+  });
+
+  it('记下思源黑体之后重新打开仍然是思源黑体', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    saveAppConfigPatch({ editor: { fontFamily: READING_FONT_STACK } });
+    const written = String(vi.mocked(fs.writeFileSync).mock.calls[0]?.[1] ?? '');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(written);
+    expect(loadAppConfig().editor.fontFamily).toBe(READING_FONT_STACK);
+    expect(loadAppConfig().editor.fontFamily).toContain('Noto Sans SC');
   });
 
   it('saveAppConfigPatch 把 editor.theme 写入 config.json', () => {

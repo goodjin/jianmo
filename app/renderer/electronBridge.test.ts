@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAppearance, parseTabsView } from './electronBridge';
-import { DEFAULT_FONT_SIZE } from '../electron/appearance';
-
-const GEORGIA = "Georgia, 'Times New Roman', serif";
+import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, READING_FONT_STACK } from '../electron/appearance';
 
 describe('parseTabsView', () => {
   it('正常载荷原样收敛', () => {
@@ -85,14 +83,14 @@ describe('parseTabsView', () => {
 describe('parseAppearance', () => {
   it('正常载荷逐项收敛', () => {
     expect(
-      parseAppearance({ theme: 'nord', fontFamily: GEORGIA, fontSize: 20, prefersDark: true })
-    ).toEqual({ theme: 'nord', fontFamily: GEORGIA, fontSize: 20, prefersDark: true });
+      parseAppearance({ theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 20, prefersDark: true })
+    ).toEqual({ theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 20, prefersDark: true });
   });
 
   it('非对象载荷给出安全默认', () => {
     expect(parseAppearance(undefined)).toEqual({
       theme: 'auto',
-      fontFamily: '',
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontSize: DEFAULT_FONT_SIZE,
       prefersDark: false,
     });
@@ -102,8 +100,12 @@ describe('parseAppearance', () => {
     expect(parseAppearance({ theme: 'hotdog-stand' }).theme).toBe('auto');
   });
 
-  it('白名单外的字体退回系统默认', () => {
-    expect(parseAppearance({ fontFamily: 'Comic Sans MS' }).fontFamily).toBe('');
+  it('白名单外的字体退回思源黑体', () => {
+    expect(parseAppearance({ fontFamily: 'Comic Sans MS' }).fontFamily).toBe(READING_FONT_STACK);
+  });
+
+  it('空字符串仍是系统默认', () => {
+    expect(parseAppearance({ fontFamily: '' }).fontFamily).toBe('');
   });
 
   it('越界字号被收敛，缺失时用默认', () => {

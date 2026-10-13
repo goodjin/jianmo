@@ -788,6 +788,8 @@ html, body, #app {
 .markly-app {
   --files-col: 220px;
   --chrome-row: 40px;
+  /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   display: grid;
   grid-template-columns: var(--files-col) 1fr;
   grid-template-rows: var(--chrome-row) 1fr;

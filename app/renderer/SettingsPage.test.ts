@@ -2,10 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, type App } from 'vue';
 import SettingsPage from './SettingsPage.vue';
 import { EDITOR_PALETTES } from '../../webview/src/shared/themeConfig';
-import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS } from '../electron/appearance';
+import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS, READING_FONT_STACK } from '../electron/appearance';
 import type { AppearanceState } from './electronBridge';
-
-const GEORGIA = "Georgia, 'Times New Roman', serif";
 
 function appearance(over: Partial<AppearanceState> = {}): AppearanceState {
   return { theme: 'github-light', fontFamily: '', fontSize: 16, prefersDark: false, ...over };
@@ -97,22 +95,29 @@ describe('设置页 · 外观栏目', () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ theme: 'github-dark' });
   });
 
-  it('字体下拉列出全部内置字体，选中当前值', () => {
-    const el = mount({ appearance: appearance({ fontFamily: GEORGIA }) });
-    const select = el.querySelector('#settings-font-family') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.textContent)).toEqual(
+  it('正文字体列出思源黑体和系统默认，并说明只管正文', () => {
+    const el = mount({ appearance: appearance({ fontFamily: READING_FONT_STACK }) });
+    const group = el.querySelector('#settings-font-family') as HTMLElement;
+    const radios = [...group.querySelectorAll('input')];
+    expect(radios.map((r) => r.parentElement?.textContent?.trim())).toEqual(
       FONT_FAMILY_OPTIONS.map((o) => o.name)
     );
-    expect(select.value).toBe(GEORGIA);
+    expect(el.querySelector('#settings-font-family-label')!.textContent).toBe('正文字体');
+    expect(el.textContent).toContain('预览里的正文');
+    expect(el.textContent).toContain('按钮、菜单和文件树仍用系统字体');
+    const checked = radios.find((r) => (r as HTMLInputElement).checked) as HTMLInputElement;
+    expect(checked.value).toBe(READING_FONT_STACK);
   });
 
-  it('换字体抛出所选字体栈', () => {
+  it('换成思源黑体时抛出这套字体栈', () => {
     const onUpdate = vi.fn();
-    const el = mount({ onUpdate });
-    const select = el.querySelector('#settings-font-family') as HTMLSelectElement;
-    select.value = GEORGIA;
-    change(select);
-    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: GEORGIA });
+    const el = mount({ appearance: appearance({ fontFamily: '' }), onUpdate });
+    const noto = [...el.querySelectorAll('#settings-font-family input')].find(
+      (r) => (r as HTMLInputElement).value === READING_FONT_STACK
+    ) as HTMLInputElement;
+    noto.checked = true;
+    change(noto);
+    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: READING_FONT_STACK });
   });
 
   it('字号下拉列出全部档位，选中当前值', () => {
@@ -131,16 +136,20 @@ describe('设置页 · 外观栏目', () => {
     expect(onUpdate).toHaveBeenCalledWith({ fontSize: 22 });
   });
 
-  it('示例文字跟着字体与字号变', () => {
-    const el = mount({ appearance: appearance({ fontFamily: GEORGIA, fontSize: 24 }) });
+  it('示例文字用上所选正文字体和字号', () => {
+    const el = mount({ appearance: appearance({ fontFamily: READING_FONT_STACK, fontSize: 24 }) });
     const sample = el.querySelector('.sample') as HTMLElement;
     expect(sample.style.fontSize).toBe('24px');
-    expect(sample.style.fontFamily).toContain('Georgia');
+    expect(sample.style.fontFamily).toContain('Noto Sans SC');
+    expect(sample.textContent).toContain('这是一段中文示例文字');
   });
 
-  it('系统默认字体时示例不写死 font-family', () => {
+  it('系统默认时示例用操作系统字体，不用思源黑体', () => {
     const el = mount({ appearance: appearance({ fontFamily: '' }) });
-    expect((el.querySelector('.sample') as HTMLElement).style.fontFamily).toBe('');
+    const family = (el.querySelector('.sample') as HTMLElement).style.fontFamily;
+    expect(family).toContain('apple-system');
+    expect(family).toContain('PingFang SC');
+    expect(family).not.toContain('Noto Sans SC');
   });
 });
 

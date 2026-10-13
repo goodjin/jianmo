@@ -43,15 +43,25 @@
         </div>
 
         <div class="field">
-          <label class="field-label" for="settings-font-family">文字字体</label>
-          <select
+          <div class="field-label" id="settings-font-family-label">正文字体</div>
+          <p class="field-hint">预览里的正文用这套字，改完马上生效，并记住到下次打开。按钮、菜单和文件树仍用系统字体。</p>
+          <div
             id="settings-font-family"
-            class="field-control"
-            :value="appearance.fontFamily"
-            @change="$emit('update', { fontFamily: ($event.target as HTMLSelectElement).value })"
+            class="font-choices"
+            role="radiogroup"
+            aria-labelledby="settings-font-family-label"
           >
-            <option v-for="opt in fontFamilies" :key="opt.id" :value="opt.stack">{{ opt.name }}</option>
-          </select>
+            <label v-for="opt in fontFamilies" :key="opt.id" class="font-choice">
+              <input
+                type="radio"
+                name="reading-font"
+                :value="opt.stack"
+                :checked="appearance.fontFamily === opt.stack"
+                @change="$emit('update', { fontFamily: opt.stack })"
+              />
+              <span>{{ opt.name }}</span>
+            </label>
+          </div>
         </div>
 
         <div class="field">
@@ -70,9 +80,9 @@
           <div class="field-label">预览效果</div>
           <p
             class="sample"
-            :style="{ fontFamily: appearance.fontFamily || undefined, fontSize: appearance.fontSize + 'px' }"
+            :style="{ fontFamily: appearance.fontFamily || systemFontStack, fontSize: appearance.fontSize + 'px' }"
           >
-            The quick brown fox jumps over the lazy dog. 这是一段中文示例文字。
+            The quick brown fox jumps over the lazy dog. 这是一段中文示例文字。<strong>粗体</strong>
           </p>
         </div>
       </section>
@@ -100,7 +110,7 @@
 import { computed } from 'vue';
 import { EDITOR_PALETTES } from '@wv/shared/themeConfig';
 import { resolveEditorPaletteId } from '@types';
-import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS } from '../electron/appearance';
+import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK } from '../electron/appearance';
 import type { AppearanceState } from './electronBridge';
 
 const props = withDefaults(
@@ -116,6 +126,7 @@ const emit = defineEmits<{
 const palettes = EDITOR_PALETTES;
 const fontFamilies = FONT_FAMILY_OPTIONS;
 const fontSizes = FONT_SIZE_OPTIONS;
+const systemFontStack = SYSTEM_FONT_STACK;
 
 /** auto 时高亮的是系统明暗解析出来的那套配色。 */
 const selectedPaletteId = computed(() =>
@@ -182,6 +193,26 @@ function onToggleCopyOnSelect(checked: boolean): void {
   border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: inherit;
+}
+.font-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.font-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm);
+  background: var(--markly-background, #fff);
+  cursor: pointer;
+  font-size: 13px;
+}
+.font-choice:has(input:checked) {
+  border-color: var(--markly-primary, #0969da);
+  box-shadow: 0 0 0 1px var(--markly-primary, #0969da);
 }
 .theme-grid {
   display: grid;

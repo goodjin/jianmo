@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtensionConfig } from '../../src/types';
 import {
+  DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_SIZE_OPTIONS,
+  READING_FONT_STACK,
+  SYSTEM_FONT_STACK,
   normalizeAppearancePatch,
   normalizeFontFamily,
   normalizeFontSize,
   normalizeTheme,
   readAppearance,
+  readingFontForPreview,
 } from './appearance';
-
-const GEORGIA = "Georgia, 'Times New Roman', serif";
 
 describe('normalizeFontSize', () => {
   it('档位值原样保留', () => {
@@ -44,15 +46,36 @@ describe('normalizeFontFamily', () => {
     }
   });
 
-  it('不在白名单里的栈一律退回系统默认', () => {
-    expect(normalizeFontFamily('Comic Sans MS')).toBe('');
-    expect(normalizeFontFamily('Arial; } body { display:none }')).toBe('');
+  it('空字符串是系统默认，没写则用思源黑体', () => {
+    expect(normalizeFontFamily('')).toBe('');
+    expect(normalizeFontFamily(undefined)).toBe(DEFAULT_FONT_FAMILY);
+    expect(normalizeFontFamily(null)).toBe(DEFAULT_FONT_FAMILY);
+    expect(normalizeFontFamily(16)).toBe(DEFAULT_FONT_FAMILY);
   });
 
-  it('空值与非字符串退回系统默认', () => {
-    expect(normalizeFontFamily('')).toBe('');
-    expect(normalizeFontFamily(undefined)).toBe('');
-    expect(normalizeFontFamily(16)).toBe('');
+  it('不再提供的旧字体回到思源黑体，而不是系统默认', () => {
+    expect(normalizeFontFamily("Georgia, 'Times New Roman', serif")).toBe(READING_FONT_STACK);
+    expect(normalizeFontFamily('Comic Sans MS')).toBe(READING_FONT_STACK);
+  });
+
+  it('把操作系统字体栈记成系统默认，避免和思源黑体混在一起', () => {
+    expect(normalizeFontFamily(SYSTEM_FONT_STACK)).toBe('');
+  });
+});
+
+describe('readingFontForPreview', () => {
+  it('思源黑体带上打进应用的字体', () => {
+    expect(readingFontForPreview(READING_FONT_STACK)).toEqual({
+      stack: READING_FONT_STACK,
+      bundled: true,
+    });
+  });
+
+  it('系统默认展开成操作系统字体，并且不带思源黑体', () => {
+    const font = readingFontForPreview('');
+    expect(font.bundled).toBe(false);
+    expect(font.stack).toBe(SYSTEM_FONT_STACK);
+    expect(font.stack).not.toContain('Noto Sans SC');
   });
 });
 
@@ -73,17 +96,22 @@ describe('normalizeTheme', () => {
 describe('readAppearance', () => {
   it('从配置取出三项并各自归一化', () => {
     const config = {
-      editor: { theme: 'nord', fontFamily: GEORGIA, fontSize: 20 },
+      editor: { theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 20 },
     } as unknown as ExtensionConfig;
-    expect(readAppearance(config)).toEqual({ theme: 'nord', fontFamily: GEORGIA, fontSize: 20 });
+    expect(readAppearance(config)).toEqual({ theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 20 });
   });
 
-  it('配置缺项时给出安全默认', () => {
+  it('配置缺项时正文默认用思源黑体', () => {
     expect(readAppearance({} as ExtensionConfig)).toEqual({
       theme: 'auto',
-      fontFamily: '',
+      fontFamily: READING_FONT_STACK,
       fontSize: DEFAULT_FONT_SIZE,
     });
+  });
+
+  it('配置里明确写成空字符串时仍是系统默认', () => {
+    const config = { editor: { fontFamily: '' } } as unknown as ExtensionConfig;
+    expect(readAppearance(config).fontFamily).toBe('');
   });
 
   it('配置里的脏值被挡掉', () => {
@@ -92,7 +120,7 @@ describe('readAppearance', () => {
     } as unknown as ExtensionConfig;
     expect(readAppearance(config)).toEqual({
       theme: 'auto',
-      fontFamily: '',
+      fontFamily: READING_FONT_STACK,
       fontSize: FONT_SIZE_MAX,
     });
   });
@@ -108,13 +136,19 @@ describe('normalizeAppearancePatch', () => {
   });
 
   it('只改字体时只回字体一项', () => {
-    expect(normalizeAppearancePatch({ fontFamily: GEORGIA })).toEqual({ fontFamily: GEORGIA });
+    expect(normalizeAppearancePatch({ fontFamily: READING_FONT_STACK })).toEqual({
+      fontFamily: READING_FONT_STACK,
+    });
+  });
+
+  it('选系统默认时记下空字符串', () => {
+    expect(normalizeAppearancePatch({ fontFamily: '' })).toEqual({ fontFamily: '' });
   });
 
   it('三项同时给出时一起返回', () => {
     expect(
-      normalizeAppearancePatch({ theme: 'nord', fontFamily: GEORGIA, fontSize: 18 })
-    ).toEqual({ theme: 'nord', fontFamily: GEORGIA, fontSize: 18 });
+      normalizeAppearancePatch({ theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 18 })
+    ).toEqual({ theme: 'nord', fontFamily: READING_FONT_STACK, fontSize: 18 });
   });
 
   it('未知键被忽略', () => {
@@ -126,8 +160,10 @@ describe('normalizeAppearancePatch', () => {
     expect(normalizeAppearancePatch({ fontSize: 'big' })).toBeNull();
   });
 
-  it('字体白名单外的值归一为系统默认而不是丢弃', () => {
-    expect(normalizeAppearancePatch({ fontFamily: 'Comic Sans MS' })).toEqual({ fontFamily: '' });
+  it('字体白名单外的值归一为思源黑体而不是丢弃', () => {
+    expect(normalizeAppearancePatch({ fontFamily: 'Comic Sans MS' })).toEqual({
+      fontFamily: READING_FONT_STACK,
+    });
   });
 
   it('非对象或空补丁返回 null', () => {

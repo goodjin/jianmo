@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ExtensionConfig } from '../../src/types';
+import { READING_FONT_STACK } from './appearance';
 
 /**
  * 独立应用配置：~/.markly/config.json（与 VSCode 扩展配置项同名，复用 ExtensionConfig 类型）。
@@ -18,7 +19,7 @@ const DEFAULT_CONFIG: ExtensionConfig = {
   editor: {
     theme: 'auto',
     fontSize: 14 as ExtensionConfig['editor']['fontSize'],
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontFamily: READING_FONT_STACK,
     wrapPolicy: 'autoWrap',
     tableCellWrap: 'wrap',
     enableMermaid: true,

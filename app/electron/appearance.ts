@@ -21,20 +21,22 @@ export interface FontFamilyOption {
   stack: string;
 }
 
-/** 内置字体栈。空 stack 表示跟随预览默认字体。 */
+/**
+ * 正文字体。思源黑体（Noto Sans SC）打进桌面应用，不依赖用户电脑是否安装。
+ * 空 stack 表示系统默认：预览时换成操作系统字体栈，且不嵌入字体文件。
+ */
+export const READING_FONT_STACK =
+  '"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+
+/** 真正的系统界面字体。不含思源黑体，避免又用回打进应用的那套。 */
+export const SYSTEM_FONT_STACK =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+
+export const DEFAULT_FONT_FAMILY = READING_FONT_STACK;
+
 export const FONT_FAMILY_OPTIONS: readonly FontFamilyOption[] = [
+  { id: 'source-han-sans', name: '思源黑体', stack: READING_FONT_STACK },
   { id: 'system', name: '系统默认', stack: '' },
-  {
-    id: 'sans',
-    name: '无衬线（Helvetica）',
-    stack: "'Helvetica Neue', Helvetica, Arial, sans-serif",
-  },
-  { id: 'serif', name: '衬线（Georgia）', stack: "Georgia, 'Times New Roman', serif" },
-  { id: 'mono', name: '等宽（Menlo）', stack: "'SFMono-Regular', Menlo, Consolas, monospace" },
-  { id: 'pingfang', name: '苹方 / 雅黑', stack: "'PingFang SC', 'Microsoft YaHei', sans-serif" },
-  { id: 'songti', name: '宋体', stack: "'Songti SC', SimSun, serif" },
-  { id: 'heiti', name: '黑体', stack: "'Heiti SC', 'Microsoft YaHei', sans-serif" },
-  { id: 'kaiti', name: '楷体', stack: "'Kaiti SC', KaiTi, serif" },
 ];
 
 export interface AppearanceSettings {
@@ -49,11 +51,22 @@ export function normalizeFontSize(raw: unknown): number {
   return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, n));
 }
 
-/** 只接受内置字体栈，避免把任意字符串写进配置再注入 CSS。 */
+/**
+ * 只接受内置字体栈，避免把任意字符串写进配置再注入 CSS。
+ * 空字符串是「系统默认」。没写、或写了不再提供的旧字体，回到思源黑体。
+ */
 export function normalizeFontFamily(raw: unknown): string {
-  const s = typeof raw === 'string' ? raw.trim() : '';
-  if (!s) return '';
-  return FONT_FAMILY_OPTIONS.some((o) => o.stack === s) ? s : '';
+  if (typeof raw !== 'string') return DEFAULT_FONT_FAMILY;
+  const s = raw.trim();
+  if (!s || s === SYSTEM_FONT_STACK) return '';
+  return FONT_FAMILY_OPTIONS.some((o) => o.stack === s) ? s : DEFAULT_FONT_FAMILY;
+}
+
+/** 预览正文实际要用的字体。系统默认展开成操作系统字体栈，且不带字体文件。 */
+export function readingFontForPreview(raw: unknown): { stack: string; bundled: boolean } {
+  const stored = normalizeFontFamily(raw);
+  if (!stored) return { stack: SYSTEM_FONT_STACK, bundled: false };
+  return { stack: stored, bundled: stored.includes('Noto Sans SC') };
 }
 
 export function normalizeTheme(raw: unknown): EditorThemeSetting {
