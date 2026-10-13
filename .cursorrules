@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **打开文稿里的文档会退出**：macOS 读「文稿 / 桌面 / 下载」时，如果安装包没写用途说明，系统会直接杀掉进程，try/catch 接不住。要在桌面版 Info.plist 里声明这三项目录。**0.5.7**。
 - [X] **设置按钮挪到导出旁边**：从「最近打开」列表最后一行移到顶栏导出按钮右侧。桌面版 **0.5.6**。
 - [X] **桌面版双击 md 不出现窗口**：访达打开文件时 macOS 不一定把应用拉到前台；关窗后进程还在，`open-file` 建了窗口也不 `show/focus`。`activate` 若在 ready 之前 `new BrowserWindow` 会抛错。要点程序坞才看得到。修：排队到 ready、建窗后显示并抢前台、点程序坞时也把已有窗口拉回来。桌面版 **0.5.5**。
 - [X] **表格边上编辑**（2.3.1）：去掉一点表格就出现的整表选中框。加行/列只在两行或两列交界处出现；行头、列头点击选中并出删除。拖动或 Shift 可多选，删除一次去掉这些行/列；选满整表则删表。
@@ -135,4 +136,5 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。
 - 最近打开菜单盖在预览 iframe 上时，父页面收不到 iframe 里的点击。要另铺一层透明遮罩来收起，不能只听文档上的 mousedown。
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
+- macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。

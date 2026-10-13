@@ -1,6 +1,6 @@
 {
   "name": "markly-app",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "private": true,
   "description": "Markly 独立桌面文档查看器（Markdown / JSON / JSONL，脱离 VSCode）",
   "author": "Markly <hi@agentlab.fun>",
@@ -61,7 +61,10 @@
       "gatekeeperAssess": false,
       "darkModeSupport": true,
       "extendInfo": {
-        "NSHumanReadableCopyright": "© 2026 Markly"
+        "NSHumanReadableCopyright": "© 2026 Markly",
+        "NSDocumentsFolderUsageDescription": "Markly 需要读取「文稿」文件夹，以便打开和预览其中的文档。",
+        "NSDesktopFolderUsageDescription": "Markly 需要读取「桌面」文件夹，以便打开和预览其中的文档。",
+        "NSDownloadsFolderUsageDescription": "Markly 需要读取「下载」文件夹，以便打开和预览其中的文档。"
       }
     },
     "fileAssociations": [

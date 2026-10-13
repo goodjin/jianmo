@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { isOpenableDocumentName } from './documentKind';
+import { folderListError } from './macFolderAccess';
 import {
   FILE_TREE_ERR_NO_ROOT,
   FILE_TREE_ERR_OUTSIDE,
@@ -67,8 +68,8 @@ export function listFileTree(dir: string, root: string): FileTreeListResult {
   let dirents: fs.Dirent[];
   try {
     dirents = fs.readdirSync(dirAbs, { withFileTypes: true });
-  } catch {
-    return { dir: dirAbs, entries: [], error: FILE_TREE_ERR_UNREADABLE };
+  } catch (error) {
+    return { dir: dirAbs, entries: [], error: folderListError(dirAbs, error) };
   }
 
   const dirs: FileTreeEntry[] = [];

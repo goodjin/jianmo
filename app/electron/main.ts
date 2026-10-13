@@ -8,6 +8,7 @@ import { loadAppConfig, saveAppConfigPatch } from './config';
 import { normalizeAppearancePatch, readAppearance } from './appearance';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { isOpenableDocumentName } from './documentKind';
+import { readFailureDetail } from './macFolderAccess';
 import { normalizeCopyPayload } from './copyPayload';
 import {
   exportMarkdownDocument,
@@ -207,7 +208,7 @@ function loadFile(p: string): void {
   try {
     content = fs.readFileSync(p, 'utf-8');
   } catch (e) {
-    content = `# 打开失败\n\n无法读取：\`${p}\`\n\n> ${String((e as Error)?.message ?? e)}`;
+    content = `# 打开失败\n\n无法读取：\`${p}\`\n\n> ${readFailureDetail(p, e)}`;
   }
   tabs = openFileTab(tabs, nextTabId(), p, content);
   try {
