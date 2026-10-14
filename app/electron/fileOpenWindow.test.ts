@@ -5,25 +5,34 @@ import {
   handleExternalFileOpen,
   revealAppWindow,
   scheduleHiddenWindowReveal,
+  showAppInDock,
   type RevealableWindow,
   type RevealEventSource,
 } from './fileOpenWindow';
 
 function fakeWindow(overrides: Partial<RevealableWindow> = {}): RevealableWindow & {
   calls: string[];
+  workspaceOptions: unknown[];
 } {
   const calls: string[] = [];
+  const workspaceOptions: unknown[] = [];
   return {
     calls,
+    workspaceOptions,
     isMinimized: () => false,
     restore: () => calls.push('restore'),
     show: () => calls.push('show'),
     focus: () => calls.push('focus'),
-    setVisibleOnAllWorkspaces: (visible) => calls.push(visible ? 'spaces-on' : 'spaces-off'),
+    setVisibleOnAllWorkspaces: (visible, options) => {
+      calls.push(visible ? 'spaces-on' : 'spaces-off');
+      workspaceOptions.push(options);
+    },
     moveTop: () => calls.push('moveTop'),
     ...overrides,
   };
 }
+
+const keptInDock = { visibleOnFullScreen: true, skipTransformProcessType: true };
 
 describe('revealAppWindow', () => {
   it('最小化时先还原，再显示并聚焦', () => {
@@ -39,8 +48,27 @@ describe('revealAppWindow', () => {
     const focus = vi.fn();
     revealAppWindow(win, { focus }, 'darwin');
     expect(win.calls).toEqual(['show', 'focus', 'spaces-on', 'focus', 'spaces-off', 'moveTop']);
+    expect(win.workspaceOptions).toEqual([keptInDock, keptInDock]);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ steal: true });
+  });
+
+  it('macOS 跨桌面之后仍把图标留在程序坞', () => {
+    const win = fakeWindow();
+    const showInDock = vi.fn(() => {
+      win.calls.push('dock');
+    });
+    revealAppWindow(win, { focus: vi.fn(), showInDock }, 'darwin');
+    expect(win.calls).toEqual(['show', 'focus', 'spaces-on', 'focus', 'spaces-off', 'dock', 'moveTop']);
+    expect(showInDock).toHaveBeenCalledTimes(1);
+  });
+
+  it('其他系统不改程序坞', () => {
+    const win = fakeWindow();
+    const showInDock = vi.fn();
+    revealAppWindow(win, { focus: vi.fn(), showInDock }, 'win32');
+    expect(showInDock).not.toHaveBeenCalled();
+    expect(win.workspaceOptions).toEqual([]);
   });
 
   it('没有跨桌面接口时仍然抢前台', () => {
@@ -49,6 +77,34 @@ describe('revealAppWindow', () => {
     revealAppWindow(win, { focus }, 'darwin');
     expect(win.calls).toEqual(['show', 'focus']);
     expect(focus).toHaveBeenCalledWith({ steal: true });
+  });
+});
+
+describe('showAppInDock', () => {
+  it('图标不在时设成普通应用并显示', () => {
+    const show = vi.fn();
+    const setActivationPolicy = vi.fn();
+    showAppInDock({
+      setActivationPolicy,
+      dock: { isVisible: () => false, show },
+    });
+    expect(setActivationPolicy).toHaveBeenCalledWith('regular');
+    expect(show).toHaveBeenCalledTimes(1);
+  });
+
+  it('图标已经在时不再显示，避免叠出两个', () => {
+    const show = vi.fn();
+    showAppInDock({
+      setActivationPolicy: vi.fn(),
+      dock: { isVisible: () => true, show },
+    });
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('没有程序坞对象时仍设成普通应用', () => {
+    const setActivationPolicy = vi.fn();
+    showAppInDock({ setActivationPolicy, dock: null });
+    expect(setActivationPolicy).toHaveBeenCalledWith('regular');
   });
 });
 
