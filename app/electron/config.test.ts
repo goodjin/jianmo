@@ -14,7 +14,8 @@ vi.mock('fs', async (actual) => {
 
 import * as fs from 'fs';
 import { loadAppConfig, getConfigPath, saveAppConfigPatch } from './config';
-import { READING_FONT_STACK } from './appearance';
+import { READING_FONT_STACK, fontStackForFamily } from './appearance';
+import { listInstalledFontFamilies } from './systemFonts';
 
 /**
  * 行为测试：mock fs，验证 loadAppConfig 的真实分支（默认 / 合并 / 容错）。
@@ -94,6 +95,18 @@ describe('loadAppConfig', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(written);
     expect(loadAppConfig().editor.fontFamily).toBe('');
+  });
+
+  it('记下系统里的一款字体之后重新打开仍然是那一款', async () => {
+    const installed = await listInstalledFontFamilies();
+    const stack = fontStackForFamily(installed[0]!);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    saveAppConfigPatch({ editor: { fontFamily: stack } });
+    const written = String(vi.mocked(fs.writeFileSync).mock.calls[0]?.[1] ?? '');
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(written);
+    expect(loadAppConfig().editor.fontFamily).toBe(stack);
+    expect(loadAppConfig().editor.fontFamily).toContain(installed[0]);
   });
 
   it('记下思源黑体之后重新打开仍然是思源黑体', () => {

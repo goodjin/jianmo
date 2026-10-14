@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
 - [X] **桌面版正文默认思源黑体**（0.6.0）：字体文件打进应用，设置里可改回系统字体。只作用于预览正文，按钮和文件树仍用系统字体。不改插件 webview。
 - [X] **桌面版边角更圆**（0.5.8）：按钮、菜单、输入框、卡片、文件树行、标签共用 `app/chromeRadius.ts` 一套半径。不改插件 webview 的 `--markly-radius-*`。
 - [X] **打开文稿里的文档会退出**：macOS 读「文稿 / 桌面 / 下载」时，如果安装包没写用途说明，系统会直接杀掉进程，try/catch 接不住。要在桌面版 Info.plist 里声明这三项目录。**0.5.7**。
@@ -132,6 +133,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 - 桌面壳层圆角只走 `app/chromeRadius.ts`（`--app-radius-*`）。不要改 webview 的 `--markly-radius-*`，否则 VS Code 插件会一起变圆。
 - 桌面正文思源黑体只嵌进预览 iframe 和设置示例。不要改导出样式里的 `--font-body`，也不要给按钮、文件树、菜单设这套字。
+- 正文字体下拉里的系统字体必须运行时枚举，不要写回一份短名单。思源黑体是打进应用的，不要从系统列表里再冒充一次。
 - **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
 - Webview **`SAVE`** 写入失败时使用 **`SAVE_FAILED`** 回传，避免静默丢保存；须同步 `messageGuards` 与 webview `handleMessage`。
 - **`npm run manual:vscode`**（当前脚本）会先编译 **`dist/extension` + `dist/webview`**；验收前若跳过脚本直接开 VS Code，改动的 webview 可能不会进宿主（症状：Toolbar 文案/z-index 等「完全没变」）。

@@ -103,6 +103,7 @@
       <SettingsPage
         v-if="isSettingsTab"
         :appearance="appearance"
+        :system-fonts="systemFonts"
         :copy-on-select="copyOnSelect"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
@@ -164,6 +165,7 @@ import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
+import { parseSystemFontList } from '../electron/appearance';
 import {
   electronApp,
   parseAppearance,
@@ -188,6 +190,8 @@ const error = ref('');
 const tabs = ref<TabSummary[]>([]);
 const activeTabId = ref('');
 const appearance = ref<AppearanceState>(parseAppearance(null));
+const systemFonts = ref<string[]>([]);
+const systemFontsKnown = ref(false);
 
 const isSettingsTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.kind === 'settings'
@@ -282,11 +286,28 @@ function applyShellPalette(): void {
 
 function refreshAppearance(): void {
   try {
-    appearance.value = parseAppearance(electronApp()?.getAppearance?.());
+    const raw = electronApp()?.getAppearance?.();
+    if (raw && typeof raw === 'object' && Array.isArray((raw as { systemFonts?: unknown }).systemFonts)) {
+      systemFonts.value = parseSystemFontList((raw as { systemFonts: unknown }).systemFonts);
+      systemFontsKnown.value = true;
+    }
+    appearance.value = parseAppearance(raw, systemFontsKnown.value ? systemFonts.value : undefined);
   } catch {
     /* 桥未就绪：留用默认外观 */
   }
   applyShellPalette();
+}
+
+async function refreshSystemFonts(): Promise<void> {
+  const api = electronApp();
+  if (!api?.listSystemFonts) return;
+  try {
+    systemFonts.value = parseSystemFontList(await api.listSystemFonts());
+    systemFontsKnown.value = true;
+    refreshAppearance();
+  } catch (err) {
+    console.warn('[markly] 读取系统字体失败', err);
+  }
 }
 
 async function onUpdateAppearance(patch: Partial<AppearanceState>): Promise<void> {
@@ -725,6 +746,7 @@ watch(isSettingsTab, (isSettings) => {
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
+  void refreshSystemFonts();
   refreshReaderPrefs();
   window.addEventListener('message', onSelectionCopyMessage);
   try {

@@ -41,8 +41,12 @@ export function bundledReadingFontFaceCss(): string {
 }
 
 /** 设置里存的值 → 预览样式要用的字体栈，以及要不要带上字体文件。 */
-export function previewFontOptions(stored: unknown, fontSize?: number): PreviewFontOptions {
-  const reading = readingFontForPreview(stored);
+export function previewFontOptions(
+  stored: unknown,
+  fontSize?: number,
+  installed?: readonly string[]
+): PreviewFontOptions {
+  const reading = readingFontForPreview(stored, installed);
   return {
     fontFamily: reading.stack,
     fontSize,

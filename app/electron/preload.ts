@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('electron', {
   getAppearance: (): unknown => ipcRenderer.sendSync('app:settings:get'),
   updateAppearance: (patch: unknown): Promise<unknown> =>
     ipcRenderer.invoke('app:settings:update', patch),
+  listSystemFonts: (): Promise<unknown> => ipcRenderer.invoke('app:fonts:list'),
   getReaderPrefs: (): unknown => ipcRenderer.sendSync('app:reader:get'),
   updateReaderPrefs: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('app:reader:update', patch),
   onTabsChanged: (handler: (view: unknown) => void): (() => void) => {

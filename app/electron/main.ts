@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 import Store from 'electron-store';
 import { createHostBridge } from './hostBridge';
 import { loadAppConfig, saveAppConfigPatch } from './config';
-import { normalizeAppearancePatch, readAppearance } from './appearance';
+import { normalizeAppearancePatch, normalizeFontFamily, readAppearance } from './appearance';
+import { getInstalledFontFamilies, listInstalledFontFamilies } from './systemFonts';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { isOpenableDocumentName } from './documentKind';
 import { readFailureDetail } from './macFolderAccess';
@@ -249,9 +250,27 @@ function prefersDark(): boolean {
   return nativeTheme.shouldUseDarkColors;
 }
 
+function appearanceState(): Record<string, unknown> {
+  const installed = getInstalledFontFamilies();
+  return {
+    ...readAppearance(appConfig, installed),
+    prefersDark: prefersDark(),
+    ...(installed !== undefined ? { systemFonts: [...installed] } : {}),
+  };
+}
+
+/** 字体列表到了之后，记住的系统字体若这台电脑没有，就改回思源黑体。 */
+function reconcileStoredReadingFont(installed: readonly string[]): void {
+  const next = normalizeFontFamily(appConfig.editor.fontFamily, installed);
+  if (next === appConfig.editor.fontFamily) return;
+  appConfig.editor.fontFamily = next;
+  saveAppConfigPatch({ editor: { fontFamily: next } });
+  send({ type: 'CONFIG_CHANGE', payload: { config: appConfig } });
+}
+
 /** 外观设置落盘并广播；renderer 收到 CONFIG_CHANGE 后重出预览。 */
 function updateAppearance(raw: unknown) {
-  const patch = normalizeAppearancePatch(raw);
+  const patch = normalizeAppearancePatch(raw, getInstalledFontFamilies());
   if (patch) {
     if (patch.theme !== undefined) appConfig.editor.theme = patch.theme;
     if (patch.fontFamily !== undefined) appConfig.editor.fontFamily = patch.fontFamily;
@@ -261,7 +280,7 @@ function updateAppearance(raw: unknown) {
     saveAppConfigPatch({ editor: patch });
     send({ type: 'CONFIG_CHANGE', payload: { config: appConfig } });
   }
-  return { ...readAppearance(appConfig), prefersDark: prefersDark() };
+  return appearanceState();
 }
 
 function updateReaderPrefs(raw: unknown): ReaderPrefs {
@@ -568,6 +587,9 @@ app.whenReady().then(() => {
 
   appConfig = loadAppConfig();
   readerPrefs = readReaderPrefs(appConfig);
+  void listInstalledFontFamilies()
+    .then((installed) => reconcileStoredReadingFont(installed))
+    .catch((err) => console.warn('[markly] 枚举系统字体失败', err));
 
   // 初始文件来源：open-file 待处理 > 命令行文档参数 > 初始空白标签（占位正文见 tabs.BLANK_TAB_CONTENT）
   const argFiles = process.argv.filter((a) => isOpenableDocumentName(a) && fs.existsSync(a));
@@ -677,9 +699,10 @@ app.whenReady().then(() => {
 
   // 外观设置：读当前值 + 落盘补丁
   ipcMain.on('app:settings:get', (e) => {
-    e.returnValue = { ...readAppearance(appConfig), prefersDark: prefersDark() };
+    e.returnValue = appearanceState();
   });
   ipcMain.handle('app:settings:update', (_e, patch: unknown) => updateAppearance(patch));
+  ipcMain.handle('app:fonts:list', () => listInstalledFontFamilies());
   ipcMain.on('app:reader:get', (e) => {
     e.returnValue = { ...readerPrefs };
   });

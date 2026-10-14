@@ -7,6 +7,7 @@ import {
   normalizeFontFamily,
   normalizeFontSize,
   normalizeTheme,
+  parseSystemFontList,
 } from '../electron/appearance';
 
 /** 设置页用的外观状态：三项设置 + 系统明暗（auto 时决定实际配色）。 */
@@ -45,6 +46,7 @@ export interface ElectronAppBridge {
   openSettingsTab?: () => Promise<unknown>;
   getAppearance?: () => unknown;
   updateAppearance?: (patch: Partial<AppearanceState>) => Promise<unknown>;
+  listSystemFonts?: () => Promise<unknown>;
   getReaderPrefs?: () => unknown;
   updateReaderPrefs?: (patch: { copyOnSelect: boolean }) => Promise<unknown>;
   storeGet?: (key: string) => unknown;
@@ -54,11 +56,13 @@ export interface ElectronAppBridge {
 export type { DirMarkdownPage, RecentFileRecord, TabSummary, AppearanceSettings };
 
 /** 主进程回来的外观状态是跨 IPC 的 unknown，逐项校验后再进 UI。 */
-export function parseAppearance(raw: unknown): AppearanceState {
+export function parseAppearance(raw: unknown, installed?: readonly string[]): AppearanceState {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const fromPayload = Array.isArray(obj.systemFonts) ? parseSystemFontList(obj.systemFonts) : undefined;
+  const known = installed !== undefined ? installed : fromPayload;
   return {
     theme: normalizeTheme(obj.theme),
-    fontFamily: normalizeFontFamily(obj.fontFamily),
+    fontFamily: normalizeFontFamily(obj.fontFamily, known),
     fontSize: typeof obj.fontSize === 'number' ? normalizeFontSize(obj.fontSize) : DEFAULT_FONT_SIZE,
     prefersDark: obj.prefersDark === true,
   };

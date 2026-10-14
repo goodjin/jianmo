@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApp, type App } from 'vue';
+import { createApp, nextTick, type App } from 'vue';
 import SettingsPage from './SettingsPage.vue';
 import { EDITOR_PALETTES } from '../../webview/src/shared/themeConfig';
-import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS, READING_FONT_STACK } from '../electron/appearance';
+import { FONT_SIZE_OPTIONS, READING_FONT_STACK, fontStackForFamily } from '../electron/appearance';
+import { listInstalledFontFamilies } from '../electron/systemFonts';
 import type { AppearanceState } from './electronBridge';
 
 function appearance(over: Partial<AppearanceState> = {}): AppearanceState {
@@ -95,29 +96,52 @@ describe('设置页 · 外观栏目', () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ theme: 'github-dark' });
   });
 
-  it('正文字体列出思源黑体和系统默认，并说明只管正文', () => {
-    const el = mount({ appearance: appearance({ fontFamily: READING_FONT_STACK }) });
-    const group = el.querySelector('#settings-font-family') as HTMLElement;
-    const radios = [...group.querySelectorAll('input')];
-    expect(radios.map((r) => r.parentElement?.textContent?.trim())).toEqual(
-      FONT_FAMILY_OPTIONS.map((o) => o.name)
-    );
+  it('正文字体下拉先是系统默认和思源黑体，后面是这台电脑枚举到的字体', async () => {
+    const installed = await listInstalledFontFamilies();
+    expect(installed.length).toBeGreaterThan(8);
+    const el = mount({
+      appearance: appearance({ fontFamily: READING_FONT_STACK }),
+      systemFonts: installed,
+    });
     expect(el.querySelector('#settings-font-family-label')!.textContent).toBe('正文字体');
     expect(el.textContent).toContain('预览里的正文');
+    expect(el.textContent).toContain('这台电脑已安装的字体');
     expect(el.textContent).toContain('按钮、菜单和文件树仍用系统字体');
-    const checked = radios.find((r) => (r as HTMLInputElement).checked) as HTMLInputElement;
-    expect(checked.value).toBe(READING_FONT_STACK);
+    const button = el.querySelector('#settings-font-family') as HTMLButtonElement;
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(button.textContent).toContain('思源黑体');
+    expect(el.querySelector('#settings-font-family-list')).toBeNull();
+    button.click();
+    await nextTick();
+    const names = [...el.querySelectorAll('#settings-font-family-list [role="option"]')].map((node) =>
+      node.textContent?.trim()
+    );
+    expect(names[0]).toBe('系统默认');
+    expect(names[1]).toBe('思源黑体');
+    expect(names.slice(2)).toEqual(installed);
+    expect(names.length).toBeGreaterThan(10);
+    const selected = el.querySelector('#settings-font-family-list [aria-selected="true"]');
+    expect(selected?.textContent?.trim()).toBe('思源黑体');
   });
 
-  it('换成思源黑体时抛出这套字体栈', () => {
+  it('从下拉里选中系统字体时抛出那一款，而不是思源黑体', async () => {
+    const installed = await listInstalledFontFamilies();
+    const family = installed.find((name) => name === 'DejaVu Sans') ?? installed[0]!;
     const onUpdate = vi.fn();
-    const el = mount({ appearance: appearance({ fontFamily: '' }), onUpdate });
-    const noto = [...el.querySelectorAll('#settings-font-family input')].find(
-      (r) => (r as HTMLInputElement).value === READING_FONT_STACK
-    ) as HTMLInputElement;
-    noto.checked = true;
-    change(noto);
-    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: READING_FONT_STACK });
+    const el = mount({
+      appearance: appearance({ fontFamily: '' }),
+      systemFonts: installed,
+      onUpdate,
+    });
+    (el.querySelector('#settings-font-family') as HTMLButtonElement).click();
+    await nextTick();
+    const option = [...el.querySelectorAll('#settings-font-family-list [role="option"]')].find(
+      (node) => node.textContent?.trim() === family
+    ) as HTMLButtonElement;
+    option.click();
+    await nextTick();
+    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: fontStackForFamily(family) });
+    expect(el.querySelector('#settings-font-family-list')).toBeNull();
   });
 
   it('字号下拉列出全部档位，选中当前值', () => {
@@ -150,6 +174,19 @@ describe('设置页 · 外观栏目', () => {
     expect(family).toContain('apple-system');
     expect(family).toContain('PingFang SC');
     expect(family).not.toContain('Noto Sans SC');
+  });
+
+  it('选中系统字体时示例用那一款，不用思源黑体', async () => {
+    const installed = await listInstalledFontFamilies();
+    const family = installed.find((name) => name === 'Liberation Serif') ?? installed[0]!;
+    const el = mount({
+      appearance: appearance({ fontFamily: fontStackForFamily(family) }),
+      systemFonts: installed,
+    });
+    const sample = el.querySelector('.sample') as HTMLElement;
+    expect(sample.style.fontFamily).toContain(family);
+    expect(sample.style.fontFamily).not.toContain('Noto Sans SC');
+    expect((el.querySelector('#settings-font-family') as HTMLElement).textContent).toContain(family);
   });
 });
 

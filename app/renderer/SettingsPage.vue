@@ -44,23 +44,39 @@
 
         <div class="field">
           <div class="field-label" id="settings-font-family-label">正文字体</div>
-          <p class="field-hint">预览里的正文用这套字，改完马上生效，并记住到下次打开。按钮、菜单和文件树仍用系统字体。</p>
-          <div
-            id="settings-font-family"
-            class="font-choices"
-            role="radiogroup"
-            aria-labelledby="settings-font-family-label"
-          >
-            <label v-for="opt in fontFamilies" :key="opt.id" class="font-choice">
-              <input
-                type="radio"
-                name="reading-font"
-                :value="opt.stack"
-                :checked="appearance.fontFamily === opt.stack"
-                @change="$emit('update', { fontFamily: opt.stack })"
-              />
-              <span>{{ opt.name }}</span>
-            </label>
+          <p class="field-hint">预览里的正文用这里选的字体，改完马上生效，并记住到下次打开。列表里是这台电脑已安装的字体，思源黑体随应用自带。按钮、菜单和文件树仍用系统字体。</p>
+          <div ref="fontPickerRef" class="font-picker">
+            <button
+              id="settings-font-family"
+              type="button"
+              class="field-control font-picker-button"
+              aria-haspopup="listbox"
+              :aria-expanded="fontOpen"
+              aria-controls="settings-font-family-list"
+              @click="fontOpen = !fontOpen"
+            >
+              <span class="font-picker-value">{{ selectedFontName }}</span>
+              <span class="font-picker-caret" aria-hidden="true">▾</span>
+            </button>
+            <ul
+              v-if="fontOpen"
+              id="settings-font-family-list"
+              ref="fontMenuRef"
+              class="font-menu"
+              role="listbox"
+              aria-labelledby="settings-font-family-label"
+            >
+              <li v-for="opt in fontOptions" :key="opt.id" role="presentation">
+                <button
+                  type="button"
+                  class="font-option"
+                  role="option"
+                  :aria-selected="appearance.fontFamily === opt.stack"
+                  :class="{ selected: appearance.fontFamily === opt.stack }"
+                  @click="chooseFont(opt.stack)"
+                >{{ opt.name }}</button>
+              </li>
+            </ul>
           </div>
         </div>
 
@@ -107,15 +123,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { EDITOR_PALETTES } from '@wv/shared/themeConfig';
 import { resolveEditorPaletteId } from '@types';
-import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK } from '../electron/appearance';
+import { FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK, readingFontOptions } from '../electron/appearance';
 import type { AppearanceState } from './electronBridge';
 
 const props = withDefaults(
-  defineProps<{ appearance: AppearanceState; copyOnSelect?: boolean }>(),
-  { copyOnSelect: true }
+  defineProps<{ appearance: AppearanceState; systemFonts?: string[]; copyOnSelect?: boolean }>(),
+  { systemFonts: () => [], copyOnSelect: true }
 );
 
 const emit = defineEmits<{
@@ -124,9 +140,48 @@ const emit = defineEmits<{
 }>();
 
 const palettes = EDITOR_PALETTES;
-const fontFamilies = FONT_FAMILY_OPTIONS;
 const fontSizes = FONT_SIZE_OPTIONS;
 const systemFontStack = SYSTEM_FONT_STACK;
+const fontOpen = ref(false);
+const fontPickerRef = ref<HTMLElement | null>(null);
+const fontMenuRef = ref<HTMLElement | null>(null);
+const fontOptions = computed(() => readingFontOptions(props.systemFonts));
+const selectedFontName = computed(
+  () => fontOptions.value.find((opt) => opt.stack === props.appearance.fontFamily)?.name ?? '思源黑体'
+);
+
+function chooseFont(stack: string): void {
+  fontOpen.value = false;
+  emit('update', { fontFamily: stack });
+}
+
+function onFontPointerDown(ev: PointerEvent): void {
+  if (!fontOpen.value) return;
+  const root = fontPickerRef.value;
+  if (root && ev.target instanceof Node && root.contains(ev.target)) return;
+  fontOpen.value = false;
+}
+
+function onFontKeydown(ev: KeyboardEvent): void {
+  if (ev.key === 'Escape') fontOpen.value = false;
+}
+
+watch(fontOpen, async (open) => {
+  if (!open) return;
+  await nextTick();
+  const selected = fontMenuRef.value?.querySelector<HTMLElement>('[aria-selected="true"]');
+  if (typeof selected?.scrollIntoView === 'function') selected.scrollIntoView({ block: 'nearest' });
+});
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onFontPointerDown, true);
+  document.addEventListener('keydown', onFontKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onFontPointerDown, true);
+  document.removeEventListener('keydown', onFontKeydown);
+});
 
 /** auto 时高亮的是系统明暗解析出来的那套配色。 */
 const selectedPaletteId = computed(() =>
@@ -194,25 +249,66 @@ function onToggleCopyOnSelect(checked: boolean): void {
   background: var(--markly-background, #fff);
   color: inherit;
 }
-.font-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.font-picker {
+  position: relative;
+  max-width: 320px;
 }
-.font-choice {
-  display: inline-flex;
+.font-picker-button {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: var(--app-radius-sm);
-  background: var(--markly-background, #fff);
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  max-width: none;
+  text-align: left;
   cursor: pointer;
+  font: inherit;
   font-size: 13px;
 }
-.font-choice:has(input:checked) {
-  border-color: var(--markly-primary, #0969da);
-  box-shadow: 0 0 0 1px var(--markly-primary, #0969da);
+.font-picker-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.font-picker-caret {
+  flex: 0 0 auto;
+  color: var(--markly-textSecondary, #57606a);
+}
+.font-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-md);
+  background: var(--markly-background, #fff);
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+}
+.font-option {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.font-option:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.font-option.selected {
+  background: color-mix(in srgb, var(--markly-primary, #0969da) 16%, transparent);
+  font-weight: 650;
 }
 .theme-grid {
   display: grid;

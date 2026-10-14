@@ -100,8 +100,14 @@ describe('parseAppearance', () => {
     expect(parseAppearance({ theme: 'hotdog-stand' }).theme).toBe('auto');
   });
 
-  it('白名单外的字体退回思源黑体', () => {
-    expect(parseAppearance({ fontFamily: 'Comic Sans MS' }).fontFamily).toBe(READING_FONT_STACK);
+  it('这台电脑没有的字体退回思源黑体，有的则留下来', () => {
+    expect(
+      parseAppearance({ fontFamily: 'Comic Sans MS', systemFonts: ['DejaVu Sans'] }).fontFamily
+    ).toBe(READING_FONT_STACK);
+    expect(
+      parseAppearance({ fontFamily: '"DejaVu Sans", sans-serif', systemFonts: ['DejaVu Sans', 'Liberation Mono'] })
+        .fontFamily
+    ).toBe('"DejaVu Sans", sans-serif');
   });
 
   it('空字符串仍是系统默认', () => {
