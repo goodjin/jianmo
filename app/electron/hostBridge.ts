@@ -8,6 +8,8 @@ import { structuredKindFromName } from './documentKind';
 import { buildStructuredPreviewHtml } from './jsonView';
 import { inlineLocalPreviewImages } from './previewImages';
 import { applyPreviewTheme } from './previewTheme';
+import { previewFontOptions } from './readingFontFace';
+import { getInstalledFontFamilies } from './systemFonts';
 import { resolveEditorPalette } from '../../webview/src/shared/themeConfig';
 import { saveAppConfigPatch } from './config';
 
@@ -55,10 +57,11 @@ export function createHostBridge(opts: HostBridgeOptions) {
             opts.config.editor.theme,
             opts.getPrefersDark?.() ?? false
           );
-          const font = {
-            fontFamily: opts.config.editor.fontFamily,
-            fontSize: opts.config.editor.fontSize,
-          };
+          const font = previewFontOptions(
+            opts.config.editor.fontFamily,
+            opts.config.editor.fontSize,
+            getInstalledFontFamilies()
+          );
           const structured = structuredKindFromName(opts.getCurrentFilePath?.() ?? '');
           if (structured) {
             const html = applyPreviewTheme(buildStructuredPreviewHtml(content, structured), palette, font);

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
 import FileTree from './FileTree.vue';
+import fileTreeSource from './FileTree.vue?raw';
+import { chromeRadiusStyle } from '../chromeRadius';
 import type { ElectronAppBridge } from './electronBridge';
 import type { FileTreeListResult } from '../electron/fileTreeModel';
 
@@ -176,6 +178,35 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree).toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('/');
     expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('窄图标按钮用更小的圆角，同一排的文字按钮仍用按钮圆角', async () => {
+    const css = fileTreeSource.match(/<style scoped>([\s\S]*?)<\/style>/);
+    expect(css).not.toBeNull();
+    const style = document.createElement('style');
+    style.textContent = css![1];
+    document.head.appendChild(style);
+    install({ listFileTree: fakeList() });
+    const el = mount({ activePath: '' });
+    await flush();
+
+    const radius = (selector: string) =>
+      getComputedStyle(el.querySelector(selector)!).borderRadius;
+    const height = (selector: string) =>
+      getComputedStyle(el.querySelector(selector)!).height;
+
+    try {
+      expect(radius('.file-up')).toBe('var(--app-radius-xxs)');
+      expect(radius('.file-toggle')).toBe('var(--app-radius-xxs)');
+      expect(radius('.file-icon-btn:not(.file-up)')).toBe('var(--app-radius-sm)');
+      expect(chromeRadiusStyle['--app-radius-xxs']).toBe('6px');
+      expect(chromeRadiusStyle['--app-radius-sm']).toBe('12px');
+      expect(height('.file-up')).toBe('28px');
+      expect(height('.file-toggle')).toBe('28px');
+      expect(height('.file-icon-btn:not(.file-up)')).toBe('28px');
+    } finally {
+      style.remove();
+    }
   });
 
   it('收起后不渲染树，切换按钮通知外层', async () => {

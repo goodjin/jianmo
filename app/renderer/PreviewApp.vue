@@ -1,6 +1,7 @@
 <template>
   <div
     class="markly-app"
+    :style="chromeRadiusStyle"
     :class="{
       'files-collapsed': fileTreeCollapsed,
     }"
@@ -52,7 +53,11 @@
           <svg v-if="copied" :key="copiedTick" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
           </svg>
-          <span v-else aria-hidden="true">⧉</span>
+          <!-- 两个错开的圆角矩形，前一张盖住后一张。线宽和打勾同一套。 -->
+          <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
+            <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+          </svg>
         </button>
         <div
           ref="exportSplitRef"
@@ -102,6 +107,7 @@
       <SettingsPage
         v-if="isSettingsTab"
         :appearance="appearance"
+        :system-fonts="systemFonts"
         :copy-on-select="copyOnSelect"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
@@ -163,6 +169,7 @@ import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
+import { parseSystemFontList } from '../electron/appearance';
 import {
   electronApp,
   parseAppearance,
@@ -172,6 +179,7 @@ import {
 } from './electronBridge';
 import { applyEditorPalette, resolveEditorPalette } from '@wv/shared/themeConfig';
 import { buildPreviewSrcdoc, visibleTextFromHtml } from './previewSrcdoc';
+import { chromeRadiusStyle } from '../chromeRadius';
 import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
@@ -186,6 +194,8 @@ const error = ref('');
 const tabs = ref<TabSummary[]>([]);
 const activeTabId = ref('');
 const appearance = ref<AppearanceState>(parseAppearance(null));
+const systemFonts = ref<string[]>([]);
+const systemFontsKnown = ref(false);
 
 const isSettingsTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.kind === 'settings'
@@ -280,11 +290,28 @@ function applyShellPalette(): void {
 
 function refreshAppearance(): void {
   try {
-    appearance.value = parseAppearance(electronApp()?.getAppearance?.());
+    const raw = electronApp()?.getAppearance?.();
+    if (raw && typeof raw === 'object' && Array.isArray((raw as { systemFonts?: unknown }).systemFonts)) {
+      systemFonts.value = parseSystemFontList((raw as { systemFonts: unknown }).systemFonts);
+      systemFontsKnown.value = true;
+    }
+    appearance.value = parseAppearance(raw, systemFontsKnown.value ? systemFonts.value : undefined);
   } catch {
     /* 桥未就绪：留用默认外观 */
   }
   applyShellPalette();
+}
+
+async function refreshSystemFonts(): Promise<void> {
+  const api = electronApp();
+  if (!api?.listSystemFonts) return;
+  try {
+    systemFonts.value = parseSystemFontList(await api.listSystemFonts());
+    systemFontsKnown.value = true;
+    refreshAppearance();
+  } catch (err) {
+    console.warn('[markly] 读取系统字体失败', err);
+  }
 }
 
 async function onUpdateAppearance(patch: Partial<AppearanceState>): Promise<void> {
@@ -723,6 +750,7 @@ watch(isSettingsTab, (isSettings) => {
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
+  void refreshSystemFonts();
   refreshReaderPrefs();
   window.addEventListener('message', onSelectionCopyMessage);
   try {
@@ -786,6 +814,8 @@ html, body, #app {
 .markly-app {
   --files-col: 220px;
   --chrome-row: 40px;
+  /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   display: grid;
   grid-template-columns: var(--files-col) 1fr;
   grid-template-rows: var(--chrome-row) 1fr;
@@ -819,7 +849,7 @@ html, body, #app {
 .markly-app.files-collapsed .open-main::before { content: '开'; }
 .markly-app.files-collapsed .open-caret { display: none; }
 .markly-app.files-collapsed .open-main {
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   min-width: 28px;
   padding: 0 6px;
 }
@@ -830,7 +860,7 @@ html, body, #app {
   min-height: 32px;
   box-sizing: border-box;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: var(--markly-text, #24292e);
   cursor: pointer;
@@ -909,18 +939,23 @@ html, body, #app {
 :global(html[data-theme='dark']) .tab-copy.is-copied:hover {
   background: rgba(63, 185, 80, 0.28);
 }
+.tab-copy-icon,
 .tab-copy-mark {
   width: 15px;
   height: 15px;
   display: block;
   overflow: visible;
 }
+.tab-copy-icon rect,
+.tab-copy-icon path,
 .tab-copy-mark path {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.tab-copy-mark path {
   stroke-dasharray: 18;
   stroke-dashoffset: 18;
   animation: tab-copy-draw 280ms ease-out forwards;
@@ -978,9 +1013,9 @@ html, body, #app {
   z-index: 30;
   min-width: 148px;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
 }
@@ -993,8 +1028,8 @@ html, body, #app {
   color: var(--markly-text, #24292e);
   font-size: 12px;
   line-height: 1.4;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 7px 12px;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
@@ -1048,7 +1083,7 @@ html, body, #app {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--markly-textSecondary, #57606a);
   cursor: pointer;
@@ -1068,6 +1103,8 @@ html, body, #app {
 .doc-outline-row {
   font-size: 13px;
   line-height: 1.45;
+  margin: 0 6px;
+  border-radius: var(--app-radius-sm);
   padding: 5px 12px 5px 0;
   cursor: pointer;
   white-space: nowrap;
@@ -1103,7 +1140,7 @@ html, body, #app {
   transform: translateX(-50%);
   margin: 0;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--app-radius-pill);
   background: var(--markly-text, #24292e);
   color: var(--markly-background, #fff);
   font-size: 12px;

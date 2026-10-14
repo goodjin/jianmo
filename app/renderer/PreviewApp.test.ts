@@ -13,6 +13,66 @@ function install(bridge: Partial<ElectronAppBridge>): void {
   installVsCodeShim();
 }
 
+/** 空闲时的复制图标：后一张圆角矩形在左上露出，前一张在右下，两者错开。 */
+function expectCopySheets(copy: Element): void {
+  const icon = copy.querySelector('.tab-copy-icon');
+  expect(icon).not.toBeNull();
+  const rects = [...icon!.querySelectorAll('rect')];
+  expect(rects).toHaveLength(1);
+  const rect = rects[0]!;
+  const rx = Number(rect.getAttribute('rx'));
+  const x = Number(rect.getAttribute('x'));
+  const y = Number(rect.getAttribute('y'));
+  const w = Number(rect.getAttribute('width'));
+  const h = Number(rect.getAttribute('height'));
+  expect(rx).toBeGreaterThan(0.5);
+  expect(w).toBeGreaterThan(4);
+  expect(h).toBeGreaterThan(4);
+
+  const d = icon!.querySelector('path')?.getAttribute('d') ?? '';
+  const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+/g) ?? [];
+  let i = 0;
+  let px = 0;
+  let py = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const touch = () => {
+    minX = Math.min(minX, px);
+    minY = Math.min(minY, py);
+    maxX = Math.max(maxX, px);
+    maxY = Math.max(maxY, py);
+  };
+  while (i < tokens.length) {
+    const cmd = tokens[i++];
+    const read = () => Number(tokens[i++]);
+    if (cmd === 'M') {
+      px = read();
+      py = read();
+      touch();
+    } else if (cmd === 'V') {
+      py = read();
+      touch();
+    } else if (cmd === 'h') {
+      px += read();
+      touch();
+    } else if (cmd === 'c') {
+      read();
+      read();
+      read();
+      read();
+      px += read();
+      py += read();
+      touch();
+    }
+  }
+  expect(minX).toBeLessThan(x - 1);
+  expect(minY).toBeLessThan(y - 1);
+  expect(x + w).toBeGreaterThan(maxX + 1);
+  expect(y + h).toBeGreaterThan(maxY + 1);
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) {
     await Promise.resolve();
@@ -147,10 +207,11 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(exp.nextElementSibling).toBe(settings);
     expect(settings.nextElementSibling).toBe(plus);
     expect(settings.textContent?.trim()).toBe('设置');
-    // 图标按钮：不再带「复制」文字，空闲时是复制符号
+    // 图标按钮：不再带「复制」文字。空闲时是两个错开的圆角矩形，不是字符方块。
     expect(copy.textContent?.trim()).not.toContain('复制');
-    expect(copy.textContent).toContain('⧉');
+    expect(copy.textContent).not.toContain('⧉');
     expect(copy.querySelector('.tab-copy-mark')).toBeNull();
+    expectCopySheets(copy);
     // 默认不展开格式菜单
     expect(el.querySelector('.export-menu')).toBeNull();
   });
@@ -170,7 +231,7 @@ describe('PreviewApp 顶栏与大纲', () => {
       expect(copyToClipboard).toHaveBeenCalledTimes(1);
       expect(copy.classList.contains('is-copied')).toBe(true);
       expect(copy.querySelector('.tab-copy-mark')).not.toBeNull();
-      expect(copy.textContent).not.toContain('⧉');
+      expect(copy.querySelector('.tab-copy-icon')).toBeNull();
       expect(copy.getAttribute('aria-label')).toContain('已复制');
 
       const firstMark = copy.querySelector('.tab-copy-mark');
@@ -183,7 +244,7 @@ describe('PreviewApp 顶栏与大纲', () => {
       await nextTick();
       expect(copy.classList.contains('is-copied')).toBe(false);
       expect(copy.querySelector('.tab-copy-mark')).toBeNull();
-      expect(copy.textContent).toContain('⧉');
+      expectCopySheets(copy);
       expect(copy.getAttribute('aria-label')).toContain('复制全文');
     } finally {
       vi.useRealTimers();
@@ -202,6 +263,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(copy.classList.contains('is-copied')).toBe(false);
     expect(copy.classList.contains('is-failed')).toBe(true);
     expect(copy.querySelector('.tab-copy-mark')).toBeNull();
+    expectCopySheets(copy);
     expect(copy.getAttribute('aria-label')).toBe('复制失败');
   });
 

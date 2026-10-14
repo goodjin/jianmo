@@ -1,0 +1,16 @@
+/* 设置页里的正文示例要用思源黑体。按钮和文件树不引用这个家族名。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/NotoSansSC-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/NotoSansSC-Bold.woff2") format("woff2");
+}
