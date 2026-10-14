@@ -5,18 +5,50 @@
  * 冷启动时 open-file / activate 还可能发生在 app ready 之前，这时不能创建窗口。
  */
 
+/**
+ * 跨桌面时必须跳过进程类型切换。
+ * 不跳过的话，macOS 会把应用改成菜单栏小工具，图标就从程序坞和切换列表里消失。
+ */
+const KEEP_IN_DOCK = {
+  visibleOnFullScreen: true,
+  skipTransformProcessType: true,
+} as const;
+
 export interface RevealableWindow {
   isMinimized(): boolean;
   restore(): void;
   show(): void;
   focus(): void;
   /** 把窗口短暂放到所有桌面，再收回当前桌面，否则它会停在别的空间里。 */
-  setVisibleOnAllWorkspaces?(visible: boolean, options?: { visibleOnFullScreen?: boolean }): void;
+  setVisibleOnAllWorkspaces?(
+    visible: boolean,
+    options?: { visibleOnFullScreen?: boolean; skipTransformProcessType?: boolean }
+  ): void;
   moveTop?(): void;
 }
 
 export interface RevealableApp {
-  focus(options?: { steal?: boolean }): void;
+  focus(options?: { steal: boolean }): void;
+  /** 确保图标留在程序坞里，方便随时切回来。 */
+  showInDock?(): void;
+}
+
+export interface DockController {
+  isVisible(): boolean;
+  show(): void | Promise<void>;
+}
+
+export interface DockApp {
+  setActivationPolicy?(policy: 'regular' | 'accessory' | 'prohibited'): void;
+  dock?: DockController | null;
+}
+
+/** 普通应用：出现在程序坞里。图标已经在就不重复显示，避免叠出两个图标。 */
+export function showAppInDock(host: DockApp): void {
+  host.setActivationPolicy?.('regular');
+  const dock = host.dock;
+  if (!dock || dock.isVisible()) return;
+  void dock.show();
 }
 
 export interface RevealEventSource {
@@ -34,10 +66,12 @@ export function revealAppWindow(win: RevealableWindow, host: RevealableApp, plat
   if (platform !== 'darwin') return;
   host.focus({ steal: true });
   if (typeof win.setVisibleOnAllWorkspaces === 'function') {
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    win.setVisibleOnAllWorkspaces(true, KEEP_IN_DOCK);
     win.focus();
-    win.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true });
+    win.setVisibleOnAllWorkspaces(false, KEEP_IN_DOCK);
   }
+  // 跨桌面之后再确认一次。前面的调用若改过进程类型，这里把它变回能从程序坞点开的普通应用。
+  host.showInDock?.();
   win.moveTop?.();
 }
 

@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版程序坞图标**（0.6.4）：窗口拉到当前桌面时，`setVisibleOnAllWorkspaces` 默认会把进程改成菜单栏小工具，图标从程序坞和切换列表消失。必须带 `skipTransformProcessType: true`。显示后 `setActivationPolicy('regular')`，图标不在才 `dock.show()`。不要先 hide 再 show。
 - [X] **桌面版窄图标按钮圆角**（0.6.3）：文件树「上一级」「收起」用 6px。约 22px 宽上 8px 仍会胖成胶囊。同排的「刷新」和顶栏宽按钮仍是 12px。高度没改。
 - [X] **桌面版复制图标**（0.6.2）：顶栏空闲状态换成两个错开的圆角矩形，线宽跟打勾一致。成功打勾和失败红框不动。插件工具栏没有这个图标。
 - [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
@@ -144,5 +145,6 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。
 - 最近打开菜单盖在预览 iframe 上时，父页面收不到 iframe 里的点击。要另铺一层透明遮罩来收起，不能只听文档上的 mousedown。
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
+- macOS 上 `setVisibleOnAllWorkspaces` 必须带 `skipTransformProcessType: true`。默认会把进程改成菜单栏小工具，应用从程序坞和 Cmd+Tab 消失。跨桌面之后用 `setActivationPolicy('regular')` 收回来；图标已经可见就不要再 `dock.show()`，更不要先 `hide` 再 `show`（会叠出两个图标）。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。

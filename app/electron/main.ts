@@ -29,6 +29,7 @@ import {
   handleExternalFileOpen,
   revealAppWindow,
   scheduleHiddenWindowReveal,
+  showAppInDock,
 } from './fileOpenWindow';
 import {
   DIR_MD_PAGE_SIZE,
@@ -488,7 +489,14 @@ function hasLiveMainWindow(): boolean {
 function revealMainWindow(): void {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
-  revealAppWindow(win, app, process.platform);
+  revealAppWindow(
+    win,
+    {
+      focus: (options) => app.focus(options),
+      showInDock: () => showAppInDock(app),
+    },
+    process.platform
+  );
 }
 
 function attachForegroundRecovery(win: BrowserWindow): void {
@@ -577,6 +585,8 @@ app.on('open-file', (e, p) => {
 });
 
 app.whenReady().then(() => {
+  // 窗口先藏着等画面画完。这段时间也要像其他应用一样留在程序坞里，方便切过去。
+  if (process.platform === 'darwin') showAppInDock(app);
   const stateDir = path.join(app.getPath('home'), '.markly');
   try {
     fs.mkdirSync(stateDir, { recursive: true });
