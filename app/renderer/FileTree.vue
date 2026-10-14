@@ -264,6 +264,11 @@ onMounted(() => {
   height: 28px;
   padding: 0 8px;
 }
+/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。 */
+.file-up,
+.file-toggle {
+  border-radius: var(--app-radius-xxs);
+}
 .file-icon-btn:hover,
 .file-toggle:hover {
   background: var(--markly-surface, #f6f8fa);

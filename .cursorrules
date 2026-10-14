@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版窄图标按钮圆角**（0.6.3）：文件树「上一级」「收起」用 6px。约 22px 宽上 8px 仍会胖成胶囊。同排的「刷新」和顶栏宽按钮仍是 12px。高度没改。
 - [X] **桌面版复制图标**（0.6.2）：顶栏空闲状态换成两个错开的圆角矩形，线宽跟打勾一致。成功打勾和失败红框不动。插件工具栏没有这个图标。
 - [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
 - [X] **桌面版正文默认思源黑体**（0.6.0）：字体文件打进应用，设置里可改回系统字体。只作用于预览正文，按钮和文件树仍用系统字体。不改插件 webview。
@@ -132,7 +133,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 ## Lessons（项目）
 
-- 桌面壳层圆角只走 `app/chromeRadius.ts`（`--app-radius-*`）。不要改 webview 的 `--markly-radius-*`，否则 VS Code 插件会一起变圆。
+- 桌面壳层圆角只走 `app/chromeRadius.ts`（`--app-radius-*`）。不要改 webview 的 `--markly-radius-*`，否则 VS Code 插件会一起变圆。几乎方的小图标按钮用 `--app-radius-xxs`（6px）；宽的文字按钮继续用 `--app-radius-sm`（12px）。不要靠加宽按钮来掩盖圆角。
 - 桌面正文思源黑体只嵌进预览 iframe 和设置示例。不要改导出样式里的 `--font-body`，也不要给按钮、文件树、菜单设这套字。
 - 正文字体下拉里的系统字体必须运行时枚举，不要写回一份短名单。思源黑体是打进应用的，不要从系统列表里再冒充一次。
 - **`markly.editor.openMode`** + `workspaceState`（`MarkdownEditorProvider` 按文档 URI）控制初始模式；与工作区 **`settings.json`** 中的用户/工作区设置并列；跨设备不同步除非你自行做同步。
