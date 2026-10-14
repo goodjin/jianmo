@@ -33,10 +33,12 @@ import {
   DIR_MD_PAGE_SIZE,
   parseRecentFiles,
   removeRecentFile,
+  renameRecentFile,
   upsertRecentFile,
   type RecentFileRecord,
 } from './recentFiles';
 import { resolveFileTreeRoot } from './fileTreeModel';
+import { applyFileRename, destinationTaken } from './fileRename';
 import {
   activateTab,
   closeTab,
@@ -46,6 +48,7 @@ import {
   openBlankTab,
   openFileTab,
   openSettingsTab,
+  renameFileInTabs,
   setActiveContent,
   summarizeTabs,
   tabDisplayTitle,
@@ -216,6 +219,46 @@ function loadFile(p: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/** 改名后标签和最近打开都换成新路径，窗口标题跟着变。 */
+function renameOpenedFile(from: string, nextName: string): { ok: boolean; path: string; error: string } {
+  const result = applyFileRename(from, nextName, {
+    taken: (dest) =>
+      destinationTaken(
+        from,
+        dest,
+        (p) => {
+          try {
+            return fs.existsSync(p);
+          } catch {
+            return true;
+          }
+        },
+        (a, b) => fs.realpathSync(a) === fs.realpathSync(b)
+      ),
+    isFile: (p) => {
+      try {
+        return fs.existsSync(p) && fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    },
+    rename: (a, b) => {
+      try {
+        fs.renameSync(a, b);
+      } catch (error) {
+        throw new Error(readFailureDetail(a, error));
+      }
+    },
+  });
+  if (!result.ok) return { ok: false, path: from, error: result.error };
+  if (!result.unchanged) {
+    tabs = renameFileInTabs(tabs, result.from, result.to);
+    writeRecent(renameRecentFile(readRecent(), result.from, result.to));
+    emitActiveDocument();
+  }
+  return { ok: true, path: result.to, error: '' };
 }
 
 function openExistingPath(p: string): string | null {
@@ -626,6 +669,18 @@ app.whenReady().then(() => {
   ipcMain.handle('app:file-tree:set-root', (_e, raw: unknown) =>
     commitFileTreeRoot(typeof raw === 'string' ? raw : '')
   );
+  ipcMain.handle('app:reveal-in-folder', (_e, filePath: unknown) => {
+    const raw = typeof filePath === 'string' ? filePath.trim() : '';
+    if (!raw) return false;
+    shell.showItemInFolder(path.resolve(raw));
+    return true;
+  });
+  ipcMain.handle('app:rename-file', (_e, payload: unknown) => {
+    const obj = payload && typeof payload === 'object' ? (payload as { from?: unknown; name?: unknown }) : {};
+    const from = typeof obj.from === 'string' ? obj.from : '';
+    const name = typeof obj.name === 'string' ? obj.name : '';
+    return renameOpenedFile(from, name);
+  });
   ipcMain.handle('app:file-tree:list', (_e, dir: unknown) => {
     // 目录树从文件系统根铺开，不再限制在曾经选过的文件夹里。
     const target = typeof dir === 'string' ? dir.trim() : '';

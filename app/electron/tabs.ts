@@ -147,6 +147,21 @@ export function closeTab(state: TabsState, id: string, blankId: string): TabsSta
   return { tabs, activeId: nextActive.id };
 }
 
+/**
+ * 磁盘上的文件改名后，已打开的标签跟着换路径。正文不动。
+ * 没有这个路径的标签时原样返回。
+ */
+export function renameFileInTabs(state: TabsState, fromPath: string, toPath: string): TabsState {
+  const from = String(fromPath ?? '').trim();
+  const to = String(toPath ?? '').trim();
+  if (!from || !to || from === to) return state;
+  if (!state.tabs.some((tab) => tab.filePath === from)) return state;
+  return {
+    tabs: state.tabs.map((tab) => (tab.filePath === from ? { ...tab, filePath: to } : tab)),
+    activeId: state.activeId,
+  };
+}
+
 /** 活动标签正文回写（CONTENT_CHANGE / SAVE）。无活动标签时原样返回。 */
 export function setActiveContent(state: TabsState, content: string): TabsState {
   if (!getActiveTab(state)) return state;

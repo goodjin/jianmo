@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('electron', {
   pickFileTreeRoot: (): Promise<string | null> => ipcRenderer.invoke('app:file-tree:pick'),
   setFileTreeRoot: (dir: string): Promise<string> => ipcRenderer.invoke('app:file-tree:set-root', dir),
   listFileTree: (dir: string): Promise<unknown> => ipcRenderer.invoke('app:file-tree:list', dir),
+  revealInFolder: (filePath: string): Promise<boolean> => ipcRenderer.invoke('app:reveal-in-folder', filePath),
+  renameFile: (from: string, name: string): Promise<unknown> =>
+    ipcRenderer.invoke('app:rename-file', { from, name }),
   onFileTreeRoot: (handler: (root: string) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, root: unknown) => {
       handler(typeof root === 'string' ? root : '');

@@ -178,6 +178,148 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  function menuItems(): HTMLButtonElement[] {
+    return [...document.body.querySelectorAll('.tree-menu button')] as HTMLButtonElement[];
+  }
+
+  function openFileMenu(el: HTMLElement, filePath: string): void {
+    const row = el.querySelector(`[data-path="${filePath}"]`) as HTMLElement;
+    row.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 })
+    );
+  }
+
+  it('文件右键菜单可以复制路径、文件名，并在 Finder 中显示', async () => {
+    const copyExactText = vi.fn(async () => true);
+    const revealInFolder = vi.fn(async () => true);
+    install({ listFileTree: fakeList(), copyExactText, revealInFolder });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+
+    const row = el.querySelector('[data-path="/docs/notes/b.md"]') as HTMLElement;
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 30,
+      clientY: 40,
+    });
+    row.dispatchEvent(event);
+    await flush();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(menuItems().map((btn) => btn.textContent)).toEqual([
+      '重命名',
+      '在 Finder 打开',
+      '复制全路径',
+      '复制文件名',
+    ]);
+
+    menuItems()[3]!.click();
+    await flush();
+    expect(copyExactText).toHaveBeenCalledWith('b.md');
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    menuItems()[2]!.click();
+    await flush();
+    expect(copyExactText).toHaveBeenCalledWith('/docs/notes/b.md');
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    menuItems()[1]!.click();
+    await flush();
+    expect(revealInFolder).toHaveBeenCalledWith('/docs/notes/b.md');
+  });
+
+  it('点菜单外面或按 Esc 会收起；文件夹右键没有这几个菜单', async () => {
+    install({ listFileTree: fakeList() });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+
+    const dir = el.querySelector('[data-path="/docs"]') as HTMLElement;
+    const dirEvent = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    dir.dispatchEvent(dirEvent);
+    await flush();
+    expect(dirEvent.defaultPrevented).toBe(false);
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).not.toBeNull();
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+  });
+
+  it('重命名成功后刷新所在目录，非法名字和重名留在输入框里', async () => {
+    let renamed = false;
+    const listFileTree = vi.fn(async (dir: string) => {
+      if (renamed && dir === '/docs/notes') {
+        return {
+          dir,
+          entries: [{ name: 'c.md', path: '/docs/notes/c.md', kind: 'file' as const }],
+          error: '',
+        };
+      }
+      return TREE[dir] ?? { dir, entries: [], error: '' };
+    });
+    const renameFile = vi.fn(async (from: string, name: string) => {
+      if (name === 'taken.md') return { ok: false, path: from, error: '已有同名文件' };
+      renamed = true;
+      return { ok: true, path: '/docs/notes/c.md', error: '' };
+    });
+    install({ listFileTree, renameFile });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    menuItems()[0]!.click();
+    await flush();
+
+    const input = el.querySelector('.tree-rename') as HTMLInputElement;
+    expect(input.value).toBe('b.md');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(renameFile).not.toHaveBeenCalled();
+    expect(el.querySelector('.tree-rename')).toBeNull();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    menuItems()[0]!.click();
+    await flush();
+    const again = el.querySelector('.tree-rename') as HTMLInputElement;
+    again.value = 'a/b.md';
+    again.dispatchEvent(new Event('input', { bubbles: true }));
+    again.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(renameFile).not.toHaveBeenCalled();
+    expect(el.querySelector('.tree-rename-error')?.textContent).toBe('文件名不能包含斜杠');
+
+    again.value = 'taken.md';
+    again.dispatchEvent(new Event('input', { bubbles: true }));
+    again.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(renameFile).toHaveBeenCalledWith('/docs/notes/b.md', 'taken.md');
+    expect(el.querySelector('.tree-rename-error')?.textContent).toBe('已有同名文件');
+
+    again.value = 'c.md';
+    again.dispatchEvent(new Event('input', { bubbles: true }));
+    again.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(renameFile).toHaveBeenCalledWith('/docs/notes/b.md', 'c.md');
+    expect(el.querySelector('[data-path="/docs/notes/c.md"]')).not.toBeNull();
+    expect(el.querySelector('.tree-rename')).toBeNull();
+    expect(listFileTree.mock.calls.filter((call) => call[0] === '/docs/notes').length).toBeGreaterThan(1);
+  });
+
   it('收起后不渲染树，切换按钮通知外层', async () => {
     const onToggle = vi.fn();
     install({ listFileTree: fakeList() });

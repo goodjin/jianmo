@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **文件右键菜单 + 代码框复制按钮**（桌面 0.5.8，预览样式 2.3.2）：文件行右键「重命名 / 在 Finder 打开 / 复制全路径 / 复制文件名」。代码块语言名留在框内右上角，复制按钮改到框外上方，悬停才出现。所有 `.markly-codeblock` 共用这一套。
 - [X] **打开文稿里的文档会退出**：macOS 读「文稿 / 桌面 / 下载」时，如果安装包没写用途说明，系统会直接杀掉进程，try/catch 接不住。要在桌面版 Info.plist 里声明这三项目录。**0.5.7**。
 - [X] **设置按钮挪到导出旁边**：从「最近打开」列表最后一行移到顶栏导出按钮右侧。桌面版 **0.5.6**。
 - [X] **桌面版双击 md 不出现窗口**：访达打开文件时 macOS 不一定把应用拉到前台；关窗后进程还在，`open-file` 建了窗口也不 `show/focus`。`activate` 若在 ready 之前 `new BrowserWindow` 会抛错。要点程序坞才看得到。修：排队到 ready、建窗后显示并抢前台、点程序坞时也把已有窗口拉回来。桌面版 **0.5.5**。
@@ -138,3 +139,5 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
+- 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。
+- 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。

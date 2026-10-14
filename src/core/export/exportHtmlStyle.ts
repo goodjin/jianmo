@@ -400,9 +400,10 @@ const TYPOGRAPHY_CSS = `
 
     .markly-code-copy {
       position: absolute;
-      top: 6px;
-      right: 8px;
+      top: 0;
+      right: 0;
       z-index: 2;
+      transform: translateY(calc(-100% + 1px));
       font-family: var(--font-body);
       font-size: 12px;
       line-height: 1;
@@ -413,13 +414,17 @@ const TYPOGRAPHY_CSS = `
       padding: 5px 10px;
       cursor: pointer;
       opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
       transition: opacity 0.12s ease;
       user-select: none;
     }
 
+    /* 悬停时按钮在框的上沿外侧，不盖住框内右上角的语言名。所有代码框共用。 */
     .markly-codeblock:hover .markly-code-copy,
     .markly-code-copy:focus-visible {
       opacity: 1;
+      pointer-events: auto;
     }
 
     .markly-code-copy:hover {

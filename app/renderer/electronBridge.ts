@@ -36,6 +36,8 @@ export interface ElectronAppBridge {
   pickFileTreeRoot?: () => Promise<unknown>;
   setFileTreeRoot?: (dir: string) => Promise<unknown>;
   listFileTree?: (dir: string) => Promise<unknown>;
+  revealInFolder?: (filePath: string) => Promise<boolean>;
+  renameFile?: (from: string, name: string) => Promise<unknown>;
   onFileTreeRoot?: (handler: (root: string) => void) => () => void;
   tabsState?: () => unknown;
   newTab?: () => Promise<unknown>;

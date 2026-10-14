@@ -4,7 +4,28 @@
     role="treeitem"
     :aria-expanded="entry.kind === 'dir' ? String(open) : undefined"
   >
+    <div
+      v-if="renaming"
+      class="tree-row renaming"
+      :style="{ paddingLeft: 8 + depth * 14 + 'px' }"
+      :data-path="entry.path"
+    >
+      <span class="twist" aria-hidden="true"></span>
+      <input
+        class="tree-rename"
+        :value="renameDraft"
+        aria-label="新文件名"
+        @click.stop
+        @mousedown.stop
+        @input="onRenameInput"
+        @keydown.enter.prevent="onCommitRename"
+        @keydown.escape.prevent="onCancelRename"
+        @blur="onCommitRename"
+      />
+    </div>
+    <p v-if="renaming && renameError" class="tree-rename-error">{{ renameError }}</p>
     <button
+      v-else
       type="button"
       class="tree-row"
       :class="{
@@ -15,6 +36,7 @@
       :title="entry.path"
       :data-path="entry.path"
       @click="onClick"
+      @contextmenu="onContextMenu"
     >
       <span class="twist" aria-hidden="true">{{ twist }}</span>
       <span class="tree-name">{{ entry.name }}</span>
@@ -48,11 +70,33 @@ const children = computed(() => ctx?.cache[props.entry.path] ?? []);
 const busy = computed(() => ctx?.loading[props.entry.path] === true && ctx?.cache[props.entry.path] === undefined);
 const err = computed(() => (open.value ? ctx?.errors[props.entry.path] ?? '' : ''));
 const twist = computed(() => (props.entry.kind === 'dir' ? (open.value ? '▾' : '▸') : ''));
+const renaming = computed(() => !!ctx && ctx.renamingPath.value === props.entry.path);
+const renameDraft = computed(() => (renaming.value ? ctx?.renameDraft.value ?? '' : ''));
+const renameError = computed(() => (renaming.value ? ctx?.renameError.value ?? '' : ''));
 
 function onClick(): void {
   if (!ctx) return;
   if (props.entry.kind === 'dir') ctx.toggleDir(props.entry.path);
   else ctx.openFile(props.entry.path);
+}
+
+function onContextMenu(ev: MouseEvent): void {
+  if (!ctx || props.entry.kind !== 'file') return;
+  ev.preventDefault();
+  ctx.openFileMenu(props.entry, ev.clientX, ev.clientY);
+}
+
+function onRenameInput(ev: Event): void {
+  const value = ev.target instanceof HTMLInputElement ? ev.target.value : '';
+  ctx?.setRenameDraft(value);
+}
+
+function onCommitRename(): void {
+  ctx?.commitRename();
+}
+
+function onCancelRename(): void {
+  ctx?.cancelRename();
 }
 </script>
 
@@ -100,6 +144,27 @@ function onClick(): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tree-rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid var(--markly-primary, #0969da);
+  border-radius: 4px;
+  background: var(--markly-background, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tree-rename-error {
+  margin: 0;
+  padding: 0 12px 4px 28px;
+  color: #cf222e;
+  font-size: 11px;
+  line-height: 1.4;
 }
 .tree-note {
   padding: 4px 12px 6px 28px;

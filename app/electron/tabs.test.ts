@@ -14,6 +14,7 @@ import {
   openFileTab,
   openSettingsTab,
   tabDisplayTitle,
+  renameFileInTabs,
   setActiveContent,
   summarizeTabs,
   tabTitle,
@@ -322,5 +323,22 @@ describe('tabDisplayTitle', () => {
     expect(tabDisplayTitle({ id: 's', kind: 'settings', filePath: '', content: '' })).toBe(
       SETTINGS_TAB_TITLE
     );
+  });
+});
+
+describe('renameFileInTabs', () => {
+  it('已打开的文件改名后，标签路径换成新的，正文和活动标签不动', () => {
+    const next = renameFileInTabs(threeFiles(), '/docs/b.md', '/docs/renamed.md');
+    expect(next.tabs.map((t) => t.filePath)).toEqual(['/docs/a.md', '/docs/renamed.md', '/docs/c.md']);
+    expect(next.tabs[1]?.content).toBe('# B');
+    expect(next.activeId).toBe('b');
+    expect(summarizeTabs(next).tabs[1]?.title).toBe('renamed.md');
+  });
+
+  it('没有打开这个文件、或新旧路径相同，就保持原状态', () => {
+    const s = threeFiles();
+    expect(renameFileInTabs(s, '/docs/missing.md', '/docs/x.md')).toBe(s);
+    expect(renameFileInTabs(s, '/docs/b.md', '/docs/b.md')).toBe(s);
+    expect(renameFileInTabs(s, '  ', '/docs/x.md')).toBe(s);
   });
 });
