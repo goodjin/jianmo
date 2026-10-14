@@ -53,7 +53,11 @@
           <svg v-if="copied" :key="copiedTick" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
           </svg>
-          <span v-else aria-hidden="true">⧉</span>
+          <!-- 两个错开的圆角矩形，前一张盖住后一张。线宽和打勾同一套。 -->
+          <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
+            <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+          </svg>
         </button>
         <div
           ref="exportSplitRef"
@@ -935,18 +939,23 @@ html, body, #app {
 :global(html[data-theme='dark']) .tab-copy.is-copied:hover {
   background: rgba(63, 185, 80, 0.28);
 }
+.tab-copy-icon,
 .tab-copy-mark {
   width: 15px;
   height: 15px;
   display: block;
   overflow: visible;
 }
+.tab-copy-icon rect,
+.tab-copy-icon path,
 .tab-copy-mark path {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+.tab-copy-mark path {
   stroke-dasharray: 18;
   stroke-dashoffset: 18;
   animation: tab-copy-draw 280ms ease-out forwards;
