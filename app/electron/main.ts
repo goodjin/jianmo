@@ -10,6 +10,8 @@ import { getInstalledFontFamilies, listInstalledFontFamilies } from './systemFon
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { isOpenableDocumentName } from './documentKind';
 import { readFailureDetail } from './macFolderAccess';
+import { readDocumentForReload } from './reloadDocument';
+import { contentAfterReload, type ReloadIpc } from './reloadResult';
 import { normalizeCopyPayload } from './copyPayload';
 import {
   exportMarkdownDocument,
@@ -217,6 +219,25 @@ function loadFile(p: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * 重新读当前文档。文件不在或读失败时不改标签里的正文。
+ * 读成功且内容和现在不一样，才广播一次，让预览和源码跟着变。
+ */
+function reloadActiveDocument(): ReloadIpc {
+  const active = getActiveTab(tabs);
+  if (!active || active.kind !== 'doc' || !active.filePath.trim()) {
+    return { ok: false, reason: 'no-file' };
+  }
+  const read = readDocumentForReload(active.filePath);
+  const nextContent = contentAfterReload(active.content, read);
+  if (read.ok && nextContent !== active.content) {
+    tabs = setActiveContent(tabs, nextContent);
+    emitActiveDocument();
+  }
+  if (read.ok) return { ok: true };
+  return { ok: false, reason: read.reason };
 }
 
 function openExistingPath(p: string): string | null {
@@ -634,6 +655,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:open-path', (_e, filePath: unknown) =>
     openExistingPath(typeof filePath === 'string' ? filePath : '')
   );
+  ipcMain.handle('app:reload-document', () => reloadActiveDocument());
   ipcMain.handle('app:recent-files:list', () => readRecent());
   ipcMain.handle('app:recent-files:remove', (_e, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : '';

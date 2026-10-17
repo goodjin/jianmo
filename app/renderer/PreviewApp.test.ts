@@ -3,6 +3,12 @@ import { createApp, nextTick, type App } from 'vue';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import PreviewApp from './PreviewApp.vue';
 import { installVsCodeShim } from './vscodeShim';
+import {
+  RELOAD_MISSING_TIP,
+  RELOAD_OK_TIP,
+  RELOAD_TIP_OK_MS,
+  RELOAD_UNREADABLE_TIP,
+} from '../electron/reloadResult';
 import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
 import type { ElectronAppBridge } from './electronBridge';
 
@@ -195,16 +201,22 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(bar.firstElementChild!.classList.contains('tab-strip')).toBe(true);
     expect(el.querySelector('.tab.active')).not.toBeNull();
 
+    const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
     const copy = el.querySelector('.tab-copy') as HTMLElement;
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     const exp = el.querySelector('.export-split') as HTMLElement;
     const settings = el.querySelector('.tab-settings') as HTMLElement;
     const plus = el.querySelector('.tab-new') as HTMLElement;
+    expect(reload).not.toBeNull();
     expect(copy).not.toBeNull();
     expect(source).not.toBeNull();
     expect(exp).not.toBeNull();
     expect(settings).not.toBeNull();
-    // 复制、源码、导出、设置依次排在 "+" 前面
+    // 刷新、复制、源码、导出、设置依次排在 "+" 前面
+    expect(reload.nextElementSibling).toBe(copy);
+    expect(reload.textContent?.trim()).toBe('刷新');
+    expect(reload.getAttribute('aria-label')).toBe('重新加载文档');
+    expect(reload.disabled).toBe(false);
     expect(copy.nextElementSibling).toBe(source);
     expect(source.nextElementSibling).toBe(exp);
     expect(exp.nextElementSibling).toBe(settings);
@@ -455,6 +467,133 @@ describe('PreviewApp 顶栏与大纲', () => {
       '/docs/data.json',
       '/docs/rows.jsonl',
     ]);
+  });
+
+  it('刷新成功后顶部提示一会儿消失，正文换成新的', async () => {
+    vi.useFakeTimers();
+    try {
+      const reloadDocument = vi.fn(async () => {
+        pushMsg('CONTENT_UPDATE', { content: '# 新的标题\n\n新正文' });
+        return { ok: true };
+      });
+      (window as unknown as { electron: ElectronAppBridge }).electron.reloadDocument = reloadDocument;
+      const el = mount();
+      await flush();
+      pushMsg('CONTENT_UPDATE', { content: '# 旧标题\n\n旧正文' });
+      pushMsg('PREVIEW_HTML', { html: '<h1>旧标题</h1>' });
+      await flush();
+
+      (el.querySelector('.tab-reload') as HTMLButtonElement).click();
+      await flush();
+
+      expect(reloadDocument).toHaveBeenCalledTimes(1);
+      expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_OK_TIP);
+      expect(el.querySelector('.reload-tip')?.classList.contains('is-ok')).toBe(true);
+      expect(el.querySelector('.doc-outline')?.textContent).toContain('新的标题');
+
+      await vi.advanceTimersByTimeAsync(RELOAD_TIP_OK_MS);
+      await nextTick();
+      expect(el.querySelector('.reload-tip')).toBeNull();
+      expect(el.querySelector('.doc-outline')?.textContent).toContain('新的标题');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('文件不在时不改正文，顶部提示留着', async () => {
+    vi.useFakeTimers();
+    try {
+      const reloadDocument = vi.fn(async () => ({ ok: false, reason: 'missing' }));
+      (window as unknown as { electron: ElectronAppBridge }).electron.reloadDocument = reloadDocument;
+      const el = mount();
+      await flush();
+      pushMsg('CONTENT_UPDATE', { content: '# 旧标题\n\n旧正文' });
+      pushMsg('PREVIEW_HTML', { html: '<h1>旧标题</h1><p>旧正文</p>' });
+      await flush();
+
+      (el.querySelector('.tab-reload') as HTMLButtonElement).click();
+      await flush();
+
+      expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_MISSING_TIP);
+      expect(el.querySelector('.reload-tip')?.classList.contains('is-missing')).toBe(true);
+      expect(el.querySelector('.doc-outline')?.textContent).toContain('旧标题');
+      expect(el.querySelector('iframe')).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(RELOAD_TIP_OK_MS * 3);
+      await nextTick();
+      expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_MISSING_TIP);
+      expect(el.querySelector('.doc-outline')?.textContent).toContain('旧标题');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('读失败时也不清空，换到别的标签时这条提示让开', async () => {
+    let emit: ((view: unknown) => void) | undefined;
+    (window as unknown as { electron: ElectronAppBridge }).electron.onTabsChanged = (handler) => {
+      emit = handler;
+      return () => {
+        emit = undefined;
+      };
+    };
+    const both = [
+      { id: 't1', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' },
+      { id: 't2', kind: 'doc', title: 'b.md', filePath: '/docs/b.md' },
+    ];
+    electronStub('tabsState').mockReturnValue({ tabs: both, activeId: 't1' });
+    const reloadDocument = vi.fn(async () => ({ ok: false, reason: 'unreadable' }));
+    (window as unknown as { electron: ElectronAppBridge }).electron.reloadDocument = reloadDocument;
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 还在\n\n正文' });
+    await flush();
+
+    (el.querySelector('.tab-reload') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_UNREADABLE_TIP);
+    expect(el.querySelector('.doc-outline')?.textContent).toContain('还在');
+
+    emit?.({ tabs: both, activeId: 't2' });
+    pushMsg('CONTENT_UPDATE', { content: '# 另一篇' });
+    await flush();
+    expect(el.querySelector('.reload-tip')).toBeNull();
+    expect(el.querySelector('.doc-outline')?.textContent).toContain('另一篇');
+
+    emit?.({ tabs: both, activeId: 't1' });
+    pushMsg('CONTENT_UPDATE', { content: '# 还在\n\n正文' });
+    await flush();
+    expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_UNREADABLE_TIP);
+  });
+
+  it('空白页和设置页不能刷新', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: '新标签页', filePath: '' }],
+      activeId: 't1',
+    });
+    const reloadDocument = vi.fn(async () => ({ ok: true }));
+    (window as unknown as { electron: ElectronAppBridge }).electron.reloadDocument = reloadDocument;
+    const el = mount();
+    await flush();
+    const blank = el.querySelector('.tab-reload') as HTMLButtonElement;
+    expect(blank.disabled).toBe(true);
+    expect(blank.getAttribute('aria-label')).toBe('还没有文件可刷新');
+    blank.click();
+    await flush();
+    expect(reloadDocument).not.toHaveBeenCalled();
+    expect(el.querySelector('.reload-tip')).toBeNull();
+
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 's', kind: 'settings', title: '设置', filePath: '' }],
+      activeId: 's',
+    });
+    mounted?.app.unmount();
+    mounted?.el.remove();
+    const again = mount();
+    await flush();
+    const settings = again.querySelector('.tab-reload') as HTMLButtonElement;
+    expect(again.querySelector('.settings-page')).not.toBeNull();
+    expect(settings.disabled).toBe(true);
+    expect(settings.getAttribute('aria-label')).toBe('设置页不能刷新');
   });
 
   it('点源码看到 Markdown 原文，目录先让开，再点回到预览', async () => {

@@ -42,6 +42,14 @@
     >
       <template #pre-new>
         <button
+          class="chrome-btn tab-reload"
+          type="button"
+          :disabled="reloadDisabled"
+          :title="reloadTitle"
+          :aria-label="reloadTitle"
+          @click="onReload"
+        >刷新</button>
+        <button
           class="chrome-btn tab-copy"
           :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
           type="button"
@@ -114,6 +122,14 @@
       @toggle="toggleFileTree"
     />
     <main class="preview-area">
+      <p
+        v-if="visibleReloadTip"
+        :key="visibleReloadTip.seq"
+        class="reload-tip"
+        :class="'is-' + visibleReloadTip.kind"
+        role="status"
+      >{{ visibleReloadTip.text }}</p>
+      <div class="preview-stage">
       <SettingsPage
         v-if="isSettingsTab"
         :appearance="appearance"
@@ -167,6 +183,7 @@
           </template>
         </div>
       </template>
+      </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
   </div>
@@ -182,6 +199,13 @@ import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copy
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
 import { formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import {
+  parseReloadResult,
+  RELOAD_MISSING_TIP,
+  RELOAD_OK_TIP,
+  RELOAD_TIP_OK_MS,
+  RELOAD_UNREADABLE_TIP,
+} from '../electron/reloadResult';
 import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
@@ -287,6 +311,78 @@ function toggleSource(): void {
   console.info('[markly] 切换源码', { open: next, file: activeFilePath.value });
 }
 
+const reloading = ref(false);
+const reloadDisabled = computed(
+  () => isSettingsTab.value || !activeFilePath.value || reloading.value
+);
+const reloadTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能刷新';
+  if (!activeFilePath.value) return '还没有文件可刷新';
+  if (reloading.value) return '正在重新加载…';
+  return '重新加载文档';
+});
+
+interface ReloadTip {
+  tabId: string;
+  seq: number;
+  kind: 'ok' | 'missing' | 'unreadable';
+  text: string;
+}
+
+const reloadTip = ref<ReloadTip | null>(null);
+let reloadTipTimer: ReturnType<typeof setTimeout> | null = null;
+let reloadTipSeq = 0;
+
+const visibleReloadTip = computed(() => {
+  const tip = reloadTip.value;
+  if (!tip || isSettingsTab.value || tip.tabId !== activeTabId.value) return null;
+  return tip;
+});
+
+function clearReloadTipTimer(): void {
+  if (reloadTipTimer) {
+    clearTimeout(reloadTipTimer);
+    reloadTipTimer = null;
+  }
+}
+
+function showReloadTip(kind: ReloadTip['kind'], text: string, autoHide: boolean): void {
+  clearReloadTipTimer();
+  const seq = ++reloadTipSeq;
+  reloadTip.value = { tabId: activeTabId.value, seq, kind, text };
+  if (!autoHide) return;
+  reloadTipTimer = setTimeout(() => {
+    reloadTipTimer = null;
+    if (reloadTip.value?.seq === seq) reloadTip.value = null;
+  }, RELOAD_TIP_OK_MS);
+}
+
+async function onReload(): Promise<void> {
+  if (reloadDisabled.value || !activeTabId.value) return;
+  const api = electronApp();
+  const tabId = activeTabId.value;
+  if (!api?.reloadDocument) {
+    showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+    console.warn('[markly] 重新加载没有通道');
+    return;
+  }
+  reloading.value = true;
+  try {
+    const result = parseReloadResult(await api.reloadDocument());
+    if (activeTabId.value !== tabId) return;
+    console.info('[markly] 重新加载', { ok: result.ok, reason: result.ok ? '' : result.reason, file: activeFilePath.value });
+    if (result.ok) showReloadTip('ok', RELOAD_OK_TIP, true);
+    else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
+    else if (result.reason === 'unreadable') showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+  } catch (err) {
+    if (activeTabId.value !== tabId) return;
+    showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+    console.warn('[markly] 重新加载失败', err);
+  } finally {
+    reloading.value = false;
+  }
+}
+
 /**
  * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
  * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底。
@@ -330,6 +426,10 @@ function applyTabsView(raw: unknown): void {
   }
   for (const id of [...sourceByTab.keys()]) {
     if (!alive.has(id)) sourceByTab.delete(id);
+  }
+  if (reloadTip.value && !alive.has(reloadTip.value.tabId)) {
+    reloadTip.value = null;
+    clearReloadTipTimer();
   }
   syncSourceOpen();
 }
@@ -841,6 +941,7 @@ onUnmounted(() => {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  clearReloadTipTimer();
   clearExportCloseTimer();
   if (exportHintTimer) {
     clearTimeout(exportHintTimer);
@@ -956,6 +1057,14 @@ html, body, #app {
   min-width: 32px;
 }
 /* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
+.tab-reload {
+  align-self: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
+}
 .tab-copy {
   display: inline-flex;
   align-items: center;
@@ -1099,10 +1208,61 @@ html, body, #app {
   grid-row: 2;
   position: relative;
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--markly-background, #fff);
+}
+.preview-stage {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.preview-stage > .settings-page {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+.reload-tip {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-bottom: 1px solid transparent;
+  animation: reload-tip-in 220ms ease-out;
+}
+.reload-tip.is-ok {
+  color: #1a7f37;
+  background: #dafbe1;
+  border-bottom-color: #aceebb;
+}
+.reload-tip.is-missing,
+.reload-tip.is-unreadable {
+  color: #7d4e00;
+  background: #fff8c5;
+  border-bottom-color: #eac54f;
+}
+:global(html[data-theme='dark']) .reload-tip.is-ok {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.18);
+  border-bottom-color: rgba(63, 185, 80, 0.4);
+}
+:global(html[data-theme='dark']) .reload-tip.is-missing,
+:global(html[data-theme='dark']) .reload-tip.is-unreadable {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.18);
+  border-bottom-color: rgba(210, 153, 34, 0.45);
+}
+@keyframes reload-tip-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reload-tip { animation: none; }
 }
 /* 目录画在正文内部左侧，和正文同一张白底，不进顶层分栏 */
 .doc-outline {
