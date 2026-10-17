@@ -109,6 +109,8 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版刷新**（0.6.5）：复制按钮前面「刷新」。成功读盘后顶部绿条，约 2 秒消失。文件不在或读失败不改正文，黄条留着。不要走 `loadFile`，那条失败时会把正文换成错误说明。
+- [X] **桌面版查看源码**（0.6.4）：复制按钮右侧「源码」，点一下看原文，再点回预览。JSON / JSONL 用两空格 pretty；解析失败的原文原样留下，并在上面说明。每个标签各自记住。不改插件。源码区用等宽字体，不套思源黑体。
 - [X] **桌面版窄图标按钮圆角**（0.6.3）：文件树「上一级」「收起」用 6px。约 22px 宽上 8px 仍会胖成胶囊。同排的「刷新」和顶栏宽按钮仍是 12px。高度没改。
 - [X] **桌面版复制图标**（0.6.2）：顶栏空闲状态换成两个错开的圆角矩形，线宽跟打勾一致。成功打勾和失败红框不动。插件工具栏没有这个图标。
 - [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
@@ -146,3 +148,4 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
+- 桌面版重新加载不要调用 `loadFile`。那条在读失败时会把标签正文换成「打开失败」。刷新失败必须留下上次的内容，只出顶部提示。

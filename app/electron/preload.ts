@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
   // 应用本地能力（不走 shim）：调起系统文件选择、读当前打开路径、写入剪贴板、最近打开
   openFile: (): Promise<string | null> => ipcRenderer.invoke('app:open-file'),
   openPath: (filePath: string): Promise<string | null> => ipcRenderer.invoke('app:open-path', filePath),
+  reloadDocument: (): Promise<unknown> => ipcRenderer.invoke('app:reload-document'),
   listRecentFiles: (): Promise<unknown> => ipcRenderer.invoke('app:recent-files:list'),
   removeRecentFile: (filePath: string): Promise<unknown> =>
     ipcRenderer.invoke('app:recent-files:remove', filePath),
