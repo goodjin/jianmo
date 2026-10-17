@@ -8,6 +8,7 @@
  * - 数字 / 布尔 / null：JSON 字面量
  * - 对象 / 数组：这一支的 JSON 文本（JSON.stringify）
  */
+import { APP_RADIUS } from '../chromeRadius';
 import type { StructuredKind } from './documentKind';
 
 export const BOX_COPY_MESSAGE = 'MARKLY_COPY_BOX';
@@ -223,7 +224,7 @@ function page(body: string, extraClass: string): string {
   }
   .twisty {
     border: 1px solid var(--border-color, #d0d7de);
-    border-radius: 4px;
+    border-radius: ${APP_RADIUS.xs};
     background: var(--code-bg, #f6f8fa);
     color: var(--text-color, #24292f);
     padding: 0;
@@ -234,12 +235,12 @@ function page(body: string, extraClass: string): string {
   .node.is-collapsed > .node-children { display: none; }
   .box {
     border: 1px solid var(--border-color, #d0d7de);
-    border-radius: 10px;
+    border-radius: ${APP_RADIUS.md};
     background: var(--bg-color, #fff);
     color: inherit;
     font: inherit;
     line-height: 1.45;
-    padding: 3px 10px;
+    padding: 4px 14px;
     width: fit-content;
     max-width: 100%;
     box-sizing: border-box;

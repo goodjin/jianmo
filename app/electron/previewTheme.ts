@@ -14,6 +14,8 @@ export const PREVIEW_THEME_MARKER = 'data-markly-preview-theme';
 export interface PreviewFontOptions {
   fontFamily?: string;
   fontSize?: number;
+  /** 打进应用的正文字体的 @font-face。系统字体时留空，不要把字体文件塞进正文。 */
+  fontFaceCss?: string;
 }
 
 /** 字号落在导出管线接受的 8–72px 内；非法值退回 16。 */
@@ -35,19 +37,20 @@ export function buildPreviewThemeCss(palette: EditorPalette, font: PreviewFontOp
   const family = sanitizeFontFamily(font.fontFamily);
   const size = normalizePreviewFontSize(font.fontSize);
   const bodyFont = [
-    family ? `      font-family: ${family};` : '',
+    family ? `      font-family: var(--font-body);` : '',
     `      font-size: ${size}px;`,
   ]
     .filter(Boolean)
     .join('\n');
+  const face = typeof font.fontFaceCss === 'string' ? font.fontFaceCss.trim() : '';
 
-  return `    :root {
+  return `${face ? `${face}\n` : ''}    :root {
       --bg-color: ${c.background};
       --text-color: ${c.text};
       --code-bg: ${c.codeBackground};
       --border-color: ${c.border};
       --link-color: ${c.link};
-      --link-hover: ${c.linkHover};
+      --link-hover: ${c.linkHover};${family ? `\n      --font-body: ${family};` : ''}
     }
     body {
 ${bodyFont}

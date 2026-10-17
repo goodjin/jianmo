@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApp, type App } from 'vue';
+import { createApp, nextTick, type App } from 'vue';
 import SettingsPage from './SettingsPage.vue';
 import { EDITOR_PALETTES } from '../../webview/src/shared/themeConfig';
-import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS } from '../electron/appearance';
+import { FONT_SIZE_OPTIONS, READING_FONT_STACK, fontStackForFamily } from '../electron/appearance';
+import { listInstalledFontFamilies } from '../electron/systemFonts';
 import type { AppearanceState } from './electronBridge';
-
-const GEORGIA = "Georgia, 'Times New Roman', serif";
 
 function appearance(over: Partial<AppearanceState> = {}): AppearanceState {
   return { theme: 'github-light', fontFamily: '', fontSize: 16, prefersDark: false, ...over };
@@ -97,22 +96,52 @@ describe('设置页 · 外观栏目', () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ theme: 'github-dark' });
   });
 
-  it('字体下拉列出全部内置字体，选中当前值', () => {
-    const el = mount({ appearance: appearance({ fontFamily: GEORGIA }) });
-    const select = el.querySelector('#settings-font-family') as HTMLSelectElement;
-    expect([...select.options].map((o) => o.textContent)).toEqual(
-      FONT_FAMILY_OPTIONS.map((o) => o.name)
+  it('正文字体下拉先是系统默认和思源黑体，后面是这台电脑枚举到的字体', async () => {
+    const installed = await listInstalledFontFamilies();
+    expect(installed.length).toBeGreaterThan(8);
+    const el = mount({
+      appearance: appearance({ fontFamily: READING_FONT_STACK }),
+      systemFonts: installed,
+    });
+    expect(el.querySelector('#settings-font-family-label')!.textContent).toBe('正文字体');
+    expect(el.textContent).toContain('预览里的正文');
+    expect(el.textContent).toContain('这台电脑已安装的字体');
+    expect(el.textContent).toContain('按钮、菜单和文件树仍用系统字体');
+    const button = el.querySelector('#settings-font-family') as HTMLButtonElement;
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(button.textContent).toContain('思源黑体');
+    expect(el.querySelector('#settings-font-family-list')).toBeNull();
+    button.click();
+    await nextTick();
+    const names = [...el.querySelectorAll('#settings-font-family-list [role="option"]')].map((node) =>
+      node.textContent?.trim()
     );
-    expect(select.value).toBe(GEORGIA);
+    expect(names[0]).toBe('系统默认');
+    expect(names[1]).toBe('思源黑体');
+    expect(names.slice(2)).toEqual(installed);
+    expect(names.length).toBeGreaterThan(10);
+    const selected = el.querySelector('#settings-font-family-list [aria-selected="true"]');
+    expect(selected?.textContent?.trim()).toBe('思源黑体');
   });
 
-  it('换字体抛出所选字体栈', () => {
+  it('从下拉里选中系统字体时抛出那一款，而不是思源黑体', async () => {
+    const installed = await listInstalledFontFamilies();
+    const family = installed.find((name) => name === 'DejaVu Sans') ?? installed[0]!;
     const onUpdate = vi.fn();
-    const el = mount({ onUpdate });
-    const select = el.querySelector('#settings-font-family') as HTMLSelectElement;
-    select.value = GEORGIA;
-    change(select);
-    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: GEORGIA });
+    const el = mount({
+      appearance: appearance({ fontFamily: '' }),
+      systemFonts: installed,
+      onUpdate,
+    });
+    (el.querySelector('#settings-font-family') as HTMLButtonElement).click();
+    await nextTick();
+    const option = [...el.querySelectorAll('#settings-font-family-list [role="option"]')].find(
+      (node) => node.textContent?.trim() === family
+    ) as HTMLButtonElement;
+    option.click();
+    await nextTick();
+    expect(onUpdate).toHaveBeenCalledWith({ fontFamily: fontStackForFamily(family) });
+    expect(el.querySelector('#settings-font-family-list')).toBeNull();
   });
 
   it('字号下拉列出全部档位，选中当前值', () => {
@@ -131,16 +160,33 @@ describe('设置页 · 外观栏目', () => {
     expect(onUpdate).toHaveBeenCalledWith({ fontSize: 22 });
   });
 
-  it('示例文字跟着字体与字号变', () => {
-    const el = mount({ appearance: appearance({ fontFamily: GEORGIA, fontSize: 24 }) });
+  it('示例文字用上所选正文字体和字号', () => {
+    const el = mount({ appearance: appearance({ fontFamily: READING_FONT_STACK, fontSize: 24 }) });
     const sample = el.querySelector('.sample') as HTMLElement;
     expect(sample.style.fontSize).toBe('24px');
-    expect(sample.style.fontFamily).toContain('Georgia');
+    expect(sample.style.fontFamily).toContain('Noto Sans SC');
+    expect(sample.textContent).toContain('这是一段中文示例文字');
   });
 
-  it('系统默认字体时示例不写死 font-family', () => {
+  it('系统默认时示例用操作系统字体，不用思源黑体', () => {
     const el = mount({ appearance: appearance({ fontFamily: '' }) });
-    expect((el.querySelector('.sample') as HTMLElement).style.fontFamily).toBe('');
+    const family = (el.querySelector('.sample') as HTMLElement).style.fontFamily;
+    expect(family).toContain('apple-system');
+    expect(family).toContain('PingFang SC');
+    expect(family).not.toContain('Noto Sans SC');
+  });
+
+  it('选中系统字体时示例用那一款，不用思源黑体', async () => {
+    const installed = await listInstalledFontFamilies();
+    const family = installed.find((name) => name === 'Liberation Serif') ?? installed[0]!;
+    const el = mount({
+      appearance: appearance({ fontFamily: fontStackForFamily(family) }),
+      systemFonts: installed,
+    });
+    const sample = el.querySelector('.sample') as HTMLElement;
+    expect(sample.style.fontFamily).toContain(family);
+    expect(sample.style.fontFamily).not.toContain('Noto Sans SC');
+    expect((el.querySelector('#settings-font-family') as HTMLElement).textContent).toContain(family);
   });
 });
 

@@ -95,7 +95,7 @@ const emit = defineEmits<{
   box-sizing: border-box;
   border: 1px solid transparent;
   border-bottom: 0;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
   font-size: 12px;
   line-height: 1.4;
   color: var(--markly-textSecondary, #57606a);
@@ -127,7 +127,7 @@ const emit = defineEmits<{
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--app-radius-xs);
   background: transparent;
   color: inherit;
   font-size: 14px;
@@ -146,7 +146,7 @@ const emit = defineEmits<{
   height: 26px;
   padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: var(--markly-text, #24292e);
   font-size: 16px;

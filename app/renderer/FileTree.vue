@@ -426,7 +426,7 @@ onUnmounted(() => {
 .file-icon-btn,
 .file-toggle {
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: var(--markly-text, #24292e);
   cursor: pointer;
@@ -434,6 +434,11 @@ onUnmounted(() => {
   line-height: 1.3;
   height: 28px;
   padding: 0 8px;
+}
+/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。 */
+.file-up,
+.file-toggle {
+  border-radius: var(--app-radius-xxs);
 }
 .file-icon-btn:hover,
 .file-toggle:hover {
@@ -492,7 +497,7 @@ onUnmounted(() => {
   margin: 0;
   padding: 4px;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   box-shadow: 0 8px 24px rgba(31, 35, 40, 0.16);
 }
@@ -502,7 +507,7 @@ onUnmounted(() => {
   margin: 0;
   padding: 6px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--markly-text, #24292e);
   font: inherit;

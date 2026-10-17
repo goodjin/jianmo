@@ -32,7 +32,7 @@
         current: entry.kind === 'file' && entry.path === activePath,
         dir: entry.kind === 'dir',
       }"
-      :style="{ paddingLeft: 8 + depth * 14 + 'px' }"
+      :style="{ paddingLeft: 12 + depth * 14 + 'px' }"
       :title="entry.path"
       :data-path="entry.path"
       @click="onClick"
@@ -111,11 +111,12 @@ function onCancelRename(): void {
   display: flex;
   align-items: center;
   gap: 4px;
-  width: 100%;
-  margin: 0;
+  width: calc(100% - 12px);
+  margin: 0 6px;
   padding-top: 5px;
   padding-bottom: 5px;
-  padding-right: 10px;
+  padding-right: 12px;
+  border-radius: var(--app-radius-sm);
   box-sizing: border-box;
   border: 0;
   background: transparent;
@@ -152,7 +153,7 @@ function onCancelRename(): void {
   margin: 0;
   padding: 0 4px;
   border: 1px solid var(--markly-primary, #0969da);
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: inherit;
   font: inherit;

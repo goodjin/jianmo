@@ -71,11 +71,13 @@ describe('buildPreviewThemeCss', () => {
 
   it('给了字体就写 font-family，没给就只写字号', () => {
     const withFont = buildPreviewThemeCss(DRACULA, { fontFamily: 'Menlo, monospace', fontSize: 20 });
-    expect(withFont).toContain('font-family: Menlo, monospace;');
+    expect(withFont).toContain('--font-body: Menlo, monospace;');
+    expect(withFont).toContain('font-family: var(--font-body);');
     expect(withFont).toContain('font-size: 20px;');
 
     const noFont = buildPreviewThemeCss(DRACULA, { fontSize: 20 });
     expect(noFont).not.toContain('font-family');
+    expect(noFont).not.toContain('--font-body');
     expect(noFont).toContain('font-size: 20px;');
   });
 
@@ -118,7 +120,8 @@ describe('applyPreviewTheme', () => {
 
   it('字体设置一并注入', () => {
     const out = applyPreviewTheme(HTML, GITHUB_LIGHT, { fontFamily: 'Georgia, serif', fontSize: 22 });
-    expect(out).toContain('font-family: Georgia, serif;');
+    expect(out).toContain('--font-body: Georgia, serif;');
+    expect(out).toContain('font-family: var(--font-body);');
     expect(out).toContain('font-size: 22px;');
   });
 
