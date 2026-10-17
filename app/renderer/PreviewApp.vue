@@ -59,6 +59,16 @@
             <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
           </svg>
         </button>
+        <button
+          class="chrome-btn tab-source"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: sourceOpen }"
+          :title="sourceTitle"
+          :aria-label="sourceTitle"
+          :aria-pressed="sourceOpen"
+          @click="toggleSource"
+        >源码</button>
         <div
           ref="exportSplitRef"
           class="export-split"
@@ -138,17 +148,23 @@
           </ul>
         </aside>
         <div class="doc-body">
-          <div v-if="loading" class="status">加载中…</div>
-          <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
-          <iframe
-            v-else
-            ref="frameRef"
-            class="preview-frame"
-            :srcdoc="safeHtml"
-            sandbox="allow-scripts allow-popups"
-            referrerpolicy="no-referrer"
-            @load="onFrameLoad"
-          ></iframe>
+          <div v-if="sourceOpen" class="source-pane">
+            <p v-if="sourceNote" class="source-note">{{ sourceNote }}</p>
+            <pre class="source-view" :style="{ fontSize: appearance.fontSize + 'px' }">{{ sourceText }}</pre>
+          </div>
+          <template v-else>
+            <div v-if="loading" class="status">加载中…</div>
+            <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
+            <iframe
+              v-else
+              ref="frameRef"
+              class="preview-frame"
+              :srcdoc="safeHtml"
+              sandbox="allow-scripts allow-popups"
+              referrerpolicy="no-referrer"
+              @load="onFrameLoad"
+            ></iframe>
+          </template>
         </div>
       </template>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
@@ -165,6 +181,7 @@ import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
+import { formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
 import { readBoxCopyPayload } from '../electron/jsonView';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
@@ -242,6 +259,34 @@ const exportTitle = computed(() => {
   return '导出为 PDF 或 HTML';
 });
 
+/** 每个文档标签各自记住要不要看源码。关掉标签就忘掉。 */
+const sourceByTab = new Map<string, boolean>();
+const sourceOpen = ref(false);
+
+const sourceTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页没有源码';
+  return sourceOpen.value ? '返回预览' : '查看源码';
+});
+
+const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
+const sourceNote = computed(() => sourceFormatNote(markdownContent.value, activeFilePath.value));
+
+function syncSourceOpen(): void {
+  if (isSettingsTab.value || !activeTabId.value) {
+    sourceOpen.value = false;
+    return;
+  }
+  sourceOpen.value = sourceByTab.get(activeTabId.value) === true;
+}
+
+function toggleSource(): void {
+  if (isSettingsTab.value || !activeTabId.value) return;
+  const next = !sourceOpen.value;
+  sourceByTab.set(activeTabId.value, next);
+  sourceOpen.value = next;
+  console.info('[markly] 切换源码', { open: next, file: activeFilePath.value });
+}
+
 /**
  * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
  * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底。
@@ -254,9 +299,12 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 没有 Markdown 标题，或当前是 JSON，就不显示目录。目录画在正文里面。 */
+/** 没有 Markdown 标题、当前是 JSON、或正在看源码，就不显示目录。目录画在正文里面。 */
 const hasOutline = computed(
-  () => structuredKindFromName(activeFilePath.value) === null && outline.value.length > 0
+  () =>
+    !sourceOpen.value &&
+    structuredKindFromName(activeFilePath.value) === null &&
+    outline.value.length > 0
 );
 
 function jumpToHeading(headingId: string): void {
@@ -280,6 +328,10 @@ function applyTabsView(raw: unknown): void {
   for (const id of [...previewCache.keys()]) {
     if (!alive.has(id)) previewCache.delete(id);
   }
+  for (const id of [...sourceByTab.keys()]) {
+    if (!alive.has(id)) sourceByTab.delete(id);
+  }
+  syncSourceOpen();
 }
 
 /** 把所选配色写成根节点上的 CSS 变量，外壳（顶栏/标签条/侧栏/设置页）据此变色。 */
@@ -918,6 +970,14 @@ html, body, #app {
   font-size: 14px;
   line-height: 1;
 }
+.tab-source {
+  align-self: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
+}
 .tab-copy:disabled { opacity: 0.55; }
 .tab-copy.is-copied {
   color: #1a7f37;
@@ -1131,6 +1191,39 @@ html, body, #app {
   width: 100%;
   height: 100%;
   border: 0;
+  background: var(--markly-background, #fff);
+}
+/* 源码用等宽字体，不套预览正文的思源黑体。字号跟阅读设置走。 */
+.source-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--markly-background, #fff);
+}
+.source-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--markly-textSecondary, #57606a);
+}
+.source-view {
+  flex: 1;
+  margin: 0;
+  padding: 16px 20px;
+  overflow: auto;
+  min-height: 0;
+  box-sizing: border-box;
+  white-space: pre;
+  tab-size: 2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height: 1.55;
+  color: var(--markly-text, #24292e);
   background: var(--markly-background, #fff);
 }
 .selection-toast {

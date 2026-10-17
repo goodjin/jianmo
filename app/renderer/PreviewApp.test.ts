@@ -196,16 +196,23 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.tab.active')).not.toBeNull();
 
     const copy = el.querySelector('.tab-copy') as HTMLElement;
+    const source = el.querySelector('.tab-source') as HTMLButtonElement;
     const exp = el.querySelector('.export-split') as HTMLElement;
     const settings = el.querySelector('.tab-settings') as HTMLElement;
     const plus = el.querySelector('.tab-new') as HTMLElement;
     expect(copy).not.toBeNull();
+    expect(source).not.toBeNull();
     expect(exp).not.toBeNull();
     expect(settings).not.toBeNull();
-    // 复制、导出、设置依次排在 "+" 前面
-    expect(copy.nextElementSibling).toBe(exp);
+    // 复制、源码、导出、设置依次排在 "+" 前面
+    expect(copy.nextElementSibling).toBe(source);
+    expect(source.nextElementSibling).toBe(exp);
     expect(exp.nextElementSibling).toBe(settings);
     expect(settings.nextElementSibling).toBe(plus);
+    expect(source.textContent?.trim()).toBe('源码');
+    expect(source.getAttribute('aria-label')).toBe('查看源码');
+    expect(source.getAttribute('aria-pressed')).toBe('false');
+    expect(source.disabled).toBe(false);
     expect(settings.textContent?.trim()).toBe('设置');
     // 图标按钮：不再带「复制」文字。空闲时是两个错开的圆角矩形，不是字符方块。
     expect(copy.textContent?.trim()).not.toContain('复制');
@@ -448,6 +455,155 @@ describe('PreviewApp 顶栏与大纲', () => {
       '/docs/data.json',
       '/docs/rows.jsonl',
     ]);
+  });
+
+  it('点源码看到 Markdown 原文，目录先让开，再点回到预览', async () => {
+    const el = mount();
+    await flush();
+    const markdown = '# 标题一\n\n正文';
+    pushMsg('CONTENT_UPDATE', { content: markdown });
+    pushMsg('PREVIEW_HTML', { html: '<h1>标题一</h1><p>正文</p>' });
+    await flush();
+    expect(el.querySelector('.doc-outline')).not.toBeNull();
+    expect(el.querySelector('iframe')).not.toBeNull();
+
+    const source = el.querySelector('.tab-source') as HTMLButtonElement;
+    source.click();
+    await flush();
+    expect(source.getAttribute('aria-pressed')).toBe('true');
+    expect(source.getAttribute('aria-label')).toBe('返回预览');
+    expect(el.querySelector('.doc-outline')).toBeNull();
+    expect(el.querySelector('iframe')).toBeNull();
+    const view = el.querySelector('.source-view') as HTMLElement;
+    expect(view.textContent).toBe(markdown);
+    expect(view.style.fontFamily).toBe('');
+    expect(el.querySelector('.source-note')).toBeNull();
+
+    source.click();
+    await flush();
+    expect(source.getAttribute('aria-pressed')).toBe('false');
+    expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('iframe')).not.toBeNull();
+    expect(el.querySelector('.doc-outline')).not.toBeNull();
+  });
+
+  it('JSON 源码按缩进排开，解析不了就显示原文', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json' }],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '{"a":1,"b":[2,3]}' });
+    await flush();
+    (el.querySelector('.tab-source') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe(
+      '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}'
+    );
+
+    pushMsg('CONTENT_UPDATE', { content: '{broken' });
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('{broken');
+    expect(el.querySelector('.source-note')?.textContent).toBe('这份 JSON 没法排成缩进，下面是原文。');
+  });
+
+  it('JSONL 源码把每一行排开，坏行原样留下', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: 'rows.jsonl', filePath: '/docs/rows.jsonl' }],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '{"id":1}\n\nnope\n{"n":[1]}\n' });
+    await flush();
+    (el.querySelector('.tab-source') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe(
+      '{\n  "id": 1\n}\n\nnope\n\n{\n  "n": [\n    1\n  ]\n}'
+    );
+    expect(el.querySelector('.source-note')?.textContent).toBe('有的行没法排成缩进，那些行按原文留下。');
+  });
+
+  it('设置页不能查看源码', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 's', kind: 'settings', title: '设置', filePath: '' }],
+      activeId: 's',
+    });
+    const el = mount();
+    await flush();
+    const source = el.querySelector('.tab-source') as HTMLButtonElement;
+    expect(el.querySelector('.settings-page')).not.toBeNull();
+    expect(source.disabled).toBe(true);
+    expect(source.getAttribute('aria-label')).toBe('设置页没有源码');
+    source.click();
+    await flush();
+    expect(el.querySelector('.source-view')).toBeNull();
+  });
+
+  it('每个标签各自记住源码或预览', async () => {
+    let emit: ((view: unknown) => void) | undefined;
+    (window as unknown as { electron: ElectronAppBridge }).electron.onTabsChanged = (handler) => {
+      emit = handler;
+      return () => {
+        emit = undefined;
+      };
+    };
+    electronStub('tabsState').mockReturnValue({
+      tabs: [
+        { id: 't1', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' },
+        { id: 't2', kind: 'doc', title: 'rows.jsonl', filePath: '/docs/rows.jsonl' },
+      ],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
+    await flush();
+    (el.querySelector('.tab-source') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
+
+    const both = [
+      { id: 't1', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' },
+      { id: 't2', kind: 'doc', title: 'rows.jsonl', filePath: '/docs/rows.jsonl' },
+    ];
+    emit?.({ tabs: both, activeId: 't2' });
+    pushMsg('CONTENT_UPDATE', { content: '{"a":1}\nnot-json\n' });
+    await flush();
+    expect(el.querySelector('.source-view')).toBeNull();
+
+    (el.querySelector('.tab-source') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('{\n  "a": 1\n}\n\nnot-json');
+
+    emit?.({ tabs: both, activeId: 't1' });
+    pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
+    expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('true');
+
+    const settings = { id: 's', kind: 'settings', title: '设置', filePath: '' };
+    emit?.({ tabs: [...both, settings], activeId: 's' });
+    await flush();
+    expect(el.querySelector('.source-view')).toBeNull();
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).disabled).toBe(true);
+
+    emit?.({ tabs: [...both, settings], activeId: 't1' });
+    pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
+
+    emit?.({ tabs: [both[1]], activeId: 't2' });
+    pushMsg('CONTENT_UPDATE', { content: '{"a":1}\nnot-json\n' });
+    await flush();
+    expect(el.querySelector('.source-view')?.textContent).toBe('{\n  "a": 1\n}\n\nnot-json');
+
+    emit?.({ tabs: both, activeId: 't1' });
+    pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
+    await flush();
+    expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('打开 JSON 时不拿正文里的 # 当目录', async () => {
