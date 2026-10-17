@@ -23,6 +23,7 @@ export interface TabsView {
 export interface ElectronAppBridge {
   openFile?: () => Promise<string | null>;
   openPath?: (filePath: string) => Promise<string | null>;
+  reloadDocument?: () => Promise<unknown>;
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
   exportDocument?: (format: 'pdf' | 'html') => Promise<unknown>;
