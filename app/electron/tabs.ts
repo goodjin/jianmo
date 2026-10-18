@@ -90,8 +90,10 @@ export function openBlankTab(state: TabsState, id: string): TabsState {
 
 /**
  * 把文件装入标签：
- * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）；
- * 2. 当前是空白标签 → 就地占用，这样"+ 新建空白页再打开"不会多留一个空标签；
+ * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）。
+ *    当前若是空标签，这篇已经在别处打开，这张空标签用不上，关掉它。
+ * 2. 当前是空白标签 → 就地占用，这样「+ 新建空白页再打开」不会多留一个空标签。
+ *    只有当前这张是空的才占用；别的空标签不动。
  * 3. 其余情况 → 追加新标签并激活。
  */
 export function openFileTab(
@@ -105,8 +107,12 @@ export function openFileTab(
 
   const existing = state.tabs.find((t) => t.filePath === p);
   if (existing) {
+    const active = getActiveTab(state);
+    const dropBlank = isBlankTab(active) && active.id !== existing.id ? active.id : '';
     return {
-      tabs: state.tabs.map((t) => (t.id === existing.id ? { ...t, content } : t)),
+      tabs: state.tabs
+        .filter((t) => t.id !== dropBlank)
+        .map((t) => (t.id === existing.id ? { ...t, content } : t)),
       activeId: existing.id,
     };
   }
