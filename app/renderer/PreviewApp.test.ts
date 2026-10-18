@@ -352,18 +352,35 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const menu = el.querySelector('.export-menu') as HTMLElement;
     expect(menu).not.toBeNull();
-    expect(menu.querySelector('[data-format="pdf"]')?.textContent).toContain('PDF');
-    expect(menu.querySelector('[data-format="html"]')?.textContent).toContain('HTML');
+    expect(menu.querySelector('[data-format="pdf"]')?.textContent).toContain('导出 PDF');
+    expect(menu.querySelector('[data-format="html"]')?.textContent).toContain('导出 HTML');
+    const itemRule = previewAppSource.match(/\.export-item\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(itemRule).toMatch(/white-space:\s*normal/);
+    expect(itemRule).toMatch(/padding:\s*5px 0/);
+    expect(itemRule).not.toMatch(/padding:\s*7px 12px/);
     const menuRule = previewAppSource.match(/\.export-menu\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(menuRule).toMatch(/top:\s*100%/);
+    expect(menuRule).toMatch(/top:\s*calc\(100% - 1px\)/);
+    expect(menuRule).toMatch(/left:\s*0/);
     expect(menuRule).toMatch(/right:\s*0/);
-    expect(menuRule).not.toMatch(/calc\s*\(/);
-    expect(menuRule).toMatch(/border-radius:\s*var\(--app-radius-md\)/);
+    expect(menuRule).toMatch(/min-width:\s*0/);
+    expect(menuRule).not.toMatch(/min-width:\s*148px/);
+    expect(menuRule).toMatch(/border-top:\s*0/);
+    expect(menuRule).toMatch(/border-radius:\s*0 0 var\(--app-radius-sm\) var\(--app-radius-sm\)/);
+    expect(menuRule).not.toMatch(/border-radius:\s*var\(--app-radius-md\)/);
+    const joined = previewAppSource.match(/\.export-split:has\(\.export-menu\) \.tab-export,\s*\.export-split:has\(\.export-menu\) \.tab-export:hover\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(joined).toMatch(/border-radius:\s*var\(--app-radius-sm\) var\(--app-radius-sm\) 0 0/);
+    expect(joined).toMatch(/border-bottom-color:\s*var\(--markly-background/);
     const style = getComputedStyle(menu);
     if (style.top && style.top !== 'auto') {
-      expect(style.top === '100%' || style.top === '0px').toBe(true);
       expect(style.top.includes('+')).toBe(false);
       expect(parseFloat(style.top)).not.toBe(4);
+    }
+    const buttonBox = button.getBoundingClientRect();
+    const menuBox = menu.getBoundingClientRect();
+    if (buttonBox.width > 0 && menuBox.width > 0) {
+      expect(Math.abs(menuBox.width - buttonBox.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(menuBox.left - buttonBox.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(menuBox.right - buttonBox.right)).toBeLessThanOrEqual(1);
     }
     expect(button.title).toBe('');
     expect(button.getAttribute('aria-label')).toContain('导出');
@@ -953,9 +970,18 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const el = mount();
     await flush();
+    const blankPage = el.querySelector('.blank-page') as HTMLElement;
     const blank = el.querySelector('.blank-open') as HTMLButtonElement;
+    expect(blankPage).not.toBeNull();
     expect(blank).not.toBeNull();
     expect(blank.textContent?.trim()).toBe('打开');
+    expect(blankPage.querySelector('.blank-hint')?.textContent).toContain('从左侧文件里点开一篇');
+    expect(previewAppSource).toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*flex-end/);
+    expect(previewAppSource).not.toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*center/);
+    const pageStyle = getComputedStyle(blankPage);
+    if (pageStyle.justifyContent) {
+      expect(pageStyle.justifyContent).toBe('flex-end');
+    }
     expect(blank.classList.contains('chrome-btn')).toBe(true);
     expect(blank.classList.contains('file-up')).toBe(false);
     expect(previewAppSource).toMatch(/\.chrome-btn\s*\{[^}]*border-radius:\s*var\(--app-radius-sm\)/);

@@ -1333,30 +1333,47 @@ html, body, #app {
   line-height: 1;
   opacity: 0.75;
 }
+/* 打开时和按钮合成一块：同宽、左右对齐，相接的一边不留缝、不留横框。圆角只在外轮廓。 */
+.export-split:has(.export-menu) {
+  z-index: 40;
+}
+.export-split:has(.export-menu) .tab-export,
+.export-split:has(.export-menu) .tab-export:hover {
+  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
+  border-bottom-color: var(--markly-background, #fff);
+  background: var(--markly-background, #fff);
+}
 .export-menu {
   position: absolute;
-  top: 100%;
+  top: calc(100% - 1px);
+  left: 0;
   right: 0;
   z-index: 30;
-  min-width: 148px;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
   margin: 0;
-  padding: 6px;
+  padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: var(--app-radius-md);
+  border-top: 0;
+  border-radius: 0 0 var(--app-radius-sm) var(--app-radius-sm);
   background: var(--markly-background, #fff);
-  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+  box-shadow: none;
+  overflow: hidden;
 }
 .export-item {
   display: block;
   width: 100%;
-  text-align: left;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: normal;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
-  line-height: 1.4;
-  padding: 7px 12px;
-  border-radius: var(--app-radius-sm);
+  line-height: 1.25;
+  padding: 5px 0;
+  border-radius: 0;
   cursor: pointer;
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
@@ -1518,9 +1535,9 @@ html, body, #app {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 12px;
-  padding: 48px 40px;
+  padding: 24px 40px 32px;
   min-width: 0;
   min-height: 0;
 }
