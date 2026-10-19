@@ -99,10 +99,10 @@
           </button>
           <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
             <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
-              导出 PDF
+              PDF
             </button>
             <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
-              导出 HTML
+              HTML
             </button>
           </div>
         </div>

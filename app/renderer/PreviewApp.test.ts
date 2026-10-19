@@ -352,8 +352,10 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const menu = el.querySelector('.export-menu') as HTMLElement;
     expect(menu).not.toBeNull();
-    expect(menu.querySelector('[data-format="pdf"]')?.textContent).toContain('导出 PDF');
-    expect(menu.querySelector('[data-format="html"]')?.textContent).toContain('导出 HTML');
+    expect(menu.querySelector('[data-format="pdf"]')?.textContent?.trim()).toBe('PDF');
+    expect(menu.querySelector('[data-format="html"]')?.textContent?.trim()).toBe('HTML');
+    expect(button.textContent).toContain('导出');
+    expect(menu.textContent).not.toContain('导出');
     const itemRule = previewAppSource.match(/\.export-item\s*\{[^}]+\}/)?.[0] ?? '';
     expect(itemRule).toMatch(/white-space:\s*nowrap/);
     const exportRule = previewAppSource.match(/\.tab-export\s*\{[^}]+\}/)?.[0] ?? '';
