@@ -609,8 +609,9 @@ describe('PreviewApp 顶栏与大纲', () => {
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     source.click();
     await flush();
+    expect(source.textContent?.trim()).toBe('预览');
     expect(source.getAttribute('aria-pressed')).toBe('true');
-    expect(source.getAttribute('aria-label')).toBe('返回预览');
+    expect(source.getAttribute('aria-label')).toBe('预览');
     expect(el.querySelector('.doc-outline')).toBeNull();
     expect(el.querySelector('iframe')).toBeNull();
     const view = el.querySelector('.source-view') as HTMLElement;
@@ -620,7 +621,9 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     source.click();
     await flush();
+    expect(source.textContent?.trim()).toBe('源码');
     expect(source.getAttribute('aria-pressed')).toBe('false');
+    expect(source.getAttribute('aria-label')).toBe('查看源码');
     expect(el.querySelector('.source-view')).toBeNull();
     expect(el.querySelector('iframe')).not.toBeNull();
     expect(el.querySelector('.doc-outline')).not.toBeNull();
@@ -674,6 +677,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     expect(el.querySelector('.settings-page')).not.toBeNull();
     expect(source.disabled).toBe(true);
+    expect(source.textContent?.trim()).toBe('源码');
     expect(source.getAttribute('aria-label')).toBe('设置页没有源码');
     source.click();
     await flush();
@@ -711,6 +715,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '{"a":1}\nnot-json\n' });
     await flush();
     expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
 
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
     await flush();
@@ -720,6 +725,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
     await flush();
     expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('预览');
     expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('true');
 
     const settings = { id: 's', kind: 'settings', title: '设置', filePath: '' };
@@ -742,6 +748,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
     await flush();
     expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
     expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('false');
   });
 

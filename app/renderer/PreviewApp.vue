@@ -76,7 +76,7 @@
           :aria-label="sourceTitle"
           :aria-pressed="sourceOpen"
           @click="toggleSource"
-        >源码</button>
+        >{{ sourceOpen ? '预览' : '源码' }}</button>
         <div
           ref="exportSplitRef"
           class="export-split"
@@ -289,7 +289,7 @@ const sourceOpen = ref(false);
 
 const sourceTitle = computed(() => {
   if (isSettingsTab.value) return '设置页没有源码';
-  return sourceOpen.value ? '返回预览' : '查看源码';
+  return sourceOpen.value ? '预览' : '查看源码';
 });
 
 const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
