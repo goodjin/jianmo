@@ -3,6 +3,7 @@
  */
 
 import { selectionCopyRuntimeSource } from '../electron/selectionCopy';
+import { placeRuntimeSource } from '../electron/viewPlace';
 
 /** 正文可见文字（不含 script/style），用来核对选区是不是文档里的字。 */
 export function visibleTextFromHtml(html: string): string {
@@ -60,12 +61,19 @@ export function buildPreviewSrcdoc(html: string): string {
     // 注入也走 DOM：序列化文本里允许出现 "</body>"（如内联 mermaid 包里 DOMPurify 的
     // `+"<body></body></html>"` 字符串），字符串 replace('</body>') 会把脚本插进包中间，
     // 其自带的 </script> 会把大脚本拦腰截断，后半截全部漏成正文文本。
+    const host = doc.body ?? doc.documentElement;
     if (!doc.querySelector('script[data-markly-selection-copy]')) {
       const runtime = doc.createElement('script');
       runtime.setAttribute('data-markly-selection-copy', '1');
       runtime.textContent = selectionCopyRuntimeSource();
-      const host = doc.body ?? doc.documentElement;
       host.appendChild(runtime);
+    }
+    // 桌面预览用来记住阅读位置。只挂在预览 iframe 上，不改导出文件和插件界面。
+    if (!doc.querySelector('script[data-markly-place]')) {
+      const place = doc.createElement('script');
+      place.setAttribute('data-markly-place', '1');
+      place.textContent = placeRuntimeSource();
+      host.appendChild(place);
     }
     return doc.documentElement.outerHTML;
   } catch {

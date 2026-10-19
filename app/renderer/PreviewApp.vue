@@ -109,7 +109,7 @@
           :aria-label="sourceTitle"
           :aria-pressed="sourceOpen"
           @click="toggleSource"
-        >源码</button>
+        >{{ sourceLabel }}</button>
         <div
           ref="exportSplitRef"
           class="export-split"
@@ -132,10 +132,10 @@
           </button>
           <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
             <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
-              导出 PDF
+              PDF
             </button>
             <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
-              导出 HTML
+              HTML
             </button>
           </div>
         </div>
@@ -198,9 +198,17 @@
           </ul>
         </aside>
         <div class="doc-body">
-          <div v-if="sourceOpen" class="source-pane">
+          <div v-if="isBlankDoc && !sourceOpen" class="blank-page">
+            <button class="chrome-btn blank-open" type="button" @click="onOpen">打开</button>
+            <p class="blank-hint">从左侧文件里点开一篇，或在这里选择文件。</p>
+          </div>
+          <div v-else-if="sourceOpen" class="source-pane">
             <p v-if="sourceNote" class="source-note">{{ sourceNote }}</p>
-            <pre class="source-view" :style="{ fontSize: appearance.fontSize + 'px' }">{{ sourceText }}</pre>
+            <pre
+              ref="sourceViewRef"
+              class="source-view"
+              :style="{ fontSize: appearance.fontSize + 'px' }"
+            >{{ sourceText }}</pre>
           </div>
           <template v-else>
             <div v-if="loading" class="status">加载中…</div>
@@ -241,6 +249,16 @@ import {
   RELOAD_UNREADABLE_TIP,
 } from '../electron/reloadResult';
 import { readBoxCopyPayload } from '../electron/jsonView';
+import {
+  PLACE_READ,
+  PLACE_RESTORE,
+  captureSourceAnchor,
+  keepPlace,
+  measureSourceBox,
+  readPlaceAnchor,
+  scrollTopForSource,
+  type PlaceAnchor,
+} from '../electron/viewPlace';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
@@ -276,6 +294,7 @@ const isSettingsTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.kind === 'settings'
 );
 const frameRef = ref<HTMLIFrameElement | null>(null);
+const sourceViewRef = ref<HTMLElement | null>(null);
 const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
@@ -288,6 +307,8 @@ const fileTreeRef = ref<{ goUp: () => Promise<void>; refresh: () => Promise<void
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
+/** 还没装上文件的文档标签。设置页不算。 */
+const isBlankDoc = computed(() => !isSettingsTab.value && !activeFilePath.value);
 const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
@@ -320,32 +341,148 @@ const exportTitle = computed(() => {
   return '导出为 PDF 或 HTML';
 });
 
-/** 每个文档标签各自记住要不要看源码。关掉标签就忘掉。 */
-const sourceByTab = new Map<string, boolean>();
+/**
+ * 每个文档标签各自记住：在看源码还是预览，以及视口上方附近的那一句。
+ * 关掉标签就忘掉。高度两边不一样，所以记的是文字，不是一个像素。
+ */
+interface TabReading {
+  source: boolean;
+  anchor: PlaceAnchor | null;
+}
+
+const readingByTab = new Map<string, TabReading>();
 const sourceOpen = ref(false);
+/** 切标签或切回预览之后，等正文到了再滚回记下的那一句。 */
+let wantRestore = false;
+let placeBusy = false;
+
+const sourceLabel = computed(() => (sourceOpen.value ? '预览' : '源码'));
 
 const sourceTitle = computed(() => {
   if (isSettingsTab.value) return '设置页没有源码';
-  return sourceOpen.value ? '返回预览' : '查看源码';
+  return sourceOpen.value ? '预览' : '查看源码';
 });
 
 const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
 const sourceNote = computed(() => sourceFormatNote(markdownContent.value, activeFilePath.value));
+
+function readingOf(id: string): TabReading {
+  return readingByTab.get(id) ?? { source: false, anchor: null };
+}
+
+function putReading(id: string, patch: Partial<TabReading>): void {
+  if (!id) return;
+  readingByTab.set(id, { ...readingOf(id), ...patch });
+}
 
 function syncSourceOpen(): void {
   if (isSettingsTab.value || !activeTabId.value) {
     sourceOpen.value = false;
     return;
   }
-  sourceOpen.value = sourceByTab.get(activeTabId.value) === true;
+  sourceOpen.value = readingOf(activeTabId.value).source;
 }
 
-function toggleSource(): void {
-  if (isSettingsTab.value || !activeTabId.value) return;
-  const next = !sourceOpen.value;
-  sourceByTab.set(activeTabId.value, next);
-  sourceOpen.value = next;
-  console.info('[markly] 切换源码', { open: next, file: activeFilePath.value });
+function captureSourceNow(): PlaceAnchor | null {
+  const pre = sourceViewRef.value;
+  if (!pre) return null;
+  return captureSourceAnchor(sourceText.value, pre.scrollTop, measureSourceBox(pre));
+}
+
+/** 问预览现在看到哪。沙箱读不到正文，等它回一句；没回就当还在文首。 */
+function capturePreviewAnchor(): Promise<PlaceAnchor> {
+  const frame = frameRef.value;
+  const win = frame?.contentWindow ?? null;
+  if (!frame || !win) return Promise.resolve({ snippet: '', ratio: 0 });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (anchor: PlaceAnchor) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', onMsg);
+      clearTimeout(timer);
+      resolve(anchor);
+    };
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.source !== win) return;
+      const anchor = readPlaceAnchor(ev.data);
+      if (!anchor) return;
+      finish(anchor);
+    };
+    window.addEventListener('message', onMsg);
+    const timer = setTimeout(() => finish({ snippet: '', ratio: 0 }), 100);
+    try {
+      win.postMessage({ type: PLACE_READ }, '*');
+    } catch {
+      finish({ snippet: '', ratio: 0 });
+    }
+  });
+}
+
+async function captureCurrentAnchor(): Promise<PlaceAnchor> {
+  if (sourceOpen.value) return captureSourceNow() ?? { snippet: '', ratio: 0 };
+  return capturePreviewAnchor();
+}
+
+function applySourceScroll(anchor: PlaceAnchor | null): void {
+  const pre = sourceViewRef.value;
+  if (!pre || !anchor) return;
+  const top = scrollTopForSource(sourceText.value, anchor, measureSourceBox(pre));
+  pre.scrollTop = top;
+  console.info('[markly] 源码停在原处', { top, snippet: anchor.snippet });
+}
+
+function postPreviewRestore(anchor: PlaceAnchor | null): boolean {
+  const win = frameRef.value?.contentWindow;
+  if (!win || !anchor) return false;
+  try {
+    win.postMessage({ type: PLACE_RESTORE, snippet: anchor.snippet, ratio: anchor.ratio }, '*');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restoreArmedSource(): void {
+  if (!wantRestore || !sourceOpen.value) return;
+  const id = activeTabId.value;
+  const anchor = readingOf(id).anchor;
+  wantRestore = false;
+  void nextTick(() => {
+    if (activeTabId.value !== id || !sourceOpen.value) return;
+    applySourceScroll(anchor);
+  });
+}
+
+async function rememberActivePlace(): Promise<void> {
+  const id = activeTabId.value;
+  if (!id || isSettingsTab.value) return;
+  const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+  putReading(id, { source: sourceOpen.value, anchor });
+}
+
+async function toggleSource(): Promise<void> {
+  if (placeBusy || isSettingsTab.value || !activeTabId.value) return;
+  const id = activeTabId.value;
+  placeBusy = true;
+  try {
+    const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+    const next = !sourceOpen.value;
+    putReading(id, { source: next, anchor });
+    sourceOpen.value = next;
+    console.info('[markly] 切换源码', { open: next, file: activeFilePath.value, snippet: anchor.snippet });
+    await nextTick();
+    if (activeTabId.value !== id) return;
+    if (next) applySourceScroll(anchor);
+    else {
+      wantRestore = true;
+      if (!postPreviewRestore(anchor)) {
+        /* 预览框还没画出来，等它加载完再滚。 */
+      }
+    }
+  } finally {
+    placeBusy = false;
+  }
 }
 
 const reloading = ref(false);
@@ -454,6 +591,16 @@ const previewCache = new Map<string, { content: string; html: string }>();
 
 function applyTabsView(raw: unknown): void {
   const view = parseTabsView(raw);
+  const leaving = activeTabId.value;
+  const arriving = view.activeId;
+  if (leaving && leaving !== arriving) {
+    if (!isSettingsTab.value) {
+      const sync = sourceOpen.value ? captureSourceNow() : null;
+      if (sync) putReading(leaving, { source: sourceOpen.value, anchor: sync });
+      else putReading(leaving, { source: sourceOpen.value });
+    }
+    wantRestore = true;
+  }
   tabs.value = view.tabs;
   activeTabId.value = view.activeId;
   // 关掉的标签不再占着缓存
@@ -461,8 +608,8 @@ function applyTabsView(raw: unknown): void {
   for (const id of [...previewCache.keys()]) {
     if (!alive.has(id)) previewCache.delete(id);
   }
-  for (const id of [...sourceByTab.keys()]) {
-    if (!alive.has(id)) sourceByTab.delete(id);
+  for (const id of [...readingByTab.keys()]) {
+    if (!alive.has(id)) readingByTab.delete(id);
   }
   if (reloadTip.value && !alive.has(reloadTip.value.tabId)) {
     reloadTip.value = null;
@@ -546,9 +693,15 @@ function refreshTabs(): void {
   }
 }
 
-function onActivateTab(id: string): void {
+async function onActivateTab(id: string): Promise<void> {
   closeRecent();
-  if (id === activeTabId.value) return;
+  if (id === activeTabId.value || placeBusy) return;
+  placeBusy = true;
+  try {
+    await rememberActivePlace();
+  } finally {
+    placeBusy = false;
+  }
   void electronApp()?.activateTab?.(id);
 }
 
@@ -859,6 +1012,10 @@ async function onCopy(): Promise<void> {
 function onFrameLoad(): void {
   const frame = frameRef.value;
   if (!frame) return;
+  if (wantRestore && !sourceOpen.value) {
+    const anchor = readingOf(activeTabId.value).anchor;
+    if (!anchor || postPreviewRestore(anchor)) wantRestore = false;
+  }
   try {
     const doc = frame.contentDocument;
     if (!doc) return;
@@ -910,6 +1067,7 @@ const off = onMessage((msg: ExtensionMessage) => {
     case 'CONTENT_UPDATE':
       markdownContent.value = msg.payload.content ?? '';
       requestPreview();
+      restoreArmedSource();
       break;
     case 'PREVIEW_HTML':
       if (msg.payload.error) {
@@ -1267,9 +1425,12 @@ html, body, #app {
 .tab-export {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   height: 26px;
   min-height: 26px;
+  min-width: 76px;
+  box-sizing: border-box;
   padding: 0 8px;
   font-size: 12px;
 }
@@ -1286,30 +1447,47 @@ html, body, #app {
   line-height: 1;
   opacity: 0.75;
 }
+/* 打开时和按钮合成一块：同宽、左右对齐，相接的一边不留缝、不留横框。圆角只在外轮廓。 */
+.export-split:has(.export-menu) {
+  z-index: 40;
+}
+.export-split:has(.export-menu) .tab-export,
+.export-split:has(.export-menu) .tab-export:hover {
+  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
+  border-bottom-color: var(--markly-background, #fff);
+  background: var(--markly-background, #fff);
+}
 .export-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% - 1px);
+  left: 0;
   right: 0;
   z-index: 30;
-  min-width: 148px;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
   margin: 0;
-  padding: 6px;
+  padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: var(--app-radius-md);
+  border-top: 0;
+  border-radius: 0 0 var(--app-radius-sm) var(--app-radius-sm);
   background: var(--markly-background, #fff);
-  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+  box-shadow: none;
+  overflow: hidden;
 }
 .export-item {
   display: block;
   width: 100%;
-  text-align: left;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
-  line-height: 1.4;
-  padding: 7px 12px;
-  border-radius: var(--app-radius-sm);
+  line-height: 1.35;
+  padding: 6px 4px;
+  border-radius: 0;
   cursor: pointer;
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
@@ -1465,6 +1643,29 @@ html, body, #app {
   background: var(--markly-background, #fff);
 }
 /* 源码用等宽字体，不套预览正文的思源黑体。字号跟阅读设置走。 */
+.blank-page {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px 40px 32px;
+  min-width: 0;
+  min-height: 0;
+}
+.blank-open {
+  min-width: 72px;
+  font-size: 13px;
+}
+.blank-hint {
+  margin: 0;
+  max-width: 28em;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--markly-textSecondary, #57606a);
+}
 .source-pane {
   position: absolute;
   inset: 0;

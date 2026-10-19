@@ -155,18 +155,64 @@ describe('openFileTab', () => {
     expect(next.tabs.find((t) => t.id === 'b')?.content).toBe('# B');
   });
 
-  it('同路径命中优先于空白标签占用', () => {
+  it('当前是空标签时，点一篇还没打开的文档会填进这张标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/d.md', '# D');
+    expect(next.tabs).toHaveLength(3);
+    expect(next.activeId).toBe('blank');
+    expect(next.tabs.find((t) => t.id === 'blank')).toEqual({
+      id: 'blank',
+      kind: 'doc',
+      filePath: '/docs/d.md',
+      content: '# D',
+    });
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+  });
+
+  it('空标签下再点已经打开的文档，切到那个标签并关掉这张用不上的空标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
+    expect(next.tabs.map((t) => t.id)).toEqual(['a', 'other']);
+    expect(next.activeId).toBe('a');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
+    expect(next.tabs.find((t) => t.id === 'blank')).toBeUndefined();
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+  });
+
+  it('当前标签已有文档时，再点别的 md 会另开标签，不会填进旁边的空标签', () => {
     const s: TabsState = {
       tabs: [
         { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
         createBlankTab('blank'),
       ],
-      activeId: 'blank',
+      activeId: 'a',
     };
-    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
-    expect(next.tabs).toHaveLength(2);
-    expect(next.activeId).toBe('a');
-    expect(next.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    const opened = openFileTab(s, 'd', '/docs/d.md', '# D');
+    expect(opened.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(opened.activeId).toBe('d');
+    expect(opened.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+    expect(opened.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+
+    const again = openFileTab(opened, 'dup', '/docs/a.md', '# A2');
+    expect(again.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(again.activeId).toBe('a');
+    expect(again.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    expect(again.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
   });
 
   it('空路径不改变状态', () => {
