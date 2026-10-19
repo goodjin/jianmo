@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
 import FileTree from './FileTree.vue';
-import fileTreeSource from './FileTree.vue?raw';
-import { chromeRadiusStyle } from '../chromeRadius';
 import type { ElectronAppBridge } from './electronBridge';
 import type { FileTreeListResult } from '../electron/fileTreeModel';
 
-let mounted: { app: App; el: HTMLElement } | null = null;
+interface FileTreeApi {
+  goUp: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+let mounted: { app: App; el: HTMLElement; api: FileTreeApi } | null = null;
+let lastChrome = { canGoUp: false, hasRoot: false };
 
 function install(bridge: Partial<ElectronAppBridge>): void {
   (window as unknown as { electron: ElectronAppBridge }).electron = {
@@ -25,9 +29,16 @@ async function flush(): Promise<void> {
 function mount(props: Record<string, unknown> = {}): HTMLElement {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const app = createApp(FileTree, { collapsed: false, activePath: '', ...props });
-  app.mount(el);
-  mounted = { app, el };
+  const app = createApp(FileTree, {
+    collapsed: false,
+    activePath: '',
+    onChrome: (state: { canGoUp: boolean; hasRoot: boolean }) => {
+      lastChrome = state;
+    },
+    ...props,
+  });
+  const api = app.mount(el) as FileTreeApi;
+  mounted = { app, el, api };
   return el;
 }
 
@@ -35,6 +46,7 @@ afterEach(() => {
   mounted?.app.unmount();
   mounted?.el.remove();
   mounted = null;
+  lastChrome = { canGoUp: false, hasRoot: false };
   delete (window as unknown as { electron?: ElectronAppBridge }).electron;
 });
 
@@ -155,7 +167,23 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree).not.toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('me');
     expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/home/me/docs/a.md');
-    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(false);
+    expect(el.querySelector('.file-head')).toBeNull();
+    expect(lastChrome).toEqual({ canGoUp: true, hasRoot: true });
+  });
+
+  it('刷新会重新读取当前目录和已经展开的子目录', async () => {
+    const listFileTree = fakeList();
+    install({ listFileTree });
+    mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+    const before = listFileTree.mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+
+    await mounted!.api.refresh();
+    await flush();
+
+    const again = listFileTree.mock.calls.slice(before).map((call) => call[0]);
+    expect(again).toEqual(expect.arrayContaining(['/', '/docs', '/docs/notes']));
   });
 
   it('向上按钮跳到父目录并记住，到磁盘根后按钮禁用', async () => {
@@ -169,15 +197,14 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     const el = mount({ activePath: '' });
     await flush();
 
-    const up = el.querySelector('.file-up') as HTMLButtonElement;
-    expect(up.disabled).toBe(false);
-    up.click();
+    expect(lastChrome.canGoUp).toBe(true);
+    await mounted!.api.goUp();
     await flush();
 
     expect(setFileTreeRoot).toHaveBeenCalledWith('/');
     expect(listFileTree).toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('/');
-    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(true);
+    expect(lastChrome).toEqual({ canGoUp: false, hasRoot: true });
   });
 
   function menuItems(): HTMLButtonElement[] {
@@ -416,42 +443,12 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree.mock.calls.filter((call) => call[0] === '/docs/notes').length).toBeGreaterThan(1);
   });
 
-  it('窄图标按钮用更小的圆角，同一排的文字按钮仍用按钮圆角', async () => {
-    const css = fileTreeSource.match(/<style scoped>([\s\S]*?)<\/style>/);
-    expect(css).not.toBeNull();
-    const style = document.createElement('style');
-    style.textContent = css![1];
-    document.head.appendChild(style);
+  it('收起后不渲染树', async () => {
     install({ listFileTree: fakeList() });
-    const el = mount({ activePath: '' });
-    await flush();
-
-    const radius = (selector: string) =>
-      getComputedStyle(el.querySelector(selector)!).borderRadius;
-    const height = (selector: string) =>
-      getComputedStyle(el.querySelector(selector)!).height;
-
-    try {
-      expect(radius('.file-up')).toBe('var(--app-radius-xxs)');
-      expect(radius('.file-toggle')).toBe('var(--app-radius-xxs)');
-      expect(radius('.file-icon-btn:not(.file-up)')).toBe('var(--app-radius-sm)');
-      expect(chromeRadiusStyle['--app-radius-xxs']).toBe('6px');
-      expect(chromeRadiusStyle['--app-radius-sm']).toBe('12px');
-      expect(height('.file-up')).toBe('28px');
-      expect(height('.file-toggle')).toBe('28px');
-      expect(height('.file-icon-btn:not(.file-up)')).toBe('28px');
-    } finally {
-      style.remove();
-    }
-  });
-
-  it('收起后不渲染树，切换按钮通知外层', async () => {
-    const onToggle = vi.fn();
-    install({ listFileTree: fakeList() });
-    const el = mount({ collapsed: true, activePath: '/docs/notes/b.md', onToggle });
+    const el = mount({ collapsed: true, activePath: '/docs/notes/b.md' });
     await flush();
     expect(el.querySelector('.tree')).toBeNull();
-    (el.querySelector('.file-toggle') as HTMLElement).click();
-    expect(onToggle).toHaveBeenCalled();
+    expect(el.querySelector('.file-root')).toBeNull();
+    expect(el.querySelector('.file-head')).toBeNull();
   });
 });

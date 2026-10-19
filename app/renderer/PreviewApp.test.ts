@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorView } from '@codemirror/view';
 import { createApp, nextTick, type App } from 'vue';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
+import { chromeRadiusStyle } from '../chromeRadius';
 import PreviewApp from './PreviewApp.vue';
+import previewAppSource from './PreviewApp.vue?raw';
 import { installVsCodeShim } from './vscodeShim';
 import {
   RELOAD_MISSING_TIP,
@@ -15,8 +17,6 @@ import { formatDocumentSource } from '../electron/sourceText';
 import { APP_RADIUS } from '../chromeRadius';
 import { PLACE_ANCHOR, PLACE_READ, PLACE_RESTORE, scrollTopForSource, measureSourceBox } from '../electron/viewPlace';
 import type { ElectronAppBridge } from './electronBridge';
-import previewAppSource from './PreviewApp.vue?raw';
-import fileTreeSource from './FileTree.vue?raw';
 
 let mounted: { app: App; el: HTMLElement } | null = null;
 
@@ -253,6 +253,113 @@ describe('PreviewApp 顶栏与大纲', () => {
     expectCopySheets(copy);
     // 默认不展开格式菜单
     expect(el.querySelector('.export-menu')).toBeNull();
+
+    const chrome = rail.querySelector('.file-tree-chrome') as HTMLElement;
+    expect(rail.querySelector('.open-split')!.nextElementSibling).toBe(chrome);
+    expect(el.querySelector('.file-head')).toBeNull();
+    expect(el.querySelector('.file-head-title')).toBeNull();
+    const up = chrome.querySelector('.file-up') as HTMLButtonElement;
+    const treeRefresh = chrome.querySelector('.file-icon-btn:not(.file-up)') as HTMLButtonElement;
+    const toggle = chrome.querySelector('.file-toggle') as HTMLButtonElement;
+    expect(up.querySelector('.file-up-icon path')).not.toBeNull();
+    expect(up.textContent).not.toContain('↑');
+    expect(up.getAttribute('aria-label')).toBe('上一级目录');
+    expect(treeRefresh.textContent?.trim()).toBe('刷新');
+    expect(treeRefresh.getAttribute('aria-label')).toBe('刷新目录树');
+    expect(toggle.textContent?.trim()).toBe('‹');
+    expect(toggle.getAttribute('aria-label')).toBe('收起文件');
+    expect(el.querySelector('.file-tree .file-head')).toBeNull();
+  });
+
+  it('收起文件后侧栏只留展开按钮，目录操作回到打开旁边', async () => {
+    const storeSet = vi.fn();
+    (window as unknown as { electron: ElectronAppBridge }).electron.storeSet = storeSet;
+    const el = mount();
+    await flush();
+
+    const toggle = el.querySelector('.file-tree-chrome .file-toggle') as HTMLButtonElement;
+    toggle.click();
+    await flush();
+
+    expect(el.querySelector('.file-tree.collapsed')).not.toBeNull();
+    expect(el.querySelector('.tree')).toBeNull();
+    expect(el.querySelector('.file-head')).toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-up')).toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-icon-btn')).toBeNull();
+    const collapsedToggle = el.querySelector('.file-tree-chrome .file-toggle') as HTMLButtonElement;
+    expect(collapsedToggle.textContent?.trim()).toBe('›');
+    expect(collapsedToggle.getAttribute('aria-label')).toBe('展开文件');
+    expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', true);
+    // 重新加载文档的按钮还在标签栏，不跟目录按钮混在一起
+    expect(el.querySelector('.tab-bar .tab-reload')).not.toBeNull();
+
+    collapsedToggle.click();
+    await flush();
+    expect(el.querySelector('.file-tree.collapsed')).toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-up')).not.toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-toggle')!.textContent?.trim()).toBe('‹');
+    expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', false);
+  });
+
+  it('打开旁边的上一级和刷新目录会作用到文件树', async () => {
+    const listFileTree = vi.fn(async (dir: string) => ({ dir, entries: [], error: '' }));
+    const setFileTreeRoot = vi.fn(async (dir: string) => dir);
+    const electron = (window as unknown as { electron: ElectronAppBridge }).electron;
+    electron.listFileTree = listFileTree;
+    electron.setFileTreeRoot = setFileTreeRoot;
+    electron.fileTreeRoot = async () => '/home/me';
+    electron.tabsState = vi.fn(() => ({
+      tabs: [{ id: 't1', kind: 'doc', title: 'readme.md', filePath: '/home/me/readme.md' }],
+      activeId: 't1',
+    }));
+    const el = mount();
+    await flush();
+
+    const up = el.querySelector('.file-tree-chrome .file-up') as HTMLButtonElement;
+    const refresh = el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)') as HTMLButtonElement;
+    expect(up.disabled).toBe(false);
+    expect(refresh.disabled).toBe(false);
+
+    const before = listFileTree.mock.calls.length;
+    refresh.click();
+    await flush();
+    expect(listFileTree.mock.calls.length).toBeGreaterThan(before);
+    expect(listFileTree).toHaveBeenCalledWith('/home/me');
+
+    up.click();
+    await flush();
+    expect(setFileTreeRoot).toHaveBeenCalledWith('/home');
+    expect(el.querySelector('.file-root')!.textContent).toBe('home');
+  });
+
+  it('窄图标按钮用更小的圆角，同一排的文字按钮仍用按钮圆角', async () => {
+    const css = previewAppSource.match(/<style>([\s\S]*?)<\/style>/);
+    expect(css).not.toBeNull();
+    const style = document.createElement('style');
+    style.textContent = css![1];
+    document.head.appendChild(style);
+    const el = mount();
+    await flush();
+
+    const radius = (selector: string) =>
+      getComputedStyle(el.querySelector(selector)!).borderRadius;
+    const height = (selector: string) =>
+      getComputedStyle(el.querySelector(selector)!).height;
+
+    try {
+      expect(radius('.file-up')).toBe('var(--app-radius-xxs)');
+      expect(radius('.file-toggle')).toBe('var(--app-radius-xxs)');
+      expect(radius('.file-icon-btn:not(.file-up)')).toBe('var(--app-radius-sm)');
+      expect(chromeRadiusStyle['--app-radius-xxs']).toBe('6px');
+      expect(chromeRadiusStyle['--app-radius-sm']).toBe('12px');
+      expect(height('.file-up')).toBe('32px');
+      expect(height('.file-toggle')).toBe('32px');
+      expect(height('.file-icon-btn:not(.file-up)')).toBe('32px');
+      const shaft = el.querySelector('.file-up-icon path') as SVGPathElement;
+      expect(Number.parseFloat(getComputedStyle(shaft).strokeWidth)).toBeGreaterThan(2);
+    } finally {
+      style.remove();
+    }
   });
 
   it('复制成功后按钮变成打勾，一会儿恢复成复制图标', async () => {
@@ -1004,7 +1111,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(blank.classList.contains('file-up')).toBe(false);
     expect(previewAppSource).toMatch(/\.chrome-btn\s*\{[^}]*border-radius:\s*var\(--app-radius-sm\)/);
     expect(previewAppSource).not.toMatch(/\.blank-open\s*\{[^}]*border-radius/);
-    expect(fileTreeSource).toMatch(/\.file-up,\s*\n\.file-toggle\s*\{[^}]*border-radius:\s*var\(--app-radius-xxs\)/);
+    expect(previewAppSource).toMatch(/\.file-up,\s*\n\.file-toggle\s*\{[^}]*border-radius:\s*var\(--app-radius-xxs\)/);
     const shell = el.querySelector('.markly-app') as HTMLElement;
     expect(shell.style.getPropertyValue('--app-radius-sm')).toBe(APP_RADIUS.sm);
     expect(shell.style.getPropertyValue('--app-radius-xxs')).toBe(APP_RADIUS.xxs);
