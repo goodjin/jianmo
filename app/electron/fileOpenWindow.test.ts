@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  attachOversizedWindowGuard,
   bindWindowRevealEvents,
   handleAppActivate,
   handleExternalFileOpen,
@@ -8,6 +9,7 @@ import {
   type RevealableWindow,
   type RevealEventSource,
 } from './fileOpenWindow';
+import type { DisplayFrame, Rect } from './windowFrame';
 
 function fakeWindow(overrides: Partial<RevealableWindow> = {}): RevealableWindow & {
   calls: string[];
@@ -19,7 +21,10 @@ function fakeWindow(overrides: Partial<RevealableWindow> = {}): RevealableWindow
     restore: () => calls.push('restore'),
     show: () => calls.push('show'),
     focus: () => calls.push('focus'),
-    setVisibleOnAllWorkspaces: (visible) => calls.push(visible ? 'spaces-on' : 'spaces-off'),
+    setVisibleOnAllWorkspaces: (visible, options) => {
+      calls.push(visible ? 'spaces-on' : 'spaces-off');
+      calls.push(options?.visibleOnFullScreen ? 'over-fullscreen' : 'not-over-fullscreen');
+    },
     moveTop: () => calls.push('moveTop'),
     ...overrides,
   };
@@ -37,18 +42,177 @@ describe('revealAppWindow', () => {
   it('macOS 抢到前台，并临时跨桌面显示后再回到当前桌面', () => {
     const win = fakeWindow();
     const focus = vi.fn();
-    revealAppWindow(win, { focus }, 'darwin');
-    expect(win.calls).toEqual(['show', 'focus', 'spaces-on', 'focus', 'spaces-off', 'moveTop']);
+    const showDock = vi.fn();
+    revealAppWindow(win, { focus, showDock }, 'darwin');
+    expect(win.calls).toEqual([
+      'show',
+      'focus',
+      'spaces-on',
+      'not-over-fullscreen',
+      'focus',
+      'spaces-off',
+      'not-over-fullscreen',
+      'moveTop',
+    ]);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ steal: true });
+    expect(showDock).toHaveBeenCalledTimes(2);
   });
 
-  it('没有跨桌面接口时仍然抢前台', () => {
+  it('没有跨桌面接口时仍然抢前台，并显示程序坞图标', () => {
     const win = fakeWindow({ setVisibleOnAllWorkspaces: undefined, moveTop: undefined });
     const focus = vi.fn();
-    revealAppWindow(win, { focus }, 'darwin');
+    const showDock = vi.fn();
+    revealAppWindow(win, { focus, showDock }, 'darwin');
     expect(win.calls).toEqual(['show', 'focus']);
     expect(focus).toHaveBeenCalledWith({ steal: true });
+    expect(showDock).toHaveBeenCalledTimes(2);
+  });
+
+  it('跨桌面把窗口拉成整屏时，收回原来的大小', () => {
+    let bounds: Rect = { x: 156, y: 66, width: 1200, height: 800 };
+    const setBounds = vi.fn((next: Rect) => {
+      bounds = { ...next };
+    });
+    const mac: DisplayFrame = {
+      bounds: { x: 0, y: 0, width: 1512, height: 982 },
+      workArea: { x: 0, y: 25, width: 1512, height: 882 },
+    };
+    const win = fakeWindow({
+      getBounds: () => ({ ...bounds }),
+      setBounds,
+      isFullScreen: () => false,
+      setVisibleOnAllWorkspaces: (visible) => {
+        if (visible) bounds = { x: 0, y: 0, width: 1512, height: 982 };
+      },
+    });
+    revealAppWindow(win, { focus: vi.fn(), showDock: vi.fn() }, 'darwin', () => mac);
+    expect(bounds).toEqual({ x: 156, y: 66, width: 1200, height: 800 });
+    expect(setBounds).toHaveBeenCalledTimes(1);
+  });
+
+  it('打开时就已经铺满整屏，就改回默认大小', () => {
+    let bounds: Rect = { x: 0, y: 0, width: 1512, height: 982 };
+    const mac: DisplayFrame = {
+      bounds: { x: 0, y: 0, width: 1512, height: 982 },
+      workArea: { x: 0, y: 25, width: 1512, height: 882 },
+    };
+    const win = fakeWindow({
+      getBounds: () => ({ ...bounds }),
+      setBounds: (next) => {
+        bounds = { ...next };
+      },
+      setVisibleOnAllWorkspaces: () => {},
+    });
+    revealAppWindow(win, { focus: vi.fn() }, 'darwin', () => mac);
+    expect(bounds).toEqual({ x: 156, y: 66, width: 1200, height: 800 });
+  });
+
+  it('系统晚一点才把窗口拉大时，补救定时器会再收回', () => {
+    let bounds: Rect = { x: 156, y: 66, width: 1200, height: 800 };
+    const mac: DisplayFrame = {
+      bounds: { x: 0, y: 0, width: 1512, height: 982 },
+      workArea: { x: 0, y: 25, width: 1512, height: 882 },
+    };
+    const queued: Array<{ fn: () => void; ms: number }> = [];
+    const win = fakeWindow({
+      getBounds: () => ({ ...bounds }),
+      setBounds: (next) => {
+        bounds = { ...next };
+      },
+      setVisibleOnAllWorkspaces: () => {},
+    });
+    revealAppWindow(
+      win,
+      { focus: vi.fn() },
+      'darwin',
+      () => mac,
+      (fn, ms) => queued.push({ fn, ms })
+    );
+    expect(bounds).toEqual({ x: 156, y: 66, width: 1200, height: 800 });
+    expect(queued.map((item) => item.ms)).toEqual([0, 50]);
+    bounds = { x: 0, y: 0, width: 1512, height: 982 };
+    queued[1]?.fn();
+    expect(bounds).toEqual({ x: 156, y: 66, width: 1200, height: 800 });
+  });
+
+  it('真正全屏时不跨桌面，也不改大小', () => {
+    const setBounds = vi.fn();
+    const setVisibleOnAllWorkspaces = vi.fn();
+    const win = fakeWindow({
+      isFullScreen: () => true,
+      getBounds: () => ({ x: 0, y: 0, width: 1512, height: 982 }),
+      setBounds,
+      setVisibleOnAllWorkspaces,
+    });
+    revealAppWindow(win, { focus: vi.fn(), showDock: vi.fn() }, 'darwin', () => ({
+      bounds: { x: 0, y: 0, width: 1512, height: 982 },
+      workArea: { x: 0, y: 25, width: 1512, height: 882 },
+    }));
+    expect(setVisibleOnAllWorkspaces).not.toHaveBeenCalled();
+    expect(setBounds).not.toHaveBeenCalled();
+  });
+});
+
+describe('attachOversizedWindowGuard', () => {
+  const mac: DisplayFrame = {
+    bounds: { x: 0, y: 0, width: 1512, height: 982 },
+    workArea: { x: 0, y: 25, width: 1512, height: 882 },
+  };
+
+  it('刚显示时若铺满整屏，就改回默认大小，并且不会因为改大小再套一层', () => {
+    let bounds: Rect = { x: 0, y: 0, width: 1512, height: 982 };
+    const listeners: Array<() => void> = [];
+    let setCalls = 0;
+    const win = {
+      getBounds: () => ({ ...bounds }),
+      setBounds: (next: Rect) => {
+        setCalls += 1;
+        bounds = { ...next };
+        listeners.forEach((fn) => fn());
+      },
+      on: (_event: 'show', listener: () => void) => {
+        listeners.push(listener);
+      },
+    };
+    attachOversizedWindowGuard(win, () => mac);
+    expect(listeners).toHaveLength(1);
+    listeners[0]?.();
+    expect(bounds).toEqual({ x: 156, y: 66, width: 1200, height: 800 });
+    expect(setCalls).toBe(1);
+  });
+
+  it('系统一直把窗口拉回整屏时，最多纠正四次', () => {
+    const listeners: Array<() => void> = [];
+    let setCalls = 0;
+    attachOversizedWindowGuard(
+      {
+        getBounds: () => ({ x: 0, y: 0, width: 1512, height: 982 }),
+        setBounds: () => {
+          setCalls += 1;
+        },
+        on: (_event, listener) => listeners.push(listener),
+      },
+      () => mac
+    );
+    for (let i = 0; i < 6; i += 1) listeners[0]?.();
+    expect(setCalls).toBe(4);
+  });
+
+  it('真正全屏时不改大小', () => {
+    const setBounds = vi.fn();
+    const listeners: Array<() => void> = [];
+    attachOversizedWindowGuard(
+      {
+        isFullScreen: () => true,
+        getBounds: () => ({ x: 0, y: 0, width: 1512, height: 982 }),
+        setBounds,
+        on: (_event, listener) => listeners.push(listener),
+      },
+      () => mac
+    );
+    listeners[0]?.();
+    expect(setBounds).not.toHaveBeenCalled();
   });
 });
 

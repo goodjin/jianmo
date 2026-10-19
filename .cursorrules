@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版窗口铺满屏幕、程序坞没有图标**（0.6.7）：拉到前台时不再使用 `visibleOnFullScreen: true`。那个选项会把窗口变成全屏辅助：铺满整屏但不是全屏，标题栏钻进菜单栏，底部被程序坞挡住，程序坞图标也会消失。铺满之后收回原来的大小；原来就已经铺满就改回默认大小。并 `setActivationPolicy('regular')` + `dock.show()`。
 - [X] **文件右键菜单 + 代码框复制按钮**（桌面 0.6.6，预览样式 2.3.2）：文件行右键「重命名 / 在 Finder 打开 / 复制全路径 / 复制文件名」。代码块语言名留在框内右上角，复制按钮改到框外上方，悬停才出现。所有 `.markly-codeblock` 共用这一套。
 - [X] **桌面版刷新**（0.6.5）：复制按钮前面「刷新」。成功读盘后顶部绿条，约 2 秒消失。文件不在或读失败不改正文，黄条留着。不要走 `loadFile`，那条失败时会把正文换成错误说明。
 - [X] **桌面版查看源码**（0.6.4）：复制按钮右侧「源码」，点一下看原文，再点回预览。JSON / JSONL 用两空格 pretty；解析失败的原文原样留下，并在上面说明。每个标签各自记住。不改插件。源码区用等宽字体，不套思源黑体。
@@ -152,3 +153,4 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。
 - 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。
 - 桌面版重新加载不要调用 `loadFile`。那条在读失败时会把标签正文换成「打开失败」。刷新失败必须留下上次的内容，只出顶部提示。
+- macOS 把窗口拉回当前桌面时，`setVisibleOnAllWorkspaces` 的 `visibleOnFullScreen` 必须是 false。设成 true 会留下全屏辅助：窗口铺满整块屏幕但不是全屏，关闭按钮钻进菜单栏，底部被程序坞挡住，程序坞里也可能没有图标。跨桌面之后要量一次窗口大小，铺满了就收回；并调用 `app.dock.show()`。

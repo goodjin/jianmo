@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, dialog, Menu, nativeTheme, screen, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -26,12 +26,14 @@ import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
 import {
+  attachOversizedWindowGuard,
   bindWindowRevealEvents,
   handleAppActivate,
   handleExternalFileOpen,
   revealAppWindow,
   scheduleHiddenWindowReveal,
 } from './fileOpenWindow';
+import { defaultWindowFrame, type Rect } from './windowFrame';
 import {
   DIR_MD_PAGE_SIZE,
   parseRecentFiles,
@@ -548,11 +550,37 @@ function hasLiveMainWindow(): boolean {
   return !!mainWindow && !mainWindow.isDestroyed();
 }
 
+function displayFrameFor(bounds: Rect) {
+  const display = screen.getDisplayMatching(bounds);
+  return { bounds: display.bounds, workArea: display.workArea };
+}
+
+/** macOS 上保证图标留在程序坞。窗口被拉去所有桌面时，系统有时会把图标拿掉。 */
+function showDockIcon(): void {
+  if (process.platform !== 'darwin' || !app.dock) return;
+  try {
+    app.setActivationPolicy('regular');
+  } catch (error) {
+    console.error('[Markly] 无法显示在程序坞', error);
+  }
+  void Promise.resolve(app.dock.show()).catch((error) => {
+    console.error('[Markly] 无法显示在程序坞', error);
+  });
+}
+
 /** 把主窗口显示出来并拿到前台。窗口已经在前面时只是再聚焦一次。 */
 function revealMainWindow(): void {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
-  revealAppWindow(win, app, process.platform);
+  revealAppWindow(
+    win,
+    { focus: (options) => app.focus(options), showDock: showDockIcon },
+    process.platform,
+    displayFrameFor,
+    (fn, ms) => {
+      setTimeout(fn, ms);
+    }
+  );
 }
 
 function attachForegroundRecovery(win: BrowserWindow): void {
@@ -576,9 +604,12 @@ function attachForegroundRecovery(win: BrowserWindow): void {
 }
 
 function createWindow(): void {
+  const initial = defaultWindowFrame(screen.getPrimaryDisplay().workArea);
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: initial.x,
+    y: initial.y,
+    width: initial.width,
+    height: initial.height,
     title: 'Markly',
     // 等内容能画出来再显示。macOS 从访达打开时，构造函数里立刻显示经常不会出现在屏幕上。
     show: false,
@@ -594,6 +625,21 @@ function createWindow(): void {
     if (mainWindow === created) mainWindow = null;
   });
   attachForegroundRecovery(created);
+  attachOversizedWindowGuard(
+    {
+      isDestroyed: () => created.isDestroyed(),
+      isFullScreen: () => created.isFullScreen(),
+      isSimpleFullScreen: () => created.isSimpleFullScreen(),
+      getBounds: () => created.getBounds(),
+      setBounds: (bounds) => {
+        created.setBounds(bounds);
+      },
+      on: (_event, listener) => {
+        created.on('show', listener);
+      },
+    },
+    displayFrameFor
+  );
   // 拦截 iframe 内 target=_blank 的新窗口请求，转交系统浏览器；renderer 负责给外部 <a> 加 target=_blank
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
@@ -641,6 +687,7 @@ app.on('open-file', (e, p) => {
 });
 
 app.whenReady().then(() => {
+  showDockIcon();
   const stateDir = path.join(app.getPath('home'), '.markly');
   try {
     fs.mkdirSync(stateDir, { recursive: true });

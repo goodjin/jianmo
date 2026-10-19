@@ -3,13 +3,24 @@
  *
  * macOS 上应用没退出时，双击文件只会收到 open-file，系统不一定把窗口带到前面。
  * 冷启动时 open-file / activate 还可能发生在 app ready 之前，这时不能创建窗口。
+ *
+ * 跨桌面时不能带 visibleOnFullScreen。那个选项会让窗口变成「全屏辅助」：
+ * 铺满整块屏幕，但没有进入全屏。标题栏钻进菜单栏，底部被程序坞挡住，
+ * 关闭和缩小都点不到，程序坞里也可能没有图标。
  */
+
+import { isCoveringSystemChrome, restoredFrame, type DisplayFrame, type Rect } from './windowFrame';
 
 export interface RevealableWindow {
   isMinimized(): boolean;
   restore(): void;
   show(): void;
   focus(): void;
+  isDestroyed?: () => boolean;
+  isFullScreen?: () => boolean;
+  isSimpleFullScreen?: () => boolean;
+  getBounds?: () => Rect;
+  setBounds?: (bounds: Rect) => void;
   /** 把窗口短暂放到所有桌面，再收回当前桌面，否则它会停在别的空间里。 */
   setVisibleOnAllWorkspaces?(visible: boolean, options?: { visibleOnFullScreen?: boolean }): void;
   moveTop?(): void;
@@ -17,7 +28,11 @@ export interface RevealableWindow {
 
 export interface RevealableApp {
   focus(options?: { steal?: boolean }): void;
+  /** macOS：保证图标出现在程序坞。跨桌面之后系统有时会把它拿掉。 */
+  showDock?: () => void;
 }
+
+export type DisplayLookup = (bounds: Rect) => DisplayFrame | null;
 
 export interface RevealEventSource {
   once(event: 'ready-to-show', listener: () => void): void;
@@ -26,19 +41,86 @@ export interface RevealEventSource {
   };
 }
 
+function inRealFullscreen(win: RevealableWindow): boolean {
+  return win.isFullScreen?.() === true || win.isSimpleFullScreen?.() === true;
+}
+
+/** 铺满整屏却没进全屏时，把窗口收回可见区域。真正的全屏不动。 */
+function pullBackFromSystemChrome(win: RevealableWindow, before: Rect | null, displayFor?: DisplayLookup): void {
+  if (win.isDestroyed?.() || inRealFullscreen(win)) return;
+  const after = win.getBounds?.();
+  if (!after || !win.setBounds || !displayFor) return;
+  const display = displayFor(after);
+  if (!display) return;
+  const next = restoredFrame(before, after, display);
+  if (!next) return;
+  win.setBounds(next);
+}
+
 /** 最小化先还原，再显示并聚焦。macOS 还要抢到前台，否则窗口建了也看不见。 */
-export function revealAppWindow(win: RevealableWindow, host: RevealableApp, platform: string): void {
+export function revealAppWindow(
+  win: RevealableWindow,
+  host: RevealableApp,
+  platform: string,
+  displayFor?: DisplayLookup,
+  schedule?: (fn: () => void, ms: number) => void
+): void {
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
   if (platform !== 'darwin') return;
+  host.showDock?.();
   host.focus({ steal: true });
-  if (typeof win.setVisibleOnAllWorkspaces === 'function') {
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  const before = win.getBounds?.() ?? null;
+  // 已经在真正全屏里时，不要再改集合行为，否则会把全屏拆掉。
+  if (!inRealFullscreen(win) && typeof win.setVisibleOnAllWorkspaces === 'function') {
+    // visibleOnFullScreen 必须是 false。设成 true 会留下全屏辅助状态，窗口被拉成整屏。
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
     win.focus();
-    win.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: true });
+    win.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: false });
   }
   win.moveTop?.();
+  host.showDock?.();
+  const fix = (): void => pullBackFromSystemChrome(win, before, displayFor);
+  fix();
+  // 系统有时在这次调用返回之后才把窗口拉大，过一会儿再量一次。
+  if (schedule && displayFor) {
+    schedule(fix, 0);
+    schedule(fix, 50);
+  }
+}
+
+export interface GuardableWindow {
+  isDestroyed?: () => boolean;
+  isFullScreen?: () => boolean;
+  isSimpleFullScreen?: () => boolean;
+  getBounds: () => Rect;
+  setBounds: (bounds: Rect) => void;
+  on(event: 'show', listener: () => void): void;
+}
+
+/**
+ * 窗口刚显示时，如果已经铺到菜单栏上，就拉回默认大小。
+ * 不听后续的缩放：用户点绿色按钮进入真全屏时，系统会先把窗口拉大，再标记为全屏。
+ * 连续纠正几次仍被系统拉回去就停下，避免来回改大小。
+ */
+export function attachOversizedWindowGuard(win: GuardableWindow, displayFor: DisplayLookup): void {
+  let correcting = false;
+  let corrections = 0;
+  const pull = (): void => {
+    if (correcting || corrections >= 4) return;
+    if (win.isDestroyed?.() || win.isFullScreen?.() || win.isSimpleFullScreen?.()) return;
+    const after = win.getBounds();
+    const display = displayFor(after);
+    if (!display || !isCoveringSystemChrome(after, display)) return;
+    const next = restoredFrame(null, after, display);
+    if (!next) return;
+    corrections += 1;
+    correcting = true;
+    win.setBounds(next);
+    correcting = false;
+  };
+  win.on('show', pull);
 }
 
 /**
