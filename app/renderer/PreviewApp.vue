@@ -1314,9 +1314,12 @@ html, body, #app {
 .tab-export {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   height: 26px;
   min-height: 26px;
+  min-width: 76px;
+  box-sizing: border-box;
   padding: 0 8px;
   font-size: 12px;
 }
@@ -1366,13 +1369,13 @@ html, body, #app {
   width: 100%;
   box-sizing: border-box;
   text-align: center;
-  white-space: normal;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
-  line-height: 1.25;
-  padding: 5px 0;
+  line-height: 1.35;
+  padding: 6px 4px;
   border-radius: 0;
   cursor: pointer;
 }

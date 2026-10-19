@@ -355,9 +355,11 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(menu.querySelector('[data-format="pdf"]')?.textContent).toContain('导出 PDF');
     expect(menu.querySelector('[data-format="html"]')?.textContent).toContain('导出 HTML');
     const itemRule = previewAppSource.match(/\.export-item\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(itemRule).toMatch(/white-space:\s*normal/);
-    expect(itemRule).toMatch(/padding:\s*5px 0/);
-    expect(itemRule).not.toMatch(/padding:\s*7px 12px/);
+    expect(itemRule).toMatch(/white-space:\s*nowrap/);
+    const exportRule = previewAppSource.match(/\.tab-export\s*\{[^}]+\}/)?.[0] ?? '';
+    const minWidth = Number(exportRule.match(/min-width:\s*(\d+)px/)?.[1] ?? 0);
+    expect(minWidth).toBeGreaterThan(60);
+    expect(minWidth).toBeLessThan(120);
     const menuRule = previewAppSource.match(/\.export-menu\s*\{[^}]+\}/)?.[0] ?? '';
     expect(menuRule).toMatch(/top:\s*calc\(100% - 1px\)/);
     expect(menuRule).toMatch(/left:\s*0/);
