@@ -675,9 +675,9 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(source.textContent?.trim()).toBe('源码');
     source.click();
     await settle();
+    expect(source.textContent?.trim()).toBe('预览');
     expect(source.getAttribute('aria-pressed')).toBe('true');
-    expect(source.textContent?.trim()).toBe('渲染');
-    expect(source.getAttribute('aria-label')).toBe('渲染');
+    expect(source.getAttribute('aria-label')).toBe('预览');
     expect(el.querySelector('.doc-outline')).toBeNull();
     expect(el.querySelector('iframe')).toBeNull();
     const view = el.querySelector('.source-view') as HTMLElement;
@@ -692,6 +692,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     await settle();
     expect(source.textContent?.trim()).toBe('源码');
     expect(source.getAttribute('aria-pressed')).toBe('false');
+    expect(source.getAttribute('aria-label')).toBe('查看源码');
     expect(el.querySelector('.source-view')).toBeNull();
     expect(el.querySelector('iframe')).not.toBeNull();
     expect(el.querySelector('.doc-outline')).not.toBeNull();
@@ -709,7 +710,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     source.click();
     await settle();
-    expect(source.textContent?.trim()).toBe('渲染');
+    expect(source.textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe(
       '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}'
     );
@@ -747,6 +748,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     expect(el.querySelector('.settings-page')).not.toBeNull();
     expect(source.disabled).toBe(true);
+    expect(source.textContent?.trim()).toBe('源码');
     expect(source.getAttribute('aria-label')).toBe('设置页没有源码');
     source.click();
     await flush();
@@ -774,7 +776,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
     await settle();
-    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('渲染');
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
 
     const both = [
@@ -785,16 +787,18 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '{"a":1}\nnot-json\n' });
     await flush();
     expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
 
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
     await settle();
-    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('渲染');
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe('{\n  "a": 1\n}\n\nnot-json');
 
     emit?.({ tabs: both, activeId: 't1' });
     pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
     await flush();
     expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('预览');
     expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('true');
 
     const settings = { id: 's', kind: 'settings', title: '设置', filePath: '' };
@@ -817,10 +821,11 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
     await flush();
     expect(el.querySelector('.source-view')).toBeNull();
+    expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
     expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('切到源码后按钮变成渲染，视口仍停在原来那一段', async () => {
+  it('切到源码后按钮变成预览，视口仍停在原来那一段', async () => {
     const lines = ['# 开头', '', '第一段在最上面。'];
     for (let i = 0; i < 30; i += 1) lines.push(`填充行 ${i}，用来把后面的内容推远。`);
     const later = '靠近文末的这一节还在看';
@@ -870,7 +875,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     button.click();
     await settle();
 
-    expect(button.textContent?.trim()).toBe('渲染');
+    expect(button.textContent?.trim()).toBe('预览');
     expect(sent.some((item) => (item as { type?: string }).type === PLACE_READ)).toBe(true);
     const pre = el.querySelector('.source-view') as HTMLPreElement;
     const expected = scrollTopForSource(markdown, { snippet: later, ratio: 0 }, measureSourceBox(pre));
@@ -923,7 +928,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     Object.defineProperty(frameBack, 'contentWindow', { configurable: true, value: frameWinBack });
     button.click();
     await settle();
-    expect(button.textContent?.trim()).toBe('渲染');
+    expect(button.textContent?.trim()).toBe('预览');
     const again = el.querySelector('.source-view') as HTMLPreElement;
     expect(again.scrollTop).toBeGreaterThan(measureSourceBox(again).lineHeight * 10);
 
@@ -937,7 +942,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: markdown });
     await flush();
     const back = el.querySelector('.source-view') as HTMLPreElement;
-    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('渲染');
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
     expect(back.scrollTop).toBe(scrollTopForSource(markdown, { snippet: later, ratio: 0 }, measureSourceBox(back)));
     expect(back.scrollTop).toBeGreaterThan(0);
   });

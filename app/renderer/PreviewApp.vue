@@ -319,11 +319,11 @@ const sourceOpen = ref(false);
 let wantRestore = false;
 let placeBusy = false;
 
-const sourceLabel = computed(() => (sourceOpen.value ? '渲染' : '源码'));
+const sourceLabel = computed(() => (sourceOpen.value ? '预览' : '源码'));
 
 const sourceTitle = computed(() => {
   if (isSettingsTab.value) return '设置页没有源码';
-  return sourceOpen.value ? '渲染' : '查看源码';
+  return sourceOpen.value ? '预览' : '查看源码';
 });
 
 const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
