@@ -45,11 +45,42 @@
         </ul>
       </div>
     </template>
+    <Teleport to="body">
+      <div
+        v-if="menu"
+        class="tree-menu"
+        role="menu"
+        aria-label="文件操作"
+        :style="{ top: menu.y + 'px', left: menu.x + 'px' }"
+        @mousedown.stop
+        @contextmenu.prevent
+      >
+        <template v-if="!menu.confirming">
+          <button type="button" role="menuitem" @click="beginRename">重命名</button>
+          <button type="button" role="menuitem" @click="revealInFinder">在 Finder 打开</button>
+          <button type="button" role="menuitem" @click="copyFullPath">复制全路径</button>
+          <button type="button" role="menuitem" @click="copyFileName">复制文件名</button>
+          <button type="button" role="menuitem" class="tree-menu-danger" @click="askTrash">删除</button>
+        </template>
+        <template v-else>
+          <p class="tree-menu-confirm">要把「{{ menu.name }}」移到废纸篓吗？</p>
+          <p v-if="menu.error" class="tree-menu-error">{{ menu.error }}</p>
+          <button
+            type="button"
+            role="menuitem"
+            class="tree-menu-danger"
+            :disabled="menu.busy"
+            @click="confirmTrash"
+          >{{ menu.busy ? '正在移到废纸篓…' : '移到废纸篓' }}</button>
+          <button type="button" role="menuitem" :disabled="menu.busy" @click="closeMenu">取消</button>
+        </template>
+      </div>
+    </Teleport>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, provide, reactive, ref, toRef, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, provide, reactive, ref, toRef, watch } from 'vue';
 import {
   ancestorDirs,
   canGoToParent,
@@ -63,6 +94,8 @@ import { displayNameFromPath } from './documentMeta';
 import { electronApp } from './electronBridge';
 import FileTreeNode from './FileTreeNode.vue';
 import { FileTreeKey, type FileTreeContext } from './fileTreeContext';
+import { parseRenameResult, planRename } from '../electron/fileRename';
+import { parseTrashResult } from '../electron/trashFile';
 
 const props = defineProps<{ collapsed: boolean; activePath: string }>();
 const emit = defineEmits<{ (e: 'toggle'): void }>();
@@ -80,6 +113,23 @@ const rootErr = computed(() => (root.value ? errors[root.value] ?? '' : ''));
 const rootBusy = computed(
   () => !!root.value && loading[root.value] === true && cache[root.value] === undefined
 );
+
+interface FileMenuState {
+  path: string;
+  name: string;
+  x: number;
+  y: number;
+  confirming: boolean;
+  busy: boolean;
+  error: string;
+}
+
+const menu = ref<FileMenuState | null>(null);
+const renamingPath = ref('');
+const renameDraft = ref('');
+const renameError = ref('');
+let ignoreRenameBlur = false;
+let renameBusy = false;
 
 function clearTree(): void {
   for (const key of Object.keys(expanded)) delete expanded[key];
@@ -191,6 +241,150 @@ async function openFile(file: string): Promise<void> {
   if (parent) await fetchDir(parent);
 }
 
+function closeMenu(): void {
+  menu.value = null;
+}
+
+function placeMenu(x: number, y: number, height: number): { x: number; y: number } {
+  const pad = 8;
+  const width = 220;
+  const maxX = Math.max(pad, window.innerWidth - width - pad);
+  const maxY = Math.max(pad, window.innerHeight - height - pad);
+  return {
+    x: Math.min(Math.max(pad, x), maxX),
+    y: Math.min(Math.max(pad, y), maxY),
+  };
+}
+
+function openFileMenu(entry: FileTreeEntry, x: number, y: number): void {
+  if (entry.kind !== 'file') return;
+  cancelRename();
+  const placed = placeMenu(x, y, 188);
+  menu.value = {
+    path: entry.path,
+    name: entry.name,
+    confirming: false,
+    busy: false,
+    error: '',
+    ...placed,
+  };
+}
+
+function askTrash(): void {
+  const current = menu.value;
+  if (!current || current.confirming) return;
+  const placed = placeMenu(current.x, current.y, 132);
+  menu.value = { ...current, confirming: true, busy: false, error: '', ...placed };
+}
+
+async function confirmTrash(): Promise<void> {
+  const current = menu.value;
+  if (!current?.confirming || current.busy) return;
+  menu.value = { ...current, busy: true, error: '' };
+  const result = parseTrashResult(await electronApp()?.trashFile?.(current.path));
+  if (!menu.value || menu.value.path !== current.path || !menu.value.confirming) return;
+  if (!result.ok) {
+    menu.value = { ...menu.value, busy: false, error: result.error };
+    return;
+  }
+  closeMenu();
+  const parent = parentDir(current.path);
+  if (parent) await fetchDir(parent);
+}
+
+function beginRename(): void {
+  const current = menu.value;
+  if (!current) return;
+  closeMenu();
+  ignoreRenameBlur = false;
+  renamingPath.value = current.path;
+  renameDraft.value = current.name;
+  renameError.value = '';
+}
+
+function cancelRename(): void {
+  if (!renamingPath.value) return;
+  ignoreRenameBlur = true;
+  renamingPath.value = '';
+  renameError.value = '';
+  queueMicrotask(() => {
+    ignoreRenameBlur = false;
+  });
+}
+
+async function focusRenameInput(): Promise<void> {
+  await nextTick();
+  const input = document.querySelector<HTMLInputElement>('.file-tree .tree-rename');
+  input?.focus();
+  input?.select();
+}
+
+async function commitRename(): Promise<void> {
+  if (ignoreRenameBlur || renameBusy || !renamingPath.value) return;
+  const from = renamingPath.value;
+  const name = renameDraft.value;
+  const plan = planRename(from, name, () => false);
+  if (!plan.ok) {
+    renameError.value = plan.error;
+    await focusRenameInput();
+    return;
+  }
+  if (plan.unchanged) {
+    cancelRename();
+    return;
+  }
+  renameBusy = true;
+  try {
+    const result = parseRenameResult(await electronApp()?.renameFile?.(from, name));
+    if (!renamingPath.value || renamingPath.value !== from) return;
+    if (!result.ok) {
+      renameError.value = result.error;
+      await focusRenameInput();
+      return;
+    }
+    renamingPath.value = '';
+    renameError.value = '';
+    const parent = parentDir(from);
+    if (parent) await fetchDir(parent);
+  } finally {
+    renameBusy = false;
+  }
+}
+
+async function copyMenuText(text: string): Promise<void> {
+  const current = text;
+  closeMenu();
+  if (!current) return;
+  await electronApp()?.copyExactText?.(current);
+}
+
+function copyFullPath(): void {
+  void copyMenuText(menu.value?.path ?? '');
+}
+
+function copyFileName(): void {
+  void copyMenuText(displayNameFromPath(menu.value?.path).fileName);
+}
+
+function revealInFinder(): void {
+  const target = menu.value?.path ?? '';
+  closeMenu();
+  if (!target) return;
+  void electronApp()?.revealInFolder?.(target);
+}
+
+function onDocPointerDown(ev: MouseEvent): void {
+  const target = ev.target;
+  if (target instanceof Node && document.querySelector('.tree-menu')?.contains(target)) return;
+  closeMenu();
+}
+
+function onDocKeyDown(ev: KeyboardEvent): void {
+  if (ev.key !== 'Escape') return;
+  closeMenu();
+  cancelRename();
+}
+
 const ctx: FileTreeContext = {
   activePath: toRef(props, 'activePath'),
   expanded,
@@ -199,6 +393,15 @@ const ctx: FileTreeContext = {
   errors,
   toggleDir,
   openFile: (file) => void openFile(file),
+  renamingPath,
+  renameDraft,
+  renameError,
+  openFileMenu,
+  setRenameDraft: (value) => {
+    renameDraft.value = value;
+  },
+  commitRename: () => void commitRename(),
+  cancelRename,
 };
 provide(FileTreeKey, ctx);
 
@@ -212,10 +415,28 @@ watch(
   }
 );
 
+watch(
+  () => props.collapsed,
+  (collapsed) => {
+    if (collapsed) closeMenu();
+  }
+);
+
+watch(renamingPath, (path) => {
+  if (path) void focusRenameInput();
+});
+
 onMounted(() => {
+  document.addEventListener('mousedown', onDocPointerDown);
+  document.addEventListener('keydown', onDocKeyDown);
   void loadInitialRoot().finally(() => {
     treeReady = true;
   });
+});
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocPointerDown);
+  document.removeEventListener('keydown', onDocKeyDown);
 });
 </script>
 
@@ -318,5 +539,53 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.45;
   list-style: none;
+}
+.tree-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 148px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-md);
+  background: var(--markly-background, #fff);
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.16);
+}
+.tree-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  background: transparent;
+  color: var(--markly-text, #24292e);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.tree-menu button:hover {
+  background: var(--markly-surfaceHover, #eaeef2);
+}
+.tree-menu button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.tree-menu-danger {
+  color: var(--markly-error, #cf222e);
+}
+.tree-menu-confirm,
+.tree-menu-error {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.tree-menu-error {
+  color: var(--markly-error, #cf222e);
+  padding-top: 0;
 }
 </style>

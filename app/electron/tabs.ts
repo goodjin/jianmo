@@ -90,8 +90,10 @@ export function openBlankTab(state: TabsState, id: string): TabsState {
 
 /**
  * 把文件装入标签：
- * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）；
- * 2. 当前是空白标签 → 就地占用，这样"+ 新建空白页再打开"不会多留一个空标签；
+ * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）。
+ *    当前若是空标签，这篇已经在别处打开，这张空标签用不上，关掉它。
+ * 2. 当前是空白标签 → 就地占用，这样「+ 新建空白页再打开」不会多留一个空标签。
+ *    只有当前这张是空的才占用；别的空标签不动。
  * 3. 其余情况 → 追加新标签并激活。
  */
 export function openFileTab(
@@ -105,8 +107,12 @@ export function openFileTab(
 
   const existing = state.tabs.find((t) => t.filePath === p);
   if (existing) {
+    const active = getActiveTab(state);
+    const dropBlank = isBlankTab(active) && active.id !== existing.id ? active.id : '';
     return {
-      tabs: state.tabs.map((t) => (t.id === existing.id ? { ...t, content } : t)),
+      tabs: state.tabs
+        .filter((t) => t.id !== dropBlank)
+        .map((t) => (t.id === existing.id ? { ...t, content } : t)),
       activeId: existing.id,
     };
   }
@@ -145,6 +151,35 @@ export function closeTab(state: TabsState, id: string, blankId: string): TabsSta
 
   const nextActive = tabs[idx] ?? tabs[idx - 1] ?? tabs[0]!;
   return { tabs, activeId: nextActive.id };
+}
+
+/**
+ * 文件进了废纸篓后，关掉所有打开它的标签。
+ * 一个都没打开时原样返回。全部关掉时留一个空白标签。
+ */
+export function closeTabsForPath(state: TabsState, filePath: string, blankId: string): TabsState {
+  const target = String(filePath ?? '').trim();
+  if (!target) return state;
+  const ids = state.tabs.filter((tab) => tab.kind === 'doc' && tab.filePath === target).map((tab) => tab.id);
+  if (ids.length === 0) return state;
+  let next = state;
+  for (const id of ids) next = closeTab(next, id, blankId);
+  return next;
+}
+
+/**
+ * 磁盘上的文件改名后，已打开的标签跟着换路径。正文不动。
+ * 没有这个路径的标签时原样返回。
+ */
+export function renameFileInTabs(state: TabsState, fromPath: string, toPath: string): TabsState {
+  const from = String(fromPath ?? '').trim();
+  const to = String(toPath ?? '').trim();
+  if (!from || !to || from === to) return state;
+  if (!state.tabs.some((tab) => tab.filePath === from)) return state;
+  return {
+    tabs: state.tabs.map((tab) => (tab.filePath === from ? { ...tab, filePath: to } : tab)),
+    activeId: state.activeId,
+  };
 }
 
 /** 活动标签正文回写（CONTENT_CHANGE / SAVE）。无活动标签时原样返回。 */

@@ -109,7 +109,17 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
-- [X] **桌面版程序坞图标**（0.6.4）：窗口拉到当前桌面时，`setVisibleOnAllWorkspaces` 默认会把进程改成菜单栏小工具，图标从程序坞和切换列表消失。必须带 `skipTransformProcessType: true`。显示后 `setActivationPolicy('regular')`，图标不在才 `dock.show()`。不要先 hide 再 show。
+- [X] **桌面版程序坞图标**（0.7.4）：跨桌面时 `visibleOnFullScreen: false`，并且 `skipTransformProcessType: true`。前者避免窗口铺满挡住程序坞，后者避免进程被改成菜单栏小工具后图标消失。然后 `setActivationPolicy('regular')` + `dock.show()`。不要先 hide 再 show。
+- [X] **导出菜单只写格式**（0.7.3）：下拉只写 PDF / HTML，按钮仍叫「导出」。菜单仍同宽贴着往下拉。
+- [X] **导出按钮稍宽**（0.7.2）：按钮加宽到菜单项各自一行。菜单仍跟按钮同宽、贴着往下拉、相接处无横框。不要改回两行，也不要加回一大条。
+- [X] **桌面版导出菜单贴合、打开挪到底**（0.7.1）：导出菜单跟按钮同宽、左右对齐，相接边不留缝也不留横框，圆角只在外轮廓。空标签的「打开」和说明放在底部。源码位置和填空标签的行为不动。
+- [X] **桌面版导出菜单、源码位置、空标签打开**（0.7.0）：导出菜单上沿贴住导出按钮，打开时清掉 title。源码/渲染来回切换按视口上方的文字留在原处，按钮在「源码」和「渲染」之间换。空标签有「打开」；只有当前是空标签时，文件树点 md 才填进它，已经打开的文档切过去并关掉用不上的空标签。不改插件。
+- [X] **文件右键删除，二次确认后移到废纸篓**（桌面 0.6.8）：菜单先出「删除」，再点「移到废纸篓」才调用 `shell.trashItem`。失败留在确认里。成功后刷新所在目录，关掉这个文件的标签，并从最近打开去掉。
+- [X] **桌面版窗口铺满屏幕、程序坞没有图标**（0.6.7）：拉到前台时不再使用 `visibleOnFullScreen: true`。那个选项会把窗口变成全屏辅助：铺满整屏但不是全屏，标题栏钻进菜单栏，底部被程序坞挡住，程序坞图标也会消失。铺满之后收回原来的大小；原来就已经铺满就改回默认大小。并 `setActivationPolicy('regular')` + `dock.show()`。
+- [X] **文件右键菜单 + 代码框复制按钮**（桌面 0.6.6，预览样式 2.3.2）：文件行右键「重命名 / 在 Finder 打开 / 复制全路径 / 复制文件名」。代码块语言名留在框内右上角，复制按钮改到框外上方，悬停才出现。所有 `.markly-codeblock` 共用这一套。
+- [X] **桌面版刷新**（0.6.5）：复制按钮前面「刷新」。成功读盘后顶部绿条，约 2 秒消失。文件不在或读失败不改正文，黄条留着。不要走 `loadFile`，那条失败时会把正文换成错误说明。
+- [X] **桌面版查看源码**（0.6.4）：复制按钮右侧「源码」，点一下看原文，再点回预览。JSON / JSONL 用两空格 pretty；解析失败的原文原样留下，并在上面说明。每个标签各自记住。不改插件。源码区用等宽字体，不套思源黑体。
+>>>>>>> origin/main
 - [X] **桌面版窄图标按钮圆角**（0.6.3）：文件树「上一级」「收起」用 6px。约 22px 宽上 8px 仍会胖成胶囊。同排的「刷新」和顶栏宽按钮仍是 12px。高度没改。
 - [X] **桌面版复制图标**（0.6.2）：顶栏空闲状态换成两个错开的圆角矩形，线宽跟打勾一致。成功打勾和失败红框不动。插件工具栏没有这个图标。
 - [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
@@ -134,6 +144,8 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 ## Lessons（项目）
 
+- 桌面预览 iframe 没有 `allow-same-origin`，父页面读不到正文。要记住阅读位置，只能让预览里的脚本用 postMessage 回报视口上方的文字，再在另一边对上这句。不要只存 scrollTop。
+- 导出菜单打开时要和按钮合成一块：同宽、左右对齐，`top: calc(100% - 1px)` 盖住接缝，相接边去掉横框和圆角。圆角只留按钮顶上和菜单底下。打开时把按钮 `title` 清掉，否则系统提示会盖住菜单。不要把菜单加宽去迁就字，收紧内边距。
 - 桌面壳层圆角只走 `app/chromeRadius.ts`（`--app-radius-*`）。不要改 webview 的 `--markly-radius-*`，否则 VS Code 插件会一起变圆。几乎方的小图标按钮用 `--app-radius-xxs`（6px）；宽的文字按钮继续用 `--app-radius-sm`（12px）。不要靠加宽按钮来掩盖圆角。
 - 桌面正文思源黑体只嵌进预览 iframe 和设置示例。不要改导出样式里的 `--font-body`，也不要给按钮、文件树、菜单设这套字。
 - 正文字体下拉里的系统字体必须运行时枚举，不要写回一份短名单。思源黑体是打进应用的，不要从系统列表里再冒充一次。
@@ -145,6 +157,11 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。
 - 最近打开菜单盖在预览 iframe 上时，父页面收不到 iframe 里的点击。要另铺一层透明遮罩来收起，不能只听文档上的 mousedown。
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
-- macOS 上 `setVisibleOnAllWorkspaces` 必须带 `skipTransformProcessType: true`。默认会把进程改成菜单栏小工具，应用从程序坞和 Cmd+Tab 消失。跨桌面之后用 `setActivationPolicy('regular')` 收回来；图标已经可见就不要再 `dock.show()`，更不要先 `hide` 再 `show`（会叠出两个图标）。
+- macOS 上 `setVisibleOnAllWorkspaces` 必须同时带 `visibleOnFullScreen: false` 和 `skipTransformProcessType: true`。前者避免全屏辅助挡住程序坞，后者避免进程被改成菜单栏小工具后图标从程序坞和 Cmd+Tab 消失。跨桌面之后 `setActivationPolicy('regular')` 并 `dock.show()`。不要先 `hide` 再 `show`，否则会叠出两个图标。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
+- 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。
+- 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。
+- 桌面版删除文件走 `shell.trashItem`，移到系统废纸篓。右键第一次只打开确认，第二次才真正移走。成功后要关掉对应标签、去掉最近打开，并刷新文件树所在目录。
+- 桌面版重新加载不要调用 `loadFile`。那条在读失败时会把标签正文换成「打开失败」。刷新失败必须留下上次的内容，只出顶部提示。
+- macOS 把窗口拉回当前桌面时，`setVisibleOnAllWorkspaces` 的 `visibleOnFullScreen` 必须是 false。设成 true 会留下全屏辅助：窗口铺满整块屏幕但不是全屏，关闭按钮钻进菜单栏，底部被程序坞挡住，程序坞里也可能没有图标。跨桌面之后要量一次窗口大小，铺满了就收回；并调用 `app.dock.show()`。

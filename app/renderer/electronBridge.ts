@@ -23,6 +23,7 @@ export interface TabsView {
 export interface ElectronAppBridge {
   openFile?: () => Promise<string | null>;
   openPath?: (filePath: string) => Promise<string | null>;
+  reloadDocument?: () => Promise<unknown>;
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
   exportDocument?: (format: 'pdf' | 'html') => Promise<unknown>;
@@ -37,6 +38,9 @@ export interface ElectronAppBridge {
   pickFileTreeRoot?: () => Promise<unknown>;
   setFileTreeRoot?: (dir: string) => Promise<unknown>;
   listFileTree?: (dir: string) => Promise<unknown>;
+  revealInFolder?: (filePath: string) => Promise<boolean>;
+  renameFile?: (from: string, name: string) => Promise<unknown>;
+  trashFile?: (filePath: string) => Promise<unknown>;
   onFileTreeRoot?: (handler: (root: string) => void) => () => void;
   tabsState?: () => unknown;
   newTab?: () => Promise<unknown>;

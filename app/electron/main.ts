@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, dialog, Menu, nativeTheme, screen, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,6 +10,8 @@ import { getInstalledFontFamilies, listInstalledFontFamilies } from './systemFon
 import { markdownToHtml } from '../../src/core/export/htmlExport';
 import { isOpenableDocumentName } from './documentKind';
 import { readFailureDetail } from './macFolderAccess';
+import { readDocumentForReload } from './reloadDocument';
+import { contentAfterReload, type ReloadIpc } from './reloadResult';
 import { normalizeCopyPayload } from './copyPayload';
 import {
   exportMarkdownDocument,
@@ -24,21 +26,25 @@ import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
 import { filesystemRootOf } from './fileTreeModel';
 import {
+  attachOversizedWindowGuard,
   bindWindowRevealEvents,
   handleAppActivate,
   handleExternalFileOpen,
   revealAppWindow,
   scheduleHiddenWindowReveal,
-  showAppInDock,
 } from './fileOpenWindow';
+import { defaultWindowFrame, type Rect } from './windowFrame';
 import {
   DIR_MD_PAGE_SIZE,
   parseRecentFiles,
   removeRecentFile,
+  renameRecentFile,
   upsertRecentFile,
   type RecentFileRecord,
 } from './recentFiles';
 import { resolveFileTreeRoot } from './fileTreeModel';
+import { applyFileRename, destinationTaken } from './fileRename';
+import { planTrash } from './trashFile';
 import {
   activateTab,
   closeTab,
@@ -48,6 +54,8 @@ import {
   openBlankTab,
   openFileTab,
   openSettingsTab,
+  closeTabsForPath,
+  renameFileInTabs,
   setActiveContent,
   summarizeTabs,
   tabDisplayTitle,
@@ -218,6 +226,91 @@ function loadFile(p: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/** 改名后标签和最近打开都换成新路径，窗口标题跟着变。 */
+function renameOpenedFile(from: string, nextName: string): { ok: boolean; path: string; error: string } {
+  const result = applyFileRename(from, nextName, {
+    taken: (dest) =>
+      destinationTaken(
+        from,
+        dest,
+        (p) => {
+          try {
+            return fs.existsSync(p);
+          } catch {
+            return true;
+          }
+        },
+        (a, b) => fs.realpathSync(a) === fs.realpathSync(b)
+      ),
+    isFile: (p) => {
+      try {
+        return fs.existsSync(p) && fs.statSync(p).isFile();
+      } catch {
+        return false;
+      }
+    },
+    rename: (a, b) => {
+      try {
+        fs.renameSync(a, b);
+      } catch (error) {
+        throw new Error(readFailureDetail(a, error));
+      }
+    },
+  });
+  if (!result.ok) return { ok: false, path: from, error: result.error };
+  if (!result.unchanged) {
+    tabs = renameFileInTabs(tabs, result.from, result.to);
+    writeRecent(renameRecentFile(readRecent(), result.from, result.to));
+    emitActiveDocument();
+  }
+  return { ok: true, path: result.to, error: '' };
+}
+
+/** 移到系统废纸篓，不是直接抹掉。打开着的标签和最近打开记录一起清掉。 */
+async function trashOpenedFile(raw: string): Promise<{ ok: boolean; path: string; error: string }> {
+  const requested = String(raw ?? '').trim();
+  const resolved = requested ? path.resolve(requested) : '';
+  const plan = planTrash(resolved, (filePath) => {
+    try {
+      return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+    } catch {
+      return false;
+    }
+  });
+  if (!plan.ok) return plan;
+  try {
+    await shell.trashItem(plan.path);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.trim() : '';
+    return { ok: false, path: plan.path, error: detail || '无法移到废纸篓' };
+  }
+  writeRecent(removeRecentFile(removeRecentFile(readRecent(), requested), plan.path));
+  const before = tabs;
+  tabs = closeTabsForPath(tabs, requested, nextTabId());
+  if (plan.path !== requested) tabs = closeTabsForPath(tabs, plan.path, nextTabId());
+  if (tabs !== before) emitActiveDocument();
+  return { ok: true, path: plan.path, error: '' };
+}
+
+/**
+ * 重新读当前文档。文件不在或读失败时不改标签里的正文。
+ * 读成功且内容和现在不一样，才广播一次，让预览和源码跟着变。
+ */
+function reloadActiveDocument(): ReloadIpc {
+  const active = getActiveTab(tabs);
+  if (!active || active.kind !== 'doc' || !active.filePath.trim()) {
+    return { ok: false, reason: 'no-file' };
+  }
+  const read = readDocumentForReload(active.filePath);
+  const nextContent = contentAfterReload(active.content, read);
+  if (read.ok && nextContent !== active.content) {
+    tabs = setActiveContent(tabs, nextContent);
+    emitActiveDocument();
+  }
+  if (read.ok) return { ok: true };
+  return { ok: false, reason: read.reason };
 }
 
 function openExistingPath(p: string): string | null {
@@ -485,17 +578,36 @@ function hasLiveMainWindow(): boolean {
   return !!mainWindow && !mainWindow.isDestroyed();
 }
 
+function displayFrameFor(bounds: Rect) {
+  const display = screen.getDisplayMatching(bounds);
+  return { bounds: display.bounds, workArea: display.workArea };
+}
+
+/** macOS 上保证图标留在程序坞。窗口被拉去所有桌面时，系统有时会把图标拿掉。 */
+function showDockIcon(): void {
+  if (process.platform !== 'darwin' || !app.dock) return;
+  try {
+    app.setActivationPolicy('regular');
+  } catch (error) {
+    console.error('[Markly] 无法显示在程序坞', error);
+  }
+  void Promise.resolve(app.dock.show()).catch((error) => {
+    console.error('[Markly] 无法显示在程序坞', error);
+  });
+}
+
 /** 把主窗口显示出来并拿到前台。窗口已经在前面时只是再聚焦一次。 */
 function revealMainWindow(): void {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   revealAppWindow(
     win,
-    {
-      focus: (options) => app.focus(options),
-      showInDock: () => showAppInDock(app),
-    },
-    process.platform
+    { focus: (options) => app.focus(options), showDock: showDockIcon },
+    process.platform,
+    displayFrameFor,
+    (fn, ms) => {
+      setTimeout(fn, ms);
+    }
   );
 }
 
@@ -520,9 +632,12 @@ function attachForegroundRecovery(win: BrowserWindow): void {
 }
 
 function createWindow(): void {
+  const initial = defaultWindowFrame(screen.getPrimaryDisplay().workArea);
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: initial.x,
+    y: initial.y,
+    width: initial.width,
+    height: initial.height,
     title: 'Markly',
     // 等内容能画出来再显示。macOS 从访达打开时，构造函数里立刻显示经常不会出现在屏幕上。
     show: false,
@@ -538,6 +653,21 @@ function createWindow(): void {
     if (mainWindow === created) mainWindow = null;
   });
   attachForegroundRecovery(created);
+  attachOversizedWindowGuard(
+    {
+      isDestroyed: () => created.isDestroyed(),
+      isFullScreen: () => created.isFullScreen(),
+      isSimpleFullScreen: () => created.isSimpleFullScreen(),
+      getBounds: () => created.getBounds(),
+      setBounds: (bounds) => {
+        created.setBounds(bounds);
+      },
+      on: (_event, listener) => {
+        created.on('show', listener);
+      },
+    },
+    displayFrameFor
+  );
   // 拦截 iframe 内 target=_blank 的新窗口请求，转交系统浏览器；renderer 负责给外部 <a> 加 target=_blank
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {
@@ -585,8 +715,7 @@ app.on('open-file', (e, p) => {
 });
 
 app.whenReady().then(() => {
-  // 窗口先藏着等画面画完。这段时间也要像其他应用一样留在程序坞里，方便切过去。
-  if (process.platform === 'darwin') showAppInDock(app);
+  showDockIcon();
   const stateDir = path.join(app.getPath('home'), '.markly');
   try {
     fs.mkdirSync(stateDir, { recursive: true });
@@ -644,6 +773,7 @@ app.whenReady().then(() => {
   ipcMain.handle('app:open-path', (_e, filePath: unknown) =>
     openExistingPath(typeof filePath === 'string' ? filePath : '')
   );
+  ipcMain.handle('app:reload-document', () => reloadActiveDocument());
   ipcMain.handle('app:recent-files:list', () => readRecent());
   ipcMain.handle('app:recent-files:remove', (_e, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : '';
@@ -657,6 +787,21 @@ app.whenReady().then(() => {
   ipcMain.handle('app:file-tree:pick', () => chooseFileTreeRoot());
   ipcMain.handle('app:file-tree:set-root', (_e, raw: unknown) =>
     commitFileTreeRoot(typeof raw === 'string' ? raw : '')
+  );
+  ipcMain.handle('app:reveal-in-folder', (_e, filePath: unknown) => {
+    const raw = typeof filePath === 'string' ? filePath.trim() : '';
+    if (!raw) return false;
+    shell.showItemInFolder(path.resolve(raw));
+    return true;
+  });
+  ipcMain.handle('app:rename-file', (_e, payload: unknown) => {
+    const obj = payload && typeof payload === 'object' ? (payload as { from?: unknown; name?: unknown }) : {};
+    const from = typeof obj.from === 'string' ? obj.from : '';
+    const name = typeof obj.name === 'string' ? obj.name : '';
+    return renameOpenedFile(from, name);
+  });
+  ipcMain.handle('app:trash-file', (_e, filePath: unknown) =>
+    trashOpenedFile(typeof filePath === 'string' ? filePath : '')
   );
   ipcMain.handle('app:file-tree:list', (_e, dir: unknown) => {
     // 目录树从文件系统根铺开，不再限制在曾经选过的文件夹里。

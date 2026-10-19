@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
   // 应用本地能力（不走 shim）：调起系统文件选择、读当前打开路径、写入剪贴板、最近打开
   openFile: (): Promise<string | null> => ipcRenderer.invoke('app:open-file'),
   openPath: (filePath: string): Promise<string | null> => ipcRenderer.invoke('app:open-path', filePath),
+  reloadDocument: (): Promise<unknown> => ipcRenderer.invoke('app:reload-document'),
   listRecentFiles: (): Promise<unknown> => ipcRenderer.invoke('app:recent-files:list'),
   removeRecentFile: (filePath: string): Promise<unknown> =>
     ipcRenderer.invoke('app:recent-files:remove', filePath),
@@ -31,6 +32,10 @@ contextBridge.exposeInMainWorld('electron', {
   pickFileTreeRoot: (): Promise<string | null> => ipcRenderer.invoke('app:file-tree:pick'),
   setFileTreeRoot: (dir: string): Promise<string> => ipcRenderer.invoke('app:file-tree:set-root', dir),
   listFileTree: (dir: string): Promise<unknown> => ipcRenderer.invoke('app:file-tree:list', dir),
+  revealInFolder: (filePath: string): Promise<boolean> => ipcRenderer.invoke('app:reveal-in-folder', filePath),
+  renameFile: (from: string, name: string): Promise<unknown> =>
+    ipcRenderer.invoke('app:rename-file', { from, name }),
+  trashFile: (filePath: string): Promise<unknown> => ipcRenderer.invoke('app:trash-file', filePath),
   onFileTreeRoot: (handler: (root: string) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, root: unknown) => {
       handler(typeof root === 'string' ? root : '');

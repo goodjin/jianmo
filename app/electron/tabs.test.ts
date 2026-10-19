@@ -14,6 +14,8 @@ import {
   openFileTab,
   openSettingsTab,
   tabDisplayTitle,
+  closeTabsForPath,
+  renameFileInTabs,
   setActiveContent,
   summarizeTabs,
   tabTitle,
@@ -153,18 +155,64 @@ describe('openFileTab', () => {
     expect(next.tabs.find((t) => t.id === 'b')?.content).toBe('# B');
   });
 
-  it('同路径命中优先于空白标签占用', () => {
+  it('当前是空标签时，点一篇还没打开的文档会填进这张标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/d.md', '# D');
+    expect(next.tabs).toHaveLength(3);
+    expect(next.activeId).toBe('blank');
+    expect(next.tabs.find((t) => t.id === 'blank')).toEqual({
+      id: 'blank',
+      kind: 'doc',
+      filePath: '/docs/d.md',
+      content: '# D',
+    });
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+  });
+
+  it('空标签下再点已经打开的文档，切到那个标签并关掉这张用不上的空标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
+    expect(next.tabs.map((t) => t.id)).toEqual(['a', 'other']);
+    expect(next.activeId).toBe('a');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
+    expect(next.tabs.find((t) => t.id === 'blank')).toBeUndefined();
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+  });
+
+  it('当前标签已有文档时，再点别的 md 会另开标签，不会填进旁边的空标签', () => {
     const s: TabsState = {
       tabs: [
         { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
         createBlankTab('blank'),
       ],
-      activeId: 'blank',
+      activeId: 'a',
     };
-    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
-    expect(next.tabs).toHaveLength(2);
-    expect(next.activeId).toBe('a');
-    expect(next.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    const opened = openFileTab(s, 'd', '/docs/d.md', '# D');
+    expect(opened.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(opened.activeId).toBe('d');
+    expect(opened.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+    expect(opened.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+
+    const again = openFileTab(opened, 'dup', '/docs/a.md', '# A2');
+    expect(again.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(again.activeId).toBe('a');
+    expect(again.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    expect(again.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
   });
 
   it('空路径不改变状态', () => {
@@ -322,5 +370,46 @@ describe('tabDisplayTitle', () => {
     expect(tabDisplayTitle({ id: 's', kind: 'settings', filePath: '', content: '' })).toBe(
       SETTINGS_TAB_TITLE
     );
+  });
+});
+
+describe('closeTabsForPath', () => {
+  it('关掉打开这个文件的标签，旁边的标签留着', () => {
+    const next = closeTabsForPath(threeFiles(), '/docs/b.md', 'blank');
+    expect(next.tabs.map((t) => t.filePath)).toEqual(['/docs/a.md', '/docs/c.md']);
+    expect(next.tabs.map((t) => t.content)).toEqual(['# A', '# C']);
+    expect(next.activeId).toBe('c');
+  });
+
+  it('关掉唯一的标签后留下一个空白标签', () => {
+    const only = openFileTab(createInitialState('blank-0'), 'doc', '/docs/a.md', '# A');
+    const next = closeTabsForPath(only, '/docs/a.md', 'blank-1');
+    expect(next.tabs).toHaveLength(1);
+    expect(next.tabs[0]?.filePath).toBe('');
+    expect(next.tabs[0]?.id).toBe('blank-1');
+    expect(next.activeId).toBe('blank-1');
+  });
+
+  it('没打开这个文件时保持原状态', () => {
+    const s = threeFiles();
+    expect(closeTabsForPath(s, '/docs/missing.md', 'blank')).toBe(s);
+    expect(closeTabsForPath(s, '  ', 'blank')).toBe(s);
+  });
+});
+
+describe('renameFileInTabs', () => {
+  it('已打开的文件改名后，标签路径换成新的，正文和活动标签不动', () => {
+    const next = renameFileInTabs(threeFiles(), '/docs/b.md', '/docs/renamed.md');
+    expect(next.tabs.map((t) => t.filePath)).toEqual(['/docs/a.md', '/docs/renamed.md', '/docs/c.md']);
+    expect(next.tabs[1]?.content).toBe('# B');
+    expect(next.activeId).toBe('b');
+    expect(summarizeTabs(next).tabs[1]?.title).toBe('renamed.md');
+  });
+
+  it('没有打开这个文件、或新旧路径相同，就保持原状态', () => {
+    const s = threeFiles();
+    expect(renameFileInTabs(s, '/docs/missing.md', '/docs/x.md')).toBe(s);
+    expect(renameFileInTabs(s, '/docs/b.md', '/docs/b.md')).toBe(s);
+    expect(renameFileInTabs(s, '  ', '/docs/x.md')).toBe(s);
   });
 });

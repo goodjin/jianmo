@@ -7,6 +7,7 @@ import {
   paginateItems,
   parseRecentFiles,
   removeRecentFile,
+  renameRecentFile,
   upsertRecentFile,
 } from './recentFiles';
 
@@ -126,6 +127,29 @@ describe('formatOpenedAt', () => {
 
   it('非法时间戳返回空串', () => {
     expect(formatOpenedAt(Number.NaN, now)).toBe('');
+  });
+});
+
+describe('renameRecentFile', () => {
+  const list = [
+    { path: '/docs/a.md', openedAt: 2 },
+    { path: '/docs/b.md', openedAt: 1 },
+  ];
+
+  it('旧路径改成新路径，打开时间不变', () => {
+    expect(renameRecentFile(list, '/docs/b.md', '/docs/c.md')).toEqual([
+      { path: '/docs/a.md', openedAt: 2 },
+      { path: '/docs/c.md', openedAt: 1 },
+    ]);
+  });
+
+  it('新路径已经在列表里时，只丢掉旧的那条', () => {
+    expect(renameRecentFile(list, '/docs/b.md', '/docs/a.md')).toEqual([{ path: '/docs/a.md', openedAt: 2 }]);
+  });
+
+  it('路径没变或对不上时，列表内容不变', () => {
+    expect(renameRecentFile(list, '/docs/b.md', '/docs/b.md')).toEqual(list);
+    expect(renameRecentFile(list, '/docs/missing.md', '/docs/c.md')).toEqual(list);
   });
 });
 

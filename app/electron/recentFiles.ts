@@ -44,6 +44,23 @@ export function removeRecentFile(list: RecentFileRecord[], filePath: string): Re
   return parseRecentFiles(list).filter((r) => r.path !== p);
 }
 
+/**
+ * 文件改名后，最近打开里的旧路径改成新路径。
+ * 新路径已经在列表里时，丢掉旧的那条，避免出现两条一样的记录。
+ */
+export function renameRecentFile(
+  list: RecentFileRecord[],
+  fromPath: string,
+  toPath: string
+): RecentFileRecord[] {
+  const from = String(fromPath ?? '').trim();
+  const to = String(toPath ?? '').trim();
+  const parsed = parseRecentFiles(list);
+  if (!from || !to || from === to) return parsed;
+  if (parsed.some((rec) => rec.path === to)) return parsed.filter((rec) => rec.path !== from);
+  return parsed.map((rec) => (rec.path === from ? { ...rec, path: to } : rec));
+}
+
 export function paginateItems<T>(
   items: T[],
   offset: number,

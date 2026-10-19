@@ -42,6 +42,14 @@
     >
       <template #pre-new>
         <button
+          class="chrome-btn tab-reload"
+          type="button"
+          :disabled="reloadDisabled"
+          :title="reloadTitle"
+          :aria-label="reloadTitle"
+          @click="onReload"
+        >刷新</button>
+        <button
           class="chrome-btn tab-copy"
           :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
           type="button"
@@ -59,6 +67,16 @@
             <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
           </svg>
         </button>
+        <button
+          class="chrome-btn tab-source"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: sourceOpen }"
+          :title="sourceTitle"
+          :aria-label="sourceTitle"
+          :aria-pressed="sourceOpen"
+          @click="toggleSource"
+        >{{ sourceLabel }}</button>
         <div
           ref="exportSplitRef"
           class="export-split"
@@ -81,10 +99,10 @@
           </button>
           <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
             <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
-              导出 PDF
+              PDF
             </button>
             <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
-              导出 HTML
+              HTML
             </button>
           </div>
         </div>
@@ -104,6 +122,14 @@
       @toggle="toggleFileTree"
     />
     <main class="preview-area">
+      <p
+        v-if="visibleReloadTip"
+        :key="visibleReloadTip.seq"
+        class="reload-tip"
+        :class="'is-' + visibleReloadTip.kind"
+        role="status"
+      >{{ visibleReloadTip.text }}</p>
+      <div class="preview-stage">
       <SettingsPage
         v-if="isSettingsTab"
         :appearance="appearance"
@@ -138,19 +164,34 @@
           </ul>
         </aside>
         <div class="doc-body">
-          <div v-if="loading" class="status">加载中…</div>
-          <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
-          <iframe
-            v-else
-            ref="frameRef"
-            class="preview-frame"
-            :srcdoc="safeHtml"
-            sandbox="allow-scripts allow-popups"
-            referrerpolicy="no-referrer"
-            @load="onFrameLoad"
-          ></iframe>
+          <div v-if="isBlankDoc && !sourceOpen" class="blank-page">
+            <button class="chrome-btn blank-open" type="button" @click="onOpen">打开</button>
+            <p class="blank-hint">从左侧文件里点开一篇，或在这里选择文件。</p>
+          </div>
+          <div v-else-if="sourceOpen" class="source-pane">
+            <p v-if="sourceNote" class="source-note">{{ sourceNote }}</p>
+            <pre
+              ref="sourceViewRef"
+              class="source-view"
+              :style="{ fontSize: appearance.fontSize + 'px' }"
+            >{{ sourceText }}</pre>
+          </div>
+          <template v-else>
+            <div v-if="loading" class="status">加载中…</div>
+            <div v-else-if="error" class="status error">渲染失败：{{ error }}</div>
+            <iframe
+              v-else
+              ref="frameRef"
+              class="preview-frame"
+              :srcdoc="safeHtml"
+              sandbox="allow-scripts allow-popups"
+              referrerpolicy="no-referrer"
+              @load="onFrameLoad"
+            ></iframe>
+          </template>
         </div>
       </template>
+      </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
   </div>
@@ -165,7 +206,25 @@ import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
+import { formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import {
+  parseReloadResult,
+  RELOAD_MISSING_TIP,
+  RELOAD_OK_TIP,
+  RELOAD_TIP_OK_MS,
+  RELOAD_UNREADABLE_TIP,
+} from '../electron/reloadResult';
 import { readBoxCopyPayload } from '../electron/jsonView';
+import {
+  PLACE_READ,
+  PLACE_RESTORE,
+  captureSourceAnchor,
+  keepPlace,
+  measureSourceBox,
+  readPlaceAnchor,
+  scrollTopForSource,
+  type PlaceAnchor,
+} from '../electron/viewPlace';
 import { readReaderPrefs } from '../electron/readerPrefs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
@@ -201,6 +260,7 @@ const isSettingsTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.kind === 'settings'
 );
 const frameRef = ref<HTMLIFrameElement | null>(null);
+const sourceViewRef = ref<HTMLElement | null>(null);
 const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
@@ -210,6 +270,8 @@ const fileTreeCollapsed = ref(false);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
+/** 还没装上文件的文档标签。设置页不算。 */
+const isBlankDoc = computed(() => !isSettingsTab.value && !activeFilePath.value);
 const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
@@ -243,6 +305,222 @@ const exportTitle = computed(() => {
 });
 
 /**
+ * 每个文档标签各自记住：在看源码还是预览，以及视口上方附近的那一句。
+ * 关掉标签就忘掉。高度两边不一样，所以记的是文字，不是一个像素。
+ */
+interface TabReading {
+  source: boolean;
+  anchor: PlaceAnchor | null;
+}
+
+const readingByTab = new Map<string, TabReading>();
+const sourceOpen = ref(false);
+/** 切标签或切回预览之后，等正文到了再滚回记下的那一句。 */
+let wantRestore = false;
+let placeBusy = false;
+
+const sourceLabel = computed(() => (sourceOpen.value ? '渲染' : '源码'));
+
+const sourceTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页没有源码';
+  return sourceOpen.value ? '渲染' : '查看源码';
+});
+
+const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
+const sourceNote = computed(() => sourceFormatNote(markdownContent.value, activeFilePath.value));
+
+function readingOf(id: string): TabReading {
+  return readingByTab.get(id) ?? { source: false, anchor: null };
+}
+
+function putReading(id: string, patch: Partial<TabReading>): void {
+  if (!id) return;
+  readingByTab.set(id, { ...readingOf(id), ...patch });
+}
+
+function syncSourceOpen(): void {
+  if (isSettingsTab.value || !activeTabId.value) {
+    sourceOpen.value = false;
+    return;
+  }
+  sourceOpen.value = readingOf(activeTabId.value).source;
+}
+
+function captureSourceNow(): PlaceAnchor | null {
+  const pre = sourceViewRef.value;
+  if (!pre) return null;
+  return captureSourceAnchor(sourceText.value, pre.scrollTop, measureSourceBox(pre));
+}
+
+/** 问预览现在看到哪。沙箱读不到正文，等它回一句；没回就当还在文首。 */
+function capturePreviewAnchor(): Promise<PlaceAnchor> {
+  const frame = frameRef.value;
+  const win = frame?.contentWindow ?? null;
+  if (!frame || !win) return Promise.resolve({ snippet: '', ratio: 0 });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (anchor: PlaceAnchor) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', onMsg);
+      clearTimeout(timer);
+      resolve(anchor);
+    };
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.source !== win) return;
+      const anchor = readPlaceAnchor(ev.data);
+      if (!anchor) return;
+      finish(anchor);
+    };
+    window.addEventListener('message', onMsg);
+    const timer = setTimeout(() => finish({ snippet: '', ratio: 0 }), 100);
+    try {
+      win.postMessage({ type: PLACE_READ }, '*');
+    } catch {
+      finish({ snippet: '', ratio: 0 });
+    }
+  });
+}
+
+async function captureCurrentAnchor(): Promise<PlaceAnchor> {
+  if (sourceOpen.value) return captureSourceNow() ?? { snippet: '', ratio: 0 };
+  return capturePreviewAnchor();
+}
+
+function applySourceScroll(anchor: PlaceAnchor | null): void {
+  const pre = sourceViewRef.value;
+  if (!pre || !anchor) return;
+  const top = scrollTopForSource(sourceText.value, anchor, measureSourceBox(pre));
+  pre.scrollTop = top;
+  console.info('[markly] 源码停在原处', { top, snippet: anchor.snippet });
+}
+
+function postPreviewRestore(anchor: PlaceAnchor | null): boolean {
+  const win = frameRef.value?.contentWindow;
+  if (!win || !anchor) return false;
+  try {
+    win.postMessage({ type: PLACE_RESTORE, snippet: anchor.snippet, ratio: anchor.ratio }, '*');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restoreArmedSource(): void {
+  if (!wantRestore || !sourceOpen.value) return;
+  const id = activeTabId.value;
+  const anchor = readingOf(id).anchor;
+  wantRestore = false;
+  void nextTick(() => {
+    if (activeTabId.value !== id || !sourceOpen.value) return;
+    applySourceScroll(anchor);
+  });
+}
+
+async function rememberActivePlace(): Promise<void> {
+  const id = activeTabId.value;
+  if (!id || isSettingsTab.value) return;
+  const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+  putReading(id, { source: sourceOpen.value, anchor });
+}
+
+async function toggleSource(): Promise<void> {
+  if (placeBusy || isSettingsTab.value || !activeTabId.value) return;
+  const id = activeTabId.value;
+  placeBusy = true;
+  try {
+    const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+    const next = !sourceOpen.value;
+    putReading(id, { source: next, anchor });
+    sourceOpen.value = next;
+    console.info('[markly] 切换源码', { open: next, file: activeFilePath.value, snippet: anchor.snippet });
+    await nextTick();
+    if (activeTabId.value !== id) return;
+    if (next) applySourceScroll(anchor);
+    else {
+      wantRestore = true;
+      if (!postPreviewRestore(anchor)) {
+        /* 预览框还没画出来，等它加载完再滚。 */
+      }
+    }
+  } finally {
+    placeBusy = false;
+  }
+}
+
+const reloading = ref(false);
+const reloadDisabled = computed(
+  () => isSettingsTab.value || !activeFilePath.value || reloading.value
+);
+const reloadTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能刷新';
+  if (!activeFilePath.value) return '还没有文件可刷新';
+  if (reloading.value) return '正在重新加载…';
+  return '重新加载文档';
+});
+
+interface ReloadTip {
+  tabId: string;
+  seq: number;
+  kind: 'ok' | 'missing' | 'unreadable';
+  text: string;
+}
+
+const reloadTip = ref<ReloadTip | null>(null);
+let reloadTipTimer: ReturnType<typeof setTimeout> | null = null;
+let reloadTipSeq = 0;
+
+const visibleReloadTip = computed(() => {
+  const tip = reloadTip.value;
+  if (!tip || isSettingsTab.value || tip.tabId !== activeTabId.value) return null;
+  return tip;
+});
+
+function clearReloadTipTimer(): void {
+  if (reloadTipTimer) {
+    clearTimeout(reloadTipTimer);
+    reloadTipTimer = null;
+  }
+}
+
+function showReloadTip(kind: ReloadTip['kind'], text: string, autoHide: boolean): void {
+  clearReloadTipTimer();
+  const seq = ++reloadTipSeq;
+  reloadTip.value = { tabId: activeTabId.value, seq, kind, text };
+  if (!autoHide) return;
+  reloadTipTimer = setTimeout(() => {
+    reloadTipTimer = null;
+    if (reloadTip.value?.seq === seq) reloadTip.value = null;
+  }, RELOAD_TIP_OK_MS);
+}
+
+async function onReload(): Promise<void> {
+  if (reloadDisabled.value || !activeTabId.value) return;
+  const api = electronApp();
+  const tabId = activeTabId.value;
+  if (!api?.reloadDocument) {
+    showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+    console.warn('[markly] 重新加载没有通道');
+    return;
+  }
+  reloading.value = true;
+  try {
+    const result = parseReloadResult(await api.reloadDocument());
+    if (activeTabId.value !== tabId) return;
+    console.info('[markly] 重新加载', { ok: result.ok, reason: result.ok ? '' : result.reason, file: activeFilePath.value });
+    if (result.ok) showReloadTip('ok', RELOAD_OK_TIP, true);
+    else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
+    else if (result.reason === 'unreadable') showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+  } catch (err) {
+    if (activeTabId.value !== tabId) return;
+    showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
+    console.warn('[markly] 重新加载失败', err);
+  } finally {
+    reloading.value = false;
+  }
+}
+
+/**
  * 与导出/预览 heading.id 同契约（权威实现见 src/core/export/headingAnchor.ts）：
  * `{#custom-id}` 优先 → 文本 slug（保留中文）→ 按出现序号兜底。
  */
@@ -254,9 +532,12 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 没有 Markdown 标题，或当前是 JSON，就不显示目录。目录画在正文里面。 */
+/** 没有 Markdown 标题、当前是 JSON、或正在看源码，就不显示目录。目录画在正文里面。 */
 const hasOutline = computed(
-  () => structuredKindFromName(activeFilePath.value) === null && outline.value.length > 0
+  () =>
+    !sourceOpen.value &&
+    structuredKindFromName(activeFilePath.value) === null &&
+    outline.value.length > 0
 );
 
 function jumpToHeading(headingId: string): void {
@@ -273,6 +554,16 @@ const previewCache = new Map<string, { content: string; html: string }>();
 
 function applyTabsView(raw: unknown): void {
   const view = parseTabsView(raw);
+  const leaving = activeTabId.value;
+  const arriving = view.activeId;
+  if (leaving && leaving !== arriving) {
+    if (!isSettingsTab.value) {
+      const sync = sourceOpen.value ? captureSourceNow() : null;
+      if (sync) putReading(leaving, { source: sourceOpen.value, anchor: sync });
+      else putReading(leaving, { source: sourceOpen.value });
+    }
+    wantRestore = true;
+  }
   tabs.value = view.tabs;
   activeTabId.value = view.activeId;
   // 关掉的标签不再占着缓存
@@ -280,6 +571,14 @@ function applyTabsView(raw: unknown): void {
   for (const id of [...previewCache.keys()]) {
     if (!alive.has(id)) previewCache.delete(id);
   }
+  for (const id of [...readingByTab.keys()]) {
+    if (!alive.has(id)) readingByTab.delete(id);
+  }
+  if (reloadTip.value && !alive.has(reloadTip.value.tabId)) {
+    reloadTip.value = null;
+    clearReloadTipTimer();
+  }
+  syncSourceOpen();
 }
 
 /** 把所选配色写成根节点上的 CSS 变量，外壳（顶栏/标签条/侧栏/设置页）据此变色。 */
@@ -357,9 +656,15 @@ function refreshTabs(): void {
   }
 }
 
-function onActivateTab(id: string): void {
+async function onActivateTab(id: string): Promise<void> {
   closeRecent();
-  if (id === activeTabId.value) return;
+  if (id === activeTabId.value || placeBusy) return;
+  placeBusy = true;
+  try {
+    await rememberActivePlace();
+  } finally {
+    placeBusy = false;
+  }
   void electronApp()?.activateTab?.(id);
 }
 
@@ -657,6 +962,10 @@ async function onCopy(): Promise<void> {
 function onFrameLoad(): void {
   const frame = frameRef.value;
   if (!frame) return;
+  if (wantRestore && !sourceOpen.value) {
+    const anchor = readingOf(activeTabId.value).anchor;
+    if (!anchor || postPreviewRestore(anchor)) wantRestore = false;
+  }
   try {
     const doc = frame.contentDocument;
     if (!doc) return;
@@ -708,6 +1017,7 @@ const off = onMessage((msg: ExtensionMessage) => {
     case 'CONTENT_UPDATE':
       markdownContent.value = msg.payload.content ?? '';
       requestPreview();
+      restoreArmedSource();
       break;
     case 'PREVIEW_HTML':
       if (msg.payload.error) {
@@ -789,6 +1099,7 @@ onUnmounted(() => {
     clearTimeout(copiedTimer);
     copiedTimer = null;
   }
+  clearReloadTipTimer();
   clearExportCloseTimer();
   if (exportHintTimer) {
     clearTimeout(exportHintTimer);
@@ -904,6 +1215,14 @@ html, body, #app {
   min-width: 32px;
 }
 /* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
+.tab-reload {
+  align-self: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
+}
 .tab-copy {
   display: inline-flex;
   align-items: center;
@@ -917,6 +1236,14 @@ html, body, #app {
   margin-right: 4px;
   font-size: 14px;
   line-height: 1;
+}
+.tab-source {
+  align-self: center;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
 }
 .tab-copy:disabled { opacity: 0.55; }
 .tab-copy.is-copied {
@@ -987,9 +1314,12 @@ html, body, #app {
 .tab-export {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   height: 26px;
   min-height: 26px;
+  min-width: 76px;
+  box-sizing: border-box;
   padding: 0 8px;
   font-size: 12px;
 }
@@ -1006,30 +1336,47 @@ html, body, #app {
   line-height: 1;
   opacity: 0.75;
 }
+/* 打开时和按钮合成一块：同宽、左右对齐，相接的一边不留缝、不留横框。圆角只在外轮廓。 */
+.export-split:has(.export-menu) {
+  z-index: 40;
+}
+.export-split:has(.export-menu) .tab-export,
+.export-split:has(.export-menu) .tab-export:hover {
+  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
+  border-bottom-color: var(--markly-background, #fff);
+  background: var(--markly-background, #fff);
+}
 .export-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% - 1px);
+  left: 0;
   right: 0;
   z-index: 30;
-  min-width: 148px;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
   margin: 0;
-  padding: 6px;
+  padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: var(--app-radius-md);
+  border-top: 0;
+  border-radius: 0 0 var(--app-radius-sm) var(--app-radius-sm);
   background: var(--markly-background, #fff);
-  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+  box-shadow: none;
+  overflow: hidden;
 }
 .export-item {
   display: block;
   width: 100%;
-  text-align: left;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
-  line-height: 1.4;
-  padding: 7px 12px;
-  border-radius: var(--app-radius-sm);
+  line-height: 1.35;
+  padding: 6px 4px;
+  border-radius: 0;
   cursor: pointer;
 }
 .export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
@@ -1039,10 +1386,61 @@ html, body, #app {
   grid-row: 2;
   position: relative;
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--markly-background, #fff);
+}
+.preview-stage {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.preview-stage > .settings-page {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+.reload-tip {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-bottom: 1px solid transparent;
+  animation: reload-tip-in 220ms ease-out;
+}
+.reload-tip.is-ok {
+  color: #1a7f37;
+  background: #dafbe1;
+  border-bottom-color: #aceebb;
+}
+.reload-tip.is-missing,
+.reload-tip.is-unreadable {
+  color: #7d4e00;
+  background: #fff8c5;
+  border-bottom-color: #eac54f;
+}
+:global(html[data-theme='dark']) .reload-tip.is-ok {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.18);
+  border-bottom-color: rgba(63, 185, 80, 0.4);
+}
+:global(html[data-theme='dark']) .reload-tip.is-missing,
+:global(html[data-theme='dark']) .reload-tip.is-unreadable {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.18);
+  border-bottom-color: rgba(210, 153, 34, 0.45);
+}
+@keyframes reload-tip-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reload-tip { animation: none; }
 }
 /* 目录画在正文内部左侧，和正文同一张白底，不进顶层分栏 */
 .doc-outline {
@@ -1131,6 +1529,62 @@ html, body, #app {
   width: 100%;
   height: 100%;
   border: 0;
+  background: var(--markly-background, #fff);
+}
+/* 源码用等宽字体，不套预览正文的思源黑体。字号跟阅读设置走。 */
+.blank-page {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px 40px 32px;
+  min-width: 0;
+  min-height: 0;
+}
+.blank-open {
+  min-width: 72px;
+  font-size: 13px;
+}
+.blank-hint {
+  margin: 0;
+  max-width: 28em;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--markly-textSecondary, #57606a);
+}
+.source-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--markly-background, #fff);
+}
+.source-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--markly-textSecondary, #57606a);
+}
+.source-view {
+  flex: 1;
+  margin: 0;
+  padding: 16px 20px;
+  overflow: auto;
+  min-height: 0;
+  box-sizing: border-box;
+  white-space: pre;
+  tab-size: 2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  line-height: 1.55;
+  color: var(--markly-text, #24292e);
   background: var(--markly-background, #fff);
 }
 .selection-toast {
