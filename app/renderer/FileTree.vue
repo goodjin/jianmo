@@ -1,34 +1,5 @@
 <template>
   <aside class="file-tree" :class="{ collapsed }">
-    <div class="file-head">
-      <span v-if="!collapsed" class="file-head-title">文件</span>
-      <span v-if="!collapsed" class="file-head-actions">
-        <button
-          type="button"
-          class="file-icon-btn file-up"
-          title="上一级目录"
-          aria-label="上一级目录"
-          :disabled="!canGoUp"
-          @click="goUp"
-        >↑</button>
-        <button
-          type="button"
-          class="file-icon-btn"
-          title="刷新目录树"
-          :disabled="!root"
-          @click="onRefresh"
-        >刷新</button>
-      </span>
-      <button
-        class="file-toggle"
-        type="button"
-        :title="collapsed ? '展开文件' : '收起文件'"
-        :aria-label="collapsed ? '展开文件' : '收起文件'"
-        :aria-expanded="!collapsed"
-        @click="emit('toggle')"
-      >{{ collapsed ? '›' : '‹' }}</button>
-    </div>
-
     <template v-if="!collapsed">
       <div v-if="root" class="file-root" :title="root">{{ rootName }}</div>
       <div v-if="rootBusy" class="file-empty">加载中…</div>
@@ -98,7 +69,9 @@ import { parseRenameResult, planRename } from '../electron/fileRename';
 import { parseTrashResult } from '../electron/trashFile';
 
 const props = defineProps<{ collapsed: boolean; activePath: string }>();
-const emit = defineEmits<{ (e: 'toggle'): void }>();
+const emit = defineEmits<{
+  (e: 'chrome', state: { canGoUp: boolean; hasRoot: boolean }): void;
+}>();
 
 const root = ref('');
 const expanded = reactive<Record<string, boolean>>({});
@@ -408,6 +381,16 @@ provide(FileTreeKey, ctx);
 let treeReady = false;
 
 watch(
+  [canGoUp, root],
+  () => {
+    emit('chrome', { canGoUp: canGoUp.value, hasRoot: !!root.value });
+  },
+  { immediate: true }
+);
+
+defineExpose({ goUp, refresh: onRefresh });
+
+watch(
   () => props.activePath,
   () => {
     if (!treeReady) return;
@@ -452,59 +435,6 @@ onUnmounted(() => {
   border-right: 1px solid var(--markly-border-color, #d0d7de);
   background: var(--markly-surface, #fafbfc);
   color: var(--markly-text, #24292e);
-}
-.file-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 8px 8px 12px;
-  min-height: 40px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--markly-border-color, #d0d7de);
-  flex-shrink: 0;
-}
-.file-head-title {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-.file-head-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: auto;
-}
-.file-icon-btn,
-.file-toggle {
-  border: 1px solid var(--markly-border-color, #d0d7de);
-  border-radius: var(--app-radius-sm);
-  background: var(--markly-background, #fff);
-  color: var(--markly-text, #24292e);
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1.3;
-  height: 28px;
-  padding: 0 8px;
-}
-/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。 */
-.file-up,
-.file-toggle {
-  border-radius: var(--app-radius-xxs);
-}
-.file-icon-btn:hover,
-.file-toggle:hover {
-  background: var(--markly-surface, #f6f8fa);
-}
-.file-icon-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-.file-tree.collapsed .file-head {
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 8px 6px;
-  border-bottom: 0;
-  min-height: 0;
-  height: 100%;
 }
 .file-root {
   padding: 8px 12px 0;

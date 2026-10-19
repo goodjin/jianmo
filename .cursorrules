@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **文件树顶栏三个按钮升到「打开」右边**（桌面 0.6.9）：去掉「文件」文案和整条标题栏。按钮画在打开那一栏里，不 Teleport（Teleport 进同一页的兄弟节点，父组件一更新就会在补丁时崩）。收起后只留「开」和 ›，列宽跟按钮走。展开时左列 260px，才能放下「打开」和这三个按钮。
 - [X] **文件右键删除，二次确认后移到废纸篓**（桌面 0.6.8）：菜单先出「删除」，再点「移到废纸篓」才调用 `shell.trashItem`。失败留在确认里。成功后刷新所在目录，关掉这个文件的标签，并从最近打开去掉。
 - [X] **桌面版窗口铺满屏幕、程序坞没有图标**（0.6.7）：拉到前台时不再使用 `visibleOnFullScreen: true`。那个选项会把窗口变成全屏辅助：铺满整屏但不是全屏，标题栏钻进菜单栏，底部被程序坞挡住，程序坞图标也会消失。铺满之后收回原来的大小；原来就已经铺满就改回默认大小。并 `setActivationPolicy('regular')` + `dock.show()`。
 - [X] **文件右键菜单 + 代码框复制按钮**（桌面 0.6.6，预览样式 2.3.2）：文件行右键「重命名 / 在 Finder 打开 / 复制全路径 / 复制文件名」。代码块语言名留在框内右上角，复制按钮改到框外上方，悬停才出现。所有 `.markly-codeblock` 共用这一套。
@@ -151,7 +152,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
-- 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。
+- 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。不要把文件树按钮 Teleport 到同一页里的打开栏：目标在父组件模板里时，父组件一更新，Vue 补丁会碰到空节点并抛 `Cannot set properties of null (setting '__vnode')`。按钮放在打开栏自己的模板里，再调用文件树暴露的方法。
 - 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。
 - 桌面版删除文件走 `shell.trashItem`，移到系统废纸篓。右键第一次只打开确认，第二次才真正移走。成功后要关掉对应标签、去掉最近打开，并刷新文件树所在目录。
 - 桌面版重新加载不要调用 `loadFile`。那条在读失败时会把标签正文换成「打开失败」。刷新失败必须留下上次的内容，只出顶部提示。
