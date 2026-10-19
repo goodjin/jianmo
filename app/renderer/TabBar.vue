@@ -53,8 +53,11 @@ const emit = defineEmits<{
   align-items: flex-end;
   gap: 4px;
   padding: 0 8px 0 0;
+  min-width: 0;
+  max-width: 100%;
   min-height: 40px;
   box-sizing: border-box;
+  overflow: hidden;
   background: var(--markly-surface, #f6f8fa);
 }
 /* 底部分界线单独画，活动标签用白底盖住自己脚下的那一段，和正文连成一片 */

@@ -1,9 +1,10 @@
 <template>
   <div
     class="markly-app"
-    :style="chromeRadiusStyle"
+    :style="appChromeStyle"
     :class="{
       'files-collapsed': fileTreeCollapsed,
+      'is-resizing': filesResizing,
     }"
   >
     <div ref="openSplitRef" class="open-rail">
@@ -116,6 +117,21 @@
         >设置</button>
       </template>
     </TabBar>
+    <div
+      v-if="!fileTreeCollapsed"
+      class="files-resize"
+      role="separator"
+      tabindex="0"
+      aria-orientation="vertical"
+      aria-label="调整文件树宽度"
+      title="拖动调整宽度，双击恢复默认"
+      :aria-valuemin="currentFileTreeLimit().min"
+      :aria-valuemax="currentFileTreeLimit().max"
+      :aria-valuenow="fileTreeWidth"
+      @pointerdown="onFilesResizeDown"
+      @dblclick="onFilesResizeReset"
+      @keydown="onFilesResizeKey"
+    />
     <FileTree
       :collapsed="fileTreeCollapsed"
       :active-path="activeFilePath"
@@ -221,6 +237,13 @@ import {
 import { applyEditorPalette, resolveEditorPalette } from '@wv/shared/themeConfig';
 import { buildPreviewSrcdoc, visibleTextFromHtml } from './previewSrcdoc';
 import { chromeRadiusStyle } from '../chromeRadius';
+import {
+  FILE_TREE_DEFAULT_WIDTH,
+  clampFileTreeWidth,
+  fileTreeWidthLimit,
+  readStoredFileTreeWidth,
+  resizeDragMove,
+} from './fileTreeWidth';
 import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
@@ -248,6 +271,18 @@ const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
 const outlineCollapsed = ref(false);
 const fileTreeCollapsed = ref(false);
+const fileTreeWidth = ref(FILE_TREE_DEFAULT_WIDTH);
+const filesResizing = ref(false);
+function currentFileTreeLimit(): { min: number; max: number } {
+  return fileTreeWidthLimit(window.innerWidth || 0);
+}
+const appChromeStyle = computed(() => {
+  const style: Record<string, string> = { ...chromeRadiusStyle };
+  if (!fileTreeCollapsed.value) style['--files-col'] = `${fileTreeWidth.value}px`;
+  return style;
+});
+let filesResizeMove: ((ev: PointerEvent) => void) | null = null;
+let filesResizeUp: ((ev: PointerEvent) => void) | null = null;
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
@@ -545,6 +580,67 @@ function toggleFileTree(): void {
   } catch {
     /* ignore */
   }
+}
+
+function persistFileTreeWidth(): void {
+  try {
+    electronApp()?.storeSet?.('fileTreeWidth', fileTreeWidth.value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function stopFilesResize(): void {
+  if (filesResizeMove) window.removeEventListener('pointermove', filesResizeMove);
+  if (filesResizeUp) {
+    window.removeEventListener('pointerup', filesResizeUp);
+    window.removeEventListener('pointercancel', filesResizeUp);
+  }
+  filesResizeMove = null;
+  filesResizeUp = null;
+  filesResizing.value = false;
+}
+
+function onFilesResizeDown(ev: PointerEvent): void {
+  if (ev.button !== 0 || fileTreeCollapsed.value) return;
+  ev.preventDefault();
+  stopFilesResize();
+  const startX = ev.clientX;
+  const startWidth = fileTreeWidth.value;
+  filesResizing.value = true;
+  const move = (e: PointerEvent): void => {
+    fileTreeWidth.value = resizeDragMove(startWidth, startX, e.clientX, window.innerWidth || 0);
+  };
+  const up = (e: PointerEvent): void => {
+    move(e);
+    stopFilesResize();
+    persistFileTreeWidth();
+  };
+  filesResizeMove = move;
+  filesResizeUp = up;
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+function onFilesResizeReset(): void {
+  fileTreeWidth.value = clampFileTreeWidth(FILE_TREE_DEFAULT_WIDTH, window.innerWidth || 0);
+  persistFileTreeWidth();
+}
+
+function onFilesResizeKey(ev: KeyboardEvent): void {
+  const available = window.innerWidth || 0;
+  const limit = fileTreeWidthLimit(available);
+  const step = ev.shiftKey ? 32 : 16;
+  let next = fileTreeWidth.value;
+  if (ev.key === 'ArrowLeft') next -= step;
+  else if (ev.key === 'ArrowRight') next += step;
+  else if (ev.key === 'Home') next = limit.min;
+  else if (ev.key === 'End') next = limit.max;
+  else return;
+  ev.preventDefault();
+  fileTreeWidth.value = clampFileTreeWidth(next, available);
+  persistFileTreeWidth();
 }
 
 function closeRecent(): void {
@@ -915,6 +1011,14 @@ onMounted(() => {
   } catch {
     fileTreeCollapsed.value = false;
   }
+  try {
+    fileTreeWidth.value = readStoredFileTreeWidth(
+      electronApp()?.storeGet?.('fileTreeWidth'),
+      window.innerWidth || 0
+    );
+  } catch {
+    fileTreeWidth.value = FILE_TREE_DEFAULT_WIDTH;
+  }
   window.addEventListener('pointerdown', onDocPointerDown, true);
   document.addEventListener('mousedown', onDocPointerDown);
   window.addEventListener('keydown', onDocKeydown);
@@ -955,6 +1059,7 @@ onUnmounted(() => {
     clearTimeout(blurCloseTimer);
     blurCloseTimer = null;
   }
+  stopFilesResize();
 });
 </script>
 
@@ -963,6 +1068,7 @@ html, body, #app {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
 }
 .markly-app {
   --files-col: 220px;
@@ -972,21 +1078,59 @@ html, body, #app {
   display: grid;
   grid-template-columns: var(--files-col) 1fr;
   grid-template-rows: var(--chrome-row) 1fr;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   margin: 0;
+  overflow: hidden;
 }
 .markly-app.files-collapsed { --files-col: 40px; }
+.markly-app.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.markly-app.is-resizing iframe { pointer-events: none; }
+/* 标签栏钉在第一行。正文再长也只在下面滚，窗口本身不出滚动条。 */
 .markly-app > .tab-bar {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 20;
   grid-column: 2;
   grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.files-resize {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  justify-self: end;
+  align-self: stretch;
+  width: 8px;
+  margin-right: -4px;
+  z-index: 35;
+  cursor: col-resize;
+  touch-action: none;
+  position: relative;
+}
+.files-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: transparent;
+}
+.files-resize:hover::after,
+.markly-app.is-resizing .files-resize::after {
+  background: var(--markly-primary, #0969da);
 }
 /* 打开按钮留在文件树正上方。标签从文件树右缘开始，底边和正文连成一块 */
 .open-rail {
   grid-column: 1;
   grid-row: 1;
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -1059,6 +1203,7 @@ html, body, #app {
 /* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
 .tab-reload {
   align-self: center;
+  flex-shrink: 0;
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
@@ -1070,6 +1215,7 @@ html, body, #app {
   align-items: center;
   justify-content: center;
   align-self: center;
+  flex-shrink: 0;
   width: 28px;
   min-width: 28px;
   height: 26px;
@@ -1081,6 +1227,7 @@ html, body, #app {
 }
 .tab-source {
   align-self: center;
+  flex-shrink: 0;
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
@@ -1142,6 +1289,7 @@ html, body, #app {
 .export-split {
   position: relative;
   align-self: center;
+  flex-shrink: 0;
   display: flex;
   margin-right: 4px;
 }
@@ -1164,6 +1312,7 @@ html, body, #app {
 }
 .tab-settings {
   align-self: center;
+  flex-shrink: 0;
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
@@ -1219,12 +1368,15 @@ html, body, #app {
   display: flex;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 .preview-stage > .settings-page {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: auto;
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
 }
 .reload-tip {
   flex: 0 0 auto;
@@ -1348,6 +1500,8 @@ html, body, #app {
   background: var(--markly-background, #fff);
 }
 .preview-frame {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: 0;

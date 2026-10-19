@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import PreviewApp from './PreviewApp.vue';
+import previewSource from './PreviewApp.vue?raw';
 import { installVsCodeShim } from './vscodeShim';
 import {
   RELOAD_MISSING_TIP,
@@ -793,6 +794,91 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
     expect(copySelection).toHaveBeenCalledWith({ text: '你好世界' });
     expect(el.querySelector('.selection-toast')?.textContent).toBe('已复制');
+  });
+});
+
+function dragFiles(handle: HTMLElement, type: string, clientX: number): void {
+  handle.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX, button: 0 }));
+}
+
+describe('文件树宽度', () => {
+  it('记住的宽度会用在左边一列', async () => {
+    electronStub('storeGet').mockImplementation((key: unknown) => (key === 'fileTreeWidth' ? 300 : undefined));
+    const el = mount();
+    await flush();
+    const app = el.querySelector('.markly-app') as HTMLElement;
+    expect(app.style.getPropertyValue('--files-col')).toBe('300px');
+    expect(el.querySelector('.files-resize')?.getAttribute('aria-valuenow')).toBe('300');
+  });
+
+  it('向右拖变宽并记住，再往左拖到头就停在最小宽度', async () => {
+    const el = mount();
+    await flush();
+    const handle = el.querySelector('.files-resize') as HTMLElement;
+    const app = el.querySelector('.markly-app') as HTMLElement;
+    dragFiles(handle, 'pointerdown', 220);
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, button: 0 }));
+    await flush();
+    expect(app.style.getPropertyValue('--files-col')).toBe('300px');
+    expect(app.classList.contains('is-resizing')).toBe(true);
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 300, button: 0 }));
+    await flush();
+    expect(electronStub('storeSet')).toHaveBeenCalledWith('fileTreeWidth', 300);
+    expect(app.classList.contains('is-resizing')).toBe(false);
+
+    dragFiles(handle, 'pointerdown', 300);
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 0, button: 0 }));
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 0, button: 0 }));
+    await flush();
+    expect(app.style.getPropertyValue('--files-col')).toBe('160px');
+    expect(electronStub('storeSet')).toHaveBeenCalledWith('fileTreeWidth', 160);
+  });
+
+  it('双击分隔线恢复默认宽度', async () => {
+    electronStub('storeGet').mockImplementation((key: unknown) => (key === 'fileTreeWidth' ? 400 : undefined));
+    const el = mount();
+    await flush();
+    (el.querySelector('.files-resize') as HTMLElement).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await flush();
+    expect((el.querySelector('.markly-app') as HTMLElement).style.getPropertyValue('--files-col')).toBe('220px');
+    expect(electronStub('storeSet')).toHaveBeenCalledWith('fileTreeWidth', 220);
+  });
+
+  it('方向键可以加宽和收窄', async () => {
+    const el = mount();
+    await flush();
+    const handle = el.querySelector('.files-resize') as HTMLElement;
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect((el.querySelector('.markly-app') as HTMLElement).style.getPropertyValue('--files-col')).toBe('236px');
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    await flush();
+    expect((el.querySelector('.markly-app') as HTMLElement).style.getPropertyValue('--files-col')).toBe('220px');
+  });
+
+  it('文件树收起时不出现拖动线', async () => {
+    electronStub('storeGet').mockImplementation((key: unknown) => (key === 'fileTreeCollapsed' ? true : undefined));
+    const el = mount();
+    await flush();
+    expect(el.querySelector('.files-resize')).toBeNull();
+    const app = el.querySelector('.markly-app') as HTMLElement;
+    expect(app.classList.contains('files-collapsed')).toBe(true);
+    expect(app.style.getPropertyValue('--files-col')).toBe('');
+  });
+});
+
+describe('标签栏不跟着正文滚', () => {
+  it('标签栏在正文外面，窗口本身不出现滚动条', async () => {
+    const el = mount();
+    await flush();
+    const bar = el.querySelector('.tab-bar') as HTMLElement;
+    const preview = el.querySelector('.preview-area') as HTMLElement;
+    expect(preview.contains(bar)).toBe(false);
+    const style = previewSource.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+    expect(style).toMatch(/html,\s*body,\s*#app[\s\S]*?overflow:\s*hidden/);
+    expect(style).toMatch(/\.markly-app\s*\{[^}]*overflow:\s*hidden/);
+    expect(style).toMatch(/\.markly-app > \.tab-bar\s*\{[^}]*position:\s*sticky/);
+    expect(style).toMatch(/\.preview-frame\s*\{[^}]*position:\s*absolute/);
   });
 });
 
