@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorView } from '@codemirror/view';
 import { createApp, nextTick, type App } from 'vue';
 import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import PreviewApp from './PreviewApp.vue';
@@ -10,6 +11,7 @@ import {
   RELOAD_UNREADABLE_TIP,
 } from '../electron/reloadResult';
 import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
+import { formatDocumentSource } from '../electron/sourceText';
 import { APP_RADIUS } from '../chromeRadius';
 import { PLACE_ANCHOR, PLACE_READ, PLACE_RESTORE, scrollTopForSource, measureSourceBox } from '../electron/viewPlace';
 import type { ElectronAppBridge } from './electronBridge';
@@ -214,21 +216,28 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
     const copy = el.querySelector('.tab-copy') as HTMLElement;
+    const edit = el.querySelector('.tab-edit') as HTMLButtonElement;
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
     const exp = el.querySelector('.export-split') as HTMLElement;
     const settings = el.querySelector('.tab-settings') as HTMLElement;
     const plus = el.querySelector('.tab-new') as HTMLElement;
     expect(reload).not.toBeNull();
     expect(copy).not.toBeNull();
+    expect(edit).not.toBeNull();
     expect(source).not.toBeNull();
     expect(exp).not.toBeNull();
     expect(settings).not.toBeNull();
-    // 刷新、复制、源码、导出、设置依次排在 "+" 前面
+    // 刷新、复制、编辑、源码、导出、设置依次排在 "+" 前面。撤销和保存默认不出现。
     expect(reload.nextElementSibling).toBe(copy);
     expect(reload.textContent?.trim()).toBe('刷新');
     expect(reload.getAttribute('aria-label')).toBe('重新加载文档');
     expect(reload.disabled).toBe(false);
-    expect(copy.nextElementSibling).toBe(source);
+    expect(copy.nextElementSibling).toBe(edit);
+    expect(edit.nextElementSibling).toBe(source);
+    expect(edit.textContent?.trim()).toBe('编辑');
+    expect(el.querySelector('.tab-undo')).toBeNull();
+    expect(el.querySelector('.tab-redo')).toBeNull();
+    expect(el.querySelector('.tab-save')).toBeNull();
     expect(source.nextElementSibling).toBe(exp);
     expect(exp.nextElementSibling).toBe(settings);
     expect(settings.nextElementSibling).toBe(plus);
@@ -1063,6 +1072,113 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
     expect(copySelection).toHaveBeenCalledWith({ text: '你好世界' });
     expect(el.querySelector('.selection-toast')?.textContent).toBe('已复制');
+  });
+});
+
+describe('原文编辑', () => {
+  function bridge(): ElectronAppBridge {
+    return (window as unknown as { electron: ElectronAppBridge }).electron;
+  }
+
+  it('默认没有撤销和保存；编辑 JSON 用原文，源码仍是排版', async () => {
+    const raw = '{"a":1}\r\n';
+    bridge().tabsState = vi.fn(() => ({
+      tabs: [{ id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json', dirty: false }],
+      activeId: 't1',
+    }));
+    bridge().settleEdits = vi.fn(async () => 'clean');
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: raw });
+    await flush();
+
+    expect(el.querySelector('.tab-undo')).toBeNull();
+    expect(el.querySelector('.tab-redo')).toBeNull();
+    expect(el.querySelector('.tab-save')).toBeNull();
+    expect(el.querySelector('.cm-editor')).toBeNull();
+
+    (el.querySelector('.tab-edit') as HTMLButtonElement).click();
+    await flush();
+
+    const editor = EditorView.findFromDOM(el.querySelector('.cm-editor')!);
+    const shown = editor.state.sliceDoc();
+    expect(shown.replace(/\r\n/g, '\n')).toBe(raw.replace(/\r\n/g, '\n'));
+    expect(shown).not.toBe(formatDocumentSource(raw, 'a.json'));
+    expect(el.querySelector('.source-note')?.textContent).toContain('正在编辑文件原文');
+    expect((el.querySelector('.tab-undo') as HTMLButtonElement).disabled).toBe(true);
+    expect((el.querySelector('.tab-redo') as HTMLButtonElement).disabled).toBe(true);
+    expect((el.querySelector('.tab-save') as HTMLButtonElement).disabled).toBe(true);
+    expect(el.querySelector('.tab-edit')?.textContent?.trim()).toBe('编辑');
+
+    (el.querySelector('.tab-edit') as HTMLButtonElement).click();
+    await flush();
+    expect(el.querySelector('.tab-save')).toBeNull();
+    expect(bridge().settleEdits).toHaveBeenCalled();
+
+    (el.querySelector('.tab-source') as HTMLButtonElement).click();
+    await settle();
+    expect(el.querySelector('.source-view')?.textContent).toBe(formatDocumentSource(raw, 'a.json'));
+    expect(el.querySelector('.cm-editor')).toBeNull();
+  });
+
+  it('换到别的标签再回来，撤销仍能退回这一份，保存会写盘', async () => {
+    let onTabs: ((view: unknown) => void) | undefined;
+    const saveDocument = vi.fn(async () => ({ ok: true, path: '/docs/a.json' }));
+    const raw = '{"a":1}';
+    bridge().tabsState = vi.fn(() => ({
+      tabs: [
+        { id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json', dirty: false },
+        { id: 't2', kind: 'doc', title: 'b.md', filePath: '/docs/b.md', dirty: false },
+      ],
+      activeId: 't1',
+    }));
+    bridge().onTabsChanged = (handler) => {
+      onTabs = handler;
+      return () => undefined;
+    };
+    bridge().settleEdits = vi.fn(async () => 'clean');
+    bridge().saveDocument = saveDocument;
+
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: raw });
+    await flush();
+    (el.querySelector('.tab-edit') as HTMLButtonElement).click();
+    await flush();
+
+    const editor = EditorView.findFromDOM(el.querySelector('.cm-editor')!);
+    editor.dispatch({ changes: { from: raw.length, insert: ' ' } });
+    expect(editor.state.doc.toString()).toBe('{"a":1} ');
+
+    const both = [
+      { id: 't1', kind: 'doc', title: 'a.json', filePath: '/docs/a.json', dirty: true },
+      { id: 't2', kind: 'doc', title: 'b.md', filePath: '/docs/b.md', dirty: false },
+    ];
+    onTabs?.({ tabs: both, activeId: 't2' });
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# B' });
+    await flush();
+    expect(el.querySelector('.cm-editor')).toBeNull();
+    expect(el.querySelector('.tab-undo')).toBeNull();
+
+    onTabs?.({ tabs: both, activeId: 't1' });
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '{"a":1} ' });
+    await flush();
+
+    const back = EditorView.findFromDOM(el.querySelector('.cm-editor')!);
+    expect(back.state.doc.toString()).toBe('{"a":1} ');
+    expect(el.querySelectorAll('.cm-editor')).toHaveLength(1);
+    (el.querySelector('.tab-undo') as HTMLButtonElement).click();
+    expect(back.state.doc.toString()).toBe(raw);
+
+    onTabs?.({ tabs: both, activeId: 't1' });
+    await flush();
+    expect((el.querySelector('.tab-save') as HTMLButtonElement).disabled).toBe(false);
+    (el.querySelector('.tab-save') as HTMLButtonElement).click();
+    await flush();
+    expect(saveDocument).toHaveBeenCalledTimes(1);
+    expect(el.querySelector('.reload-tip')?.textContent).toContain('已保存');
   });
 });
 

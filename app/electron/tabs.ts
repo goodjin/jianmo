@@ -23,6 +23,13 @@ export interface DocTab {
   /** 空串表示尚未关联文件的空白标签；settings 恒为空 */
   filePath: string;
   content: string;
+  /**
+   * 上次从磁盘读入或成功写入的正文。
+   * 缺省时视为与 content 相同（还没改过）。第一次改字时会把改之前的正文冻在这里。
+   */
+  savedContent?: string;
+  /** 打开或保存时读到的修改时间。空白页、还没对上磁盘时为 null。 */
+  diskMtimeMs?: number | null;
 }
 
 export interface TabsState {
@@ -36,6 +43,8 @@ export interface TabSummary {
   kind: TabKind;
   title: string;
   filePath: string;
+  /** 正文和上次保存的不一样。设置页恒为 false。 */
+  dirty: boolean;
 }
 
 let idSeq = 0;
@@ -56,11 +65,27 @@ export function isBlankTab(tab: DocTab | null | undefined): boolean {
 }
 
 export function createBlankTab(id: string): DocTab {
-  return { id, kind: 'doc', filePath: '', content: BLANK_TAB_CONTENT };
+  return {
+    id,
+    kind: 'doc',
+    filePath: '',
+    content: BLANK_TAB_CONTENT,
+    savedContent: BLANK_TAB_CONTENT,
+    diskMtimeMs: null,
+  };
 }
 
 export function createSettingsTab(id: string): DocTab {
-  return { id, kind: 'settings', filePath: '', content: '' };
+  return { id, kind: 'settings', filePath: '', content: '', savedContent: '', diskMtimeMs: null };
+}
+
+/** 没单独记过基线时，当前正文就算已保存。 */
+export function savedBaseline(tab: DocTab): string {
+  return tab.savedContent ?? tab.content;
+}
+
+export function isTabDirty(tab: DocTab | null | undefined): boolean {
+  return !!tab && tab.kind === 'doc' && tab.content !== savedBaseline(tab);
 }
 
 /** 标签条与窗口标题上显示的名字。 */
@@ -100,7 +125,8 @@ export function openFileTab(
   state: TabsState,
   id: string,
   filePath: string,
-  content: string
+  content: string,
+  diskMtimeMs: number | null = null
 ): TabsState {
   const p = String(filePath ?? '').trim();
   if (!p) return state;
@@ -112,7 +138,9 @@ export function openFileTab(
     return {
       tabs: state.tabs
         .filter((t) => t.id !== dropBlank)
-        .map((t) => (t.id === existing.id ? { ...t, content } : t)),
+        .map((t) =>
+          t.id === existing.id ? { ...t, content, savedContent: content, diskMtimeMs } : t
+        ),
       activeId: existing.id,
     };
   }
@@ -120,13 +148,18 @@ export function openFileTab(
   const active = getActiveTab(state);
   if (isBlankTab(active)) {
     return {
-      tabs: state.tabs.map((t) => (t.id === active!.id ? { ...t, filePath: p, content } : t)),
+      tabs: state.tabs.map((t) =>
+        t.id === active!.id ? { ...t, filePath: p, content, savedContent: content, diskMtimeMs } : t
+      ),
       activeId: active!.id,
     };
   }
 
   if (!id || state.tabs.some((t) => t.id === id)) return state;
-  return { tabs: [...state.tabs, { id, kind: 'doc', filePath: p, content }], activeId: id };
+  return {
+    tabs: [...state.tabs, { id, kind: 'doc', filePath: p, content, savedContent: content, diskMtimeMs }],
+    activeId: id,
+  };
 }
 
 /** 设置页全局唯一：已存在就激活它，否则追加一个并激活。 */
@@ -182,11 +215,55 @@ export function renameFileInTabs(state: TabsState, fromPath: string, toPath: str
   };
 }
 
-/** 活动标签正文回写（CONTENT_CHANGE / SAVE）。无活动标签时原样返回。 */
+/**
+ * 活动标签正文回写（编辑器打字）。无活动标签时原样返回。
+ * 第一次和基线分叉时，把改之前的正文冻成 savedContent，这样改回去就不算未保存。
+ */
 export function setActiveContent(state: TabsState, content: string): TabsState {
   if (!getActiveTab(state)) return state;
   return {
-    tabs: state.tabs.map((t) => (t.id === state.activeId ? { ...t, content } : t)),
+    tabs: state.tabs.map((t) => {
+      if (t.id !== state.activeId) return t;
+      return { ...t, content, savedContent: savedBaseline(t) };
+    }),
+    activeId: state.activeId,
+  };
+}
+
+/** 保存成功：基线跟上正文，并记下路径和修改时间。 */
+export function markTabSaved(state: TabsState, id: string, filePath: string, mtimeMs: number): TabsState {
+  const pathName = String(filePath ?? '').trim();
+  if (!pathName || !state.tabs.some((t) => t.id === id && t.kind === 'doc')) return state;
+  return {
+    tabs: state.tabs.map((t) =>
+      t.id === id ? { ...t, filePath: pathName, savedContent: t.content, diskMtimeMs: mtimeMs } : t
+    ),
+    activeId: state.activeId,
+  };
+}
+
+/** 用磁盘上的正文替换标签，并把它当成已保存。刷新和「重新打开」走这里。 */
+export function adoptDiskContent(
+  state: TabsState,
+  id: string,
+  content: string,
+  mtimeMs: number | null
+): TabsState {
+  if (!state.tabs.some((t) => t.id === id && t.kind === 'doc')) return state;
+  return {
+    tabs: state.tabs.map((t) =>
+      t.id === id ? { ...t, content, savedContent: content, diskMtimeMs: mtimeMs } : t
+    ),
+    activeId: state.activeId,
+  };
+}
+
+/** 放弃未保存的修改，正文回到上次保存的那一版。 */
+export function revertTabContent(state: TabsState, id: string): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab || tab.kind !== 'doc' || !isTabDirty(tab)) return state;
+  return {
+    tabs: state.tabs.map((t) => (t.id === id ? { ...t, content: savedBaseline(t) } : t)),
     activeId: state.activeId,
   };
 }
@@ -198,6 +275,7 @@ export function summarizeTabs(state: TabsState): { tabs: TabSummary[]; activeId:
       kind: t.kind,
       title: tabDisplayTitle(t),
       filePath: t.filePath,
+      dirty: isTabDirty(t),
     })),
     activeId: state.activeId,
   };

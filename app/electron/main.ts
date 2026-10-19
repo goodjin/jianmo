@@ -12,6 +12,8 @@ import { isOpenableDocumentName } from './documentKind';
 import { readFailureDetail } from './macFolderAccess';
 import { readDocumentForReload } from './reloadDocument';
 import { contentAfterReload, type ReloadIpc } from './reloadResult';
+import { planSave, readDiskSnapshot, writeFileAtomic, type SaveIpc } from './saveDocument';
+import { buttonToConflictChoice, buttonToDirtyChoice, settleDirty, type SettleResult } from './editPrompt';
 import { normalizeCopyPayload } from './copyPayload';
 import {
   exportMarkdownDocument,
@@ -46,16 +48,22 @@ import { resolveFileTreeRoot } from './fileTreeModel';
 import { applyFileRename, destinationTaken } from './fileRename';
 import { planTrash } from './trashFile';
 import {
+  BLANK_TAB_TITLE,
+  adoptDiskContent,
   activateTab,
   closeTab,
   createInitialState,
   getActiveTab,
+  isTabDirty,
+  markTabSaved,
   nextTabId,
   openBlankTab,
   openFileTab,
   openSettingsTab,
   closeTabsForPath,
   renameFileInTabs,
+  revertTabContent,
+  savedBaseline,
   setActiveContent,
   summarizeTabs,
   tabDisplayTitle,
@@ -70,6 +78,10 @@ let mainWindow: BrowserWindow | null = null;
 let exportBusy = false;
 /** 唯一文档状态源：活动标签即"当前文档"，hostBridge 因此无需感知标签。 */
 let tabs: TabsState = createInitialState(nextTabId());
+/** 渲染进程正在编辑时，菜单里的保存才可用，撤销交给编辑器。 */
+let rendererEditing = false;
+/** 未保存都处理完之后，允许窗口真正关掉。 */
+let allowClose = false;
 let pendingFiles: string[] = [];
 let store: Store;
 /** hostBridge 持有同一个对象引用，改这里的字段即刻影响下一次预览渲染。 */
@@ -102,9 +114,12 @@ function pushTabs(): void {
 function updateWindowTitle(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const active = getActiveTab(tabs);
-  // 空白文档标签不占标题，保持窗口叫 Markly
-  const name = !active || (active.kind === 'doc' && !active.filePath) ? '' : tabDisplayTitle(active);
-  mainWindow.setTitle(name ? `${name} — Markly` : 'Markly');
+  const dirty = isTabDirty(active);
+  // 空白文档标签不占标题，保持窗口叫 Markly。改过之后才带上名字和圆点。
+  const named = !!active && !(active.kind === 'doc' && !active.filePath);
+  const label = named ? tabDisplayTitle(active!) : dirty ? BLANK_TAB_TITLE : '';
+  const mark = dirty ? '• ' : '';
+  mainWindow.setTitle(label ? `${mark}${label} — Markly` : 'Markly');
 }
 
 /** 标签集合或活动标签变化后的统一广播：标题 + 标签条 + 正文。 */
@@ -127,7 +142,7 @@ async function pickAndLoadFile(): Promise<string | null> {
     properties: ['openFile', 'multiSelections'],
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  for (const p of res.filePaths) loadFile(p);
+  for (const p of res.filePaths) await loadFileAsking(p);
   emitActiveDocument();
   return res.filePaths[res.filePaths.length - 1]!;
 }
@@ -215,17 +230,36 @@ function rememberRecent(p: string): void {
 /** 读盘并装入标签页（同路径复用、空白标签就地占用，见 tabs.openFileTab）。不负责广播。 */
 function loadFile(p: string): void {
   let content: string;
+  let mtimeMs: number | null = null;
   try {
+    const stat = fs.statSync(p);
+    if (!stat.isFile()) throw new Error('不是文件');
     content = fs.readFileSync(p, 'utf-8');
+    mtimeMs = stat.mtimeMs;
   } catch (e) {
     content = `# 打开失败\n\n无法读取：\`${p}\`\n\n> ${readFailureDetail(p, e)}`;
   }
-  tabs = openFileTab(tabs, nextTabId(), p, content);
+  tabs = openFileTab(tabs, nextTabId(), p, content, mtimeMs);
   try {
     if (fs.existsSync(p) && fs.statSync(p).isFile()) rememberRecent(p);
   } catch {
     /* ignore */
   }
+}
+
+/** 这份路径若有未保存的修改，先问。取消则留在原标签。 */
+async function loadFileAsking(p: string): Promise<void> {
+  const resolved = path.resolve(p);
+  const existing = tabs.tabs.find((tab) => tab.filePath && path.resolve(tab.filePath) === resolved);
+  if (existing && isTabDirty(existing)) {
+    const settled = await settleTab(existing.id);
+    if (settled === 'cancel') {
+      tabs = activateTab(tabs, existing.id);
+      emitActiveDocument();
+      return;
+    }
+  }
+  loadFile(resolved);
 }
 
 /** 改名后标签和最近打开都换成新路径，窗口标题跟着变。 */
@@ -280,6 +314,13 @@ async function trashOpenedFile(raw: string): Promise<{ ok: boolean; path: string
     }
   });
   if (!plan.ok) return plan;
+  const openDirty = tabs.tabs.find(
+    (tab) => tab.filePath && path.resolve(tab.filePath) === path.resolve(plan.path) && isTabDirty(tab)
+  );
+  if (openDirty) {
+    const settled = await settleTab(openDirty.id);
+    if (settled === 'cancel') return { ok: false, path: plan.path, error: '已取消' };
+  }
   try {
     await shell.trashItem(plan.path);
   } catch (error) {
@@ -294,26 +335,146 @@ async function trashOpenedFile(raw: string): Promise<{ ok: boolean; path: string
   return { ok: true, path: plan.path, error: '' };
 }
 
+function fileMtime(filePath: string): number | null {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.isFile() ? stat.mtimeMs : null;
+  } catch {
+    return null;
+  }
+}
+
+function sendEditCommand(command: 'undo' | 'redo' | 'save'): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send('app:edit-command', command);
+}
+
+async function askDirty(tabTitle: string): Promise<ReturnType<typeof buttonToDirtyChoice>> {
+  const res = await dialog.showMessageBox({
+    type: 'warning',
+    message: `「${tabTitle}」有还没保存的修改`,
+    buttons: ['保存', '不保存', '取消'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  });
+  return buttonToDirtyChoice(res.response);
+}
+
+async function saveTabById(id: string, forcedPath?: string): Promise<SaveIpc> {
+  const tab = tabs.tabs.find((item) => item.id === id && item.kind === 'doc');
+  if (!tab) return { ok: false, reason: 'no-tab', message: '没有可保存的文档' };
+
+  let filePath = String(forcedPath ?? tab.filePath ?? '').trim();
+  let force = Boolean(forcedPath);
+  if (!filePath) {
+    const picked = await dialog.showSaveDialog({
+      title: '保存',
+      defaultPath: '未命名.md',
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'JSONL', extensions: ['jsonl'] },
+      ],
+    });
+    if (picked.canceled || !picked.filePath) return { ok: false, reason: 'cancelled', message: '' };
+    filePath = picked.filePath;
+    force = true;
+  }
+
+  const resolved = path.resolve(filePath);
+  const other = tabs.tabs.find(
+    (item) => item.id !== id && item.filePath && path.resolve(item.filePath) === resolved
+  );
+  if (other) return { ok: false, reason: 'failed', message: '这个文件已经在另一个标签里打开了' };
+
+  const disk = readDiskSnapshot(resolved);
+  const plan = planSave({
+    expectedMtimeMs: force ? null : (tab.diskMtimeMs ?? null),
+    savedContent: force ? (disk.content ?? '') : savedBaseline(tab),
+    disk,
+    force,
+  });
+  if (plan.action === 'conflict') {
+    const missing = plan.reason === 'missing';
+    const res = await dialog.showMessageBox({
+      type: 'warning',
+      message: missing ? '这个文件已经不在了' : '这个文件在外面被改过',
+      detail: '可以重新打开磁盘上的版本，或把现在的内容另存为。',
+      buttons: ['重新打开', '另存为', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    const choice = buttonToConflictChoice(res.response);
+    if (choice === 'cancel') return { ok: false, reason: 'cancelled', message: '' };
+    if (choice === 'save-as') {
+      const picked = await dialog.showSaveDialog({
+        title: '另存为',
+        defaultPath: path.basename(resolved),
+        filters: [
+          { name: 'Markdown', extensions: ['md'] },
+          { name: 'JSON', extensions: ['json'] },
+          { name: 'JSONL', extensions: ['jsonl'] },
+        ],
+      });
+      if (picked.canceled || !picked.filePath) return { ok: false, reason: 'cancelled', message: '' };
+      return saveTabById(id, picked.filePath);
+    }
+    const read = readDocumentForReload(tab.filePath || resolved);
+    if (!read.ok) {
+      return { ok: false, reason: 'failed', message: '磁盘上的版本没能读出来，屏幕上的字还在' };
+    }
+    tabs = adoptDiskContent(tabs, id, read.content, fileMtime(tab.filePath || resolved));
+    emitActiveDocument();
+    return { ok: false, reason: 'reloaded', message: '已重新打开磁盘上的版本' };
+  }
+
+  const wrote = writeFileAtomic(resolved, tab.content);
+  if (!wrote.ok) return { ok: false, reason: 'failed', message: wrote.error || '无法写入文件' };
+  tabs = markTabSaved(tabs, id, resolved, wrote.mtimeMs);
+  rememberRecent(resolved);
+  emitActiveDocument();
+  return { ok: true, path: resolved };
+}
+
+async function settleTab(id: string): Promise<SettleResult> {
+  const tab = tabs.tabs.find((item) => item.id === id);
+  return settleDirty({
+    dirty: isTabDirty(tab),
+    ask: () => askDirty(tab ? tabDisplayTitle(tab) : '文档'),
+    save: async () => (await saveTabById(id)).ok,
+    discard: () => {
+      const before = tabs;
+      tabs = revertTabContent(tabs, id);
+      if (tabs !== before) emitActiveDocument();
+    },
+  });
+}
+
 /**
  * 重新读当前文档。文件不在或读失败时不改标签里的正文。
- * 读成功且内容和现在不一样，才广播一次，让预览和源码跟着变。
+ * 有未保存的修改时先问。读成功后基线换成磁盘上的正文。
  */
-function reloadActiveDocument(): ReloadIpc {
+async function reloadActiveDocument(): Promise<ReloadIpc> {
   const active = getActiveTab(tabs);
   if (!active || active.kind !== 'doc' || !active.filePath.trim()) {
     return { ok: false, reason: 'no-file' };
   }
-  const read = readDocumentForReload(active.filePath);
-  const nextContent = contentAfterReload(active.content, read);
-  if (read.ok && nextContent !== active.content) {
-    tabs = setActiveContent(tabs, nextContent);
+  const settled = await settleTab(active.id);
+  if (settled === 'cancel') return { ok: false, reason: 'cancelled' };
+  const current = tabs.tabs.find((item) => item.id === active.id) ?? active;
+  const read = readDocumentForReload(current.filePath);
+  const nextContent = contentAfterReload(current.content, read);
+  if (read.ok) {
+    tabs = adoptDiskContent(tabs, current.id, nextContent, fileMtime(current.filePath));
     emitActiveDocument();
+    return { ok: true };
   }
-  if (read.ok) return { ok: true };
   return { ok: false, reason: read.reason };
 }
 
-function openExistingPath(p: string): string | null {
+async function openExistingPath(p: string): Promise<string | null> {
   const raw = String(p ?? '').trim();
   if (!raw) return null;
   const resolved = path.resolve(raw);
@@ -325,7 +486,7 @@ function openExistingPath(p: string): string | null {
   } catch {
     return null;
   }
-  loadFile(resolved);
+  await loadFileAsking(resolved);
   emitActiveDocument();
   return resolved;
 }
@@ -400,10 +561,25 @@ function selectTab(id: string): void {
   if (tabs !== before) emitActiveDocument();
 }
 
-function dropTab(id: string): void {
+async function dropTab(id: string): Promise<void> {
+  const target = String(id ?? '');
+  const tab = tabs.tabs.find((item) => item.id === target);
+  if (tab && isTabDirty(tab)) {
+    const settled = await settleTab(target);
+    if (settled === 'cancel') return;
+  }
   const before = tabs;
-  tabs = closeTab(tabs, String(id ?? ''), nextTabId());
+  tabs = closeTab(tabs, target, nextTabId());
   if (tabs !== before) emitActiveDocument();
+}
+
+async function confirmQuitDirty(): Promise<boolean> {
+  const ids = tabs.tabs.filter((tab) => isTabDirty(tab)).map((tab) => tab.id);
+  for (const id of ids) {
+    const settled = await settleTab(id);
+    if (settled === 'cancel') return false;
+  }
+  return true;
 }
 
 /**
@@ -530,13 +706,20 @@ function installAppMenu(): void {
             },
           },
           { type: 'separator' },
+          {
+            label: '保存',
+            accelerator: 'CmdOrCtrl+S',
+            enabled: rendererEditing,
+            click: () => sendEditCommand('save'),
+          },
+          { type: 'separator' },
           { label: '导出 HTML…', click: () => void runExport('html') },
           { label: '导出 PDF…', click: () => void runExport('pdf') },
           { type: 'separator' },
           { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
           { type: 'separator' },
           // Cmd/Ctrl+W 关标签（标签式应用惯例）；关窗口退到 Shift+Cmd/Ctrl+W
-          { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => dropTab(tabs.activeId) },
+          { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => void dropTab(tabs.activeId) },
           // 非 mac 保留 role 自带的 Ctrl+Q 退出，不挪到 Shift+Ctrl+W
           isMac
             ? { label: '关闭窗口', accelerator: 'Shift+CmdOrCtrl+W', role: 'close' as const }
@@ -546,8 +729,9 @@ function installAppMenu(): void {
       {
         label: 'Edit',
         submenu: [
-          { role: 'undo' as const },
-          { role: 'redo' as const },
+          { label: '撤销', accelerator: 'CmdOrCtrl+Z', click: () => sendEditCommand('undo') },
+          { label: '重做', accelerator: 'Shift+CmdOrCtrl+Z', click: () => sendEditCommand('redo') },
+          { label: '重做', accelerator: 'CmdOrCtrl+Y', visible: false, click: () => sendEditCommand('redo') },
           { type: 'separator' as const },
           { role: 'cut' as const },
           { role: 'copy' as const },
@@ -649,7 +833,19 @@ function createWindow(): void {
     },
   });
   const created = mainWindow;
+  created.on('close', (event) => {
+    if (allowClose) return;
+    const dirty = tabs.tabs.some((tab) => isTabDirty(tab));
+    if (!dirty) return;
+    event.preventDefault();
+    void confirmQuitDirty().then((ok) => {
+      if (!ok || created.isDestroyed()) return;
+      allowClose = true;
+      created.close();
+    });
+  });
   created.on('closed', () => {
+    allowClose = false;
     if (mainWindow === created) mainWindow = null;
   });
   attachForegroundRecovery(created);
@@ -686,7 +882,9 @@ function createWindow(): void {
     } catch {
       return;
     }
-    if (isOpenableDocumentName(dropped)) loadFile(dropped);
+    if (isOpenableDocumentName(dropped)) {
+      void loadFileAsking(dropped).then(() => emitActiveDocument());
+    }
   };
   mainWindow.webContents.on('will-navigate', (ev, url) => guardNavigation(ev, url));
   // 沙箱 iframe 里落下文件走的是 frame 级导航；老版本 Electron 没有该事件时自然不触发
@@ -707,7 +905,7 @@ app.on('open-file', (e, p) => {
     hasLiveWindow: hasLiveMainWindow(),
     // 冷启动：留给 app.whenReady() 消费（loadFile + createWindow）
     queueFile: (filePath) => pendingFiles.push(filePath),
-    loadFile,
+    loadFile: (filePath) => loadFileAsking(filePath),
     createWindow,
     emitActiveDocument,
     revealWindow: revealMainWindow,
@@ -747,7 +945,12 @@ app.whenReady().then(() => {
       return p ? path.dirname(p) : process.cwd();
     },
     setCurrentContent: (s) => {
+      const before = isTabDirty(getActiveTab(tabs));
       tabs = setActiveContent(tabs, s);
+      if (before !== isTabDirty(getActiveTab(tabs))) {
+        pushTabs();
+        updateWindowTitle();
+      }
     },
     getPrefersDark: prefersDark,
   });
@@ -774,6 +977,14 @@ app.whenReady().then(() => {
     openExistingPath(typeof filePath === 'string' ? filePath : '')
   );
   ipcMain.handle('app:reload-document', () => reloadActiveDocument());
+  ipcMain.handle('app:save-document', () => saveTabById(tabs.activeId));
+  ipcMain.handle('app:settle-edits', () => settleTab(tabs.activeId));
+  ipcMain.on('app:editing', (_e, on: unknown) => {
+    const next = on === true;
+    if (next === rendererEditing) return;
+    rendererEditing = next;
+    installAppMenu();
+  });
   ipcMain.handle('app:recent-files:list', () => readRecent());
   ipcMain.handle('app:recent-files:remove', (_e, filePath: unknown) => {
     const p = typeof filePath === 'string' ? filePath : '';

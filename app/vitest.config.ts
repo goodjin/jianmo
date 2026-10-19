@@ -9,6 +9,15 @@ export default defineConfig({
       '@': resolve(__dirname, 'renderer'),
       '@types': resolve(__dirname, '../src/types'),
       '@wv': resolve(__dirname, '../webview/src'),
+      '@codemirror/state': resolve(__dirname, 'node_modules/@codemirror/state'),
+      '@codemirror/view': resolve(__dirname, 'node_modules/@codemirror/view'),
+      '@codemirror/commands': resolve(__dirname, 'node_modules/@codemirror/commands'),
+      '@codemirror/language': resolve(__dirname, 'node_modules/@codemirror/language'),
+      '@codemirror/lang-markdown': resolve(__dirname, 'node_modules/@codemirror/lang-markdown'),
+      codemirror: resolve(__dirname, 'node_modules/codemirror'),
+      '@lezer/common': resolve(__dirname, 'node_modules/@lezer/common'),
+      '@lezer/highlight': resolve(__dirname, 'node_modules/@lezer/highlight'),
+      '@lezer/markdown': resolve(__dirname, 'node_modules/@lezer/markdown'),
       // 此环境未安装 root/node_modules；htmlExport 复用自 root/src，import 'katex'/'marked'
       // 从 root/src 向上解析不到。指回 app/node_modules 让 vitest 能 transpile。
       katex: resolve(__dirname, 'node_modules/katex'),

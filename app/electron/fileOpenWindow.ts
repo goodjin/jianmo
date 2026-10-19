@@ -161,7 +161,7 @@ export interface ExternalFileOpenDeps {
   appReady: boolean;
   hasLiveWindow: boolean;
   queueFile: (filePath: string) => void;
-  loadFile: (filePath: string) => void;
+  loadFile: (filePath: string) => void | Promise<void>;
   createWindow: () => void;
   emitActiveDocument: () => void;
   revealWindow: () => void;
@@ -172,10 +172,22 @@ export function handleExternalFileOpen(filePath: string, deps: ExternalFileOpenD
     deps.queueFile(filePath);
     return 'queued';
   }
-  deps.loadFile(filePath);
-  if (!deps.hasLiveWindow) deps.createWindow();
-  deps.emitActiveDocument();
-  deps.revealWindow();
+  const loaded = deps.loadFile(filePath);
+  const finish = (): void => {
+    if (!deps.hasLiveWindow) deps.createWindow();
+    deps.emitActiveDocument();
+    deps.revealWindow();
+  };
+  // 要先问未保存时，读文件是异步的。等它结束再刷新，避免窗口先画出旧正文。
+  if (loaded && typeof (loaded as Promise<void>).then === 'function') {
+    if (!deps.hasLiveWindow) deps.createWindow();
+    void (loaded as Promise<void>).then(() => {
+      deps.emitActiveDocument();
+      deps.revealWindow();
+    });
+    return 'opened';
+  }
+  finish();
   return 'opened';
 }
 

@@ -24,6 +24,10 @@ export interface ElectronAppBridge {
   openFile?: () => Promise<string | null>;
   openPath?: (filePath: string) => Promise<string | null>;
   reloadDocument?: () => Promise<unknown>;
+  saveDocument?: () => Promise<unknown>;
+  settleEdits?: () => Promise<unknown>;
+  setEditing?: (on: boolean) => void;
+  onEditCommand?: (handler: (command: string) => void) => () => void;
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
   exportDocument?: (format: 'pdf' | 'html') => Promise<unknown>;
@@ -88,6 +92,7 @@ export function parseTabsView(raw: unknown): TabsView {
             kind: t.kind === 'settings' ? ('settings' as const) : ('doc' as const),
             title: typeof t.title === 'string' && t.title ? t.title : '新标签页',
             filePath: typeof t.filePath === 'string' ? t.filePath : '',
+            dirty: t.dirty === true,
           },
         ];
       })
