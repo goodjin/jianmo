@@ -10,7 +10,11 @@ import {
   RELOAD_UNREADABLE_TIP,
 } from '../electron/reloadResult';
 import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
+import { APP_RADIUS } from '../chromeRadius';
+import { PLACE_ANCHOR, PLACE_READ, PLACE_RESTORE, scrollTopForSource, measureSourceBox } from '../electron/viewPlace';
 import type { ElectronAppBridge } from './electronBridge';
+import previewAppSource from './PreviewApp.vue?raw';
+import fileTreeSource from './FileTree.vue?raw';
 
 let mounted: { app: App; el: HTMLElement } | null = null;
 
@@ -84,6 +88,13 @@ async function flush(): Promise<void> {
     await Promise.resolve();
     await nextTick();
   }
+}
+
+/** 切源码会先问预览现在看到哪，等它回答或超时。 */
+async function settle(): Promise<void> {
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await flush();
 }
 
 function mount(): HTMLElement {
@@ -309,6 +320,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     button.click();
     await flush();
     expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.title).toBe('');
     expect(el.querySelector('.export-menu')).not.toBeNull();
     vi.useFakeTimers();
     split.dispatchEvent(new MouseEvent('mouseleave'));
@@ -328,6 +340,59 @@ describe('PreviewApp 顶栏与大纲', () => {
     (el.querySelector('[data-format="pdf"]') as HTMLElement).click();
     await flush();
     expect(electronStub('exportDocument')).toHaveBeenLastCalledWith('pdf');
+  });
+
+  it('导出菜单贴住导出按钮，打开时不让系统提示盖住', async () => {
+    const el = mount();
+    await flush();
+    const button = el.querySelector('.tab-export') as HTMLButtonElement;
+    expect(button.title).toContain('导出');
+    button.click();
+    await flush();
+
+    const menu = el.querySelector('.export-menu') as HTMLElement;
+    expect(menu).not.toBeNull();
+    expect(menu.querySelector('[data-format="pdf"]')?.textContent?.trim()).toBe('PDF');
+    expect(menu.querySelector('[data-format="html"]')?.textContent?.trim()).toBe('HTML');
+    expect(button.textContent).toContain('导出');
+    expect(menu.textContent).not.toContain('导出');
+    const itemRule = previewAppSource.match(/\.export-item\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(itemRule).toMatch(/white-space:\s*nowrap/);
+    const exportRule = previewAppSource.match(/\.tab-export\s*\{[^}]+\}/)?.[0] ?? '';
+    const minWidth = Number(exportRule.match(/min-width:\s*(\d+)px/)?.[1] ?? 0);
+    expect(minWidth).toBeGreaterThan(60);
+    expect(minWidth).toBeLessThan(120);
+    const menuRule = previewAppSource.match(/\.export-menu\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(menuRule).toMatch(/top:\s*calc\(100% - 1px\)/);
+    expect(menuRule).toMatch(/left:\s*0/);
+    expect(menuRule).toMatch(/right:\s*0/);
+    expect(menuRule).toMatch(/min-width:\s*0/);
+    expect(menuRule).not.toMatch(/min-width:\s*148px/);
+    expect(menuRule).toMatch(/border-top:\s*0/);
+    expect(menuRule).toMatch(/border-radius:\s*0 0 var\(--app-radius-sm\) var\(--app-radius-sm\)/);
+    expect(menuRule).not.toMatch(/border-radius:\s*var\(--app-radius-md\)/);
+    const joined = previewAppSource.match(/\.export-split:has\(\.export-menu\) \.tab-export,\s*\.export-split:has\(\.export-menu\) \.tab-export:hover\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(joined).toMatch(/border-radius:\s*var\(--app-radius-sm\) var\(--app-radius-sm\) 0 0/);
+    expect(joined).toMatch(/border-bottom-color:\s*var\(--markly-background/);
+    const style = getComputedStyle(menu);
+    if (style.top && style.top !== 'auto') {
+      expect(style.top.includes('+')).toBe(false);
+      expect(parseFloat(style.top)).not.toBe(4);
+    }
+    const buttonBox = button.getBoundingClientRect();
+    const menuBox = menu.getBoundingClientRect();
+    if (buttonBox.width > 0 && menuBox.width > 0) {
+      expect(Math.abs(menuBox.width - buttonBox.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(menuBox.left - buttonBox.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(menuBox.right - buttonBox.right)).toBeLessThanOrEqual(1);
+    }
+    expect(button.title).toBe('');
+    expect(button.getAttribute('aria-label')).toContain('导出');
+
+    button.click();
+    await flush();
+    expect(el.querySelector('.export-menu')).toBeNull();
+    expect(button.title).toContain('导出');
   });
 
   it('点击导出按钮后再次点击收起；点到外面也收起', async () => {
@@ -607,8 +672,9 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('iframe')).not.toBeNull();
 
     const source = el.querySelector('.tab-source') as HTMLButtonElement;
+    expect(source.textContent?.trim()).toBe('源码');
     source.click();
-    await flush();
+    await settle();
     expect(source.textContent?.trim()).toBe('预览');
     expect(source.getAttribute('aria-pressed')).toBe('true');
     expect(source.getAttribute('aria-label')).toBe('预览');
@@ -617,10 +683,13 @@ describe('PreviewApp 顶栏与大纲', () => {
     const view = el.querySelector('.source-view') as HTMLElement;
     expect(view.textContent).toBe(markdown);
     expect(view.style.fontFamily).toBe('');
+    const family = getComputedStyle(view).fontFamily;
+    expect(family.toLowerCase()).toContain('monospace');
+    expect(family).not.toContain('Noto Sans');
     expect(el.querySelector('.source-note')).toBeNull();
 
     source.click();
-    await flush();
+    await settle();
     expect(source.textContent?.trim()).toBe('源码');
     expect(source.getAttribute('aria-pressed')).toBe('false');
     expect(source.getAttribute('aria-label')).toBe('查看源码');
@@ -638,8 +707,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
     pushMsg('CONTENT_UPDATE', { content: '{"a":1,"b":[2,3]}' });
     await flush();
-    (el.querySelector('.tab-source') as HTMLButtonElement).click();
-    await flush();
+    const source = el.querySelector('.tab-source') as HTMLButtonElement;
+    source.click();
+    await settle();
+    expect(source.textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe(
       '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}'
     );
@@ -660,7 +731,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '{"id":1}\n\nnope\n{"n":[1]}\n' });
     await flush();
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
-    await flush();
+    await settle();
     expect(el.querySelector('.source-view')?.textContent).toBe(
       '{\n  "id": 1\n}\n\nnope\n\n{\n  "n": [\n    1\n  ]\n}'
     );
@@ -704,7 +775,8 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '# 标题\n\n{"a":1}' });
     await flush();
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
-    await flush();
+    await settle();
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe('# 标题\n\n{"a":1}');
 
     const both = [
@@ -718,7 +790,8 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
 
     (el.querySelector('.tab-source') as HTMLButtonElement).click();
-    await flush();
+    await settle();
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
     expect(el.querySelector('.source-view')?.textContent).toBe('{\n  "a": 1\n}\n\nnot-json');
 
     emit?.({ tabs: both, activeId: 't1' });
@@ -750,6 +823,196 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.source-view')).toBeNull();
     expect(el.querySelector('.tab-source')?.textContent?.trim()).toBe('源码');
     expect(el.querySelector('.tab-source')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('切到源码后按钮变成预览，视口仍停在原来那一段', async () => {
+    const lines = ['# 开头', '', '第一段在最上面。'];
+    for (let i = 0; i < 30; i += 1) lines.push(`填充行 ${i}，用来把后面的内容推远。`);
+    const later = '靠近文末的这一节还在看';
+    lines.push(`## ${later}`);
+    lines.push('后面还有一句。');
+    const markdown = lines.join('\n');
+
+    let emit: ((view: unknown) => void) | undefined;
+    (window as unknown as { electron: ElectronAppBridge }).electron.onTabsChanged = (handler) => {
+      emit = handler;
+      return () => {
+        emit = undefined;
+      };
+    };
+    const both = [
+      { id: 't1', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' },
+      { id: 't2', kind: 'doc', title: 'b.md', filePath: '/docs/b.md' },
+    ];
+    electronStub('tabsState').mockReturnValue({ tabs: both, activeId: 't1' });
+
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: markdown });
+    pushMsg('PREVIEW_HTML', { html: `<h1>开头</h1><p>第一段在最上面。</p><h2>${later}</h2>` });
+    await flush();
+
+    const frame = el.querySelector('iframe') as HTMLIFrameElement;
+    const sent: unknown[] = [];
+    const frameWin = {
+      postMessage(data: unknown) {
+        sent.push(data);
+        const rec = data as { type?: string };
+        if (rec?.type === PLACE_READ) {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              data: { type: PLACE_ANCHOR, snippet: later, ratio: 0 },
+              source: frameWin as unknown as MessageEventSource,
+            })
+          );
+        }
+      },
+    };
+    Object.defineProperty(frame, 'contentWindow', { configurable: true, value: frameWin });
+
+    const button = el.querySelector('.tab-source') as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('源码');
+    button.click();
+    await settle();
+
+    expect(button.textContent?.trim()).toBe('预览');
+    expect(sent.some((item) => (item as { type?: string }).type === PLACE_READ)).toBe(true);
+    const pre = el.querySelector('.source-view') as HTMLPreElement;
+    const expected = scrollTopForSource(markdown, { snippet: later, ratio: 0 }, measureSourceBox(pre));
+    expect(pre.scrollTop).toBe(expected);
+    expect(pre.scrollTop).toBeGreaterThan(measureSourceBox(pre).lineHeight * 10);
+    expect(pre.textContent).toContain(later);
+    expect(getComputedStyle(pre).fontFamily.toLowerCase()).toContain('monospace');
+
+    const restores: unknown[] = [];
+    const previewWin = {
+      postMessage(data: unknown) {
+        restores.push(data);
+      },
+    };
+    const contentWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+      configurable: true,
+      get() {
+        return previewWin as unknown as Window;
+      },
+    });
+    try {
+      button.click();
+      await settle();
+      expect(button.textContent?.trim()).toBe('源码');
+      const restore = restores.find((item) => (item as { type?: string }).type === PLACE_RESTORE) as
+        | { snippet?: string }
+        | undefined;
+      expect(restore?.snippet).toContain(later);
+      expect(restore?.snippet?.startsWith('开头')).toBe(false);
+      expect(restore?.snippet?.startsWith('第一段')).toBe(false);
+    } finally {
+      if (contentWindow) Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', contentWindow);
+    }
+
+    const frameBack = el.querySelector('iframe') as HTMLIFrameElement;
+    const frameWinBack = {
+      postMessage(data: unknown) {
+        const rec = data as { type?: string };
+        if (rec?.type === PLACE_READ) {
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              data: { type: PLACE_ANCHOR, snippet: later, ratio: 0 },
+              source: frameWinBack as unknown as MessageEventSource,
+            })
+          );
+        }
+      },
+    };
+    Object.defineProperty(frameBack, 'contentWindow', { configurable: true, value: frameWinBack });
+    button.click();
+    await settle();
+    expect(button.textContent?.trim()).toBe('预览');
+    const again = el.querySelector('.source-view') as HTMLPreElement;
+    expect(again.scrollTop).toBeGreaterThan(measureSourceBox(again).lineHeight * 10);
+
+    emit?.({ tabs: both, activeId: 't2' });
+    pushMsg('CONTENT_UPDATE', { content: '# 另一篇\n\n正文' });
+    await flush();
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('源码');
+    expect(el.querySelector('.source-view')).toBeNull();
+
+    emit?.({ tabs: both, activeId: 't1' });
+    pushMsg('CONTENT_UPDATE', { content: markdown });
+    await flush();
+    const back = el.querySelector('.source-view') as HTMLPreElement;
+    expect((el.querySelector('.tab-source') as HTMLButtonElement).textContent?.trim()).toBe('预览');
+    expect(back.scrollTop).toBe(scrollTopForSource(markdown, { snippet: later, ratio: 0 }, measureSourceBox(back)));
+    expect(back.scrollTop).toBeGreaterThan(0);
+  });
+
+  it('空标签上有打开；已有文档的标签不出现这颗按钮', async () => {
+    const doc = mount();
+    await flush();
+    expect(doc.querySelector('.blank-open')).toBeNull();
+    mounted?.app.unmount();
+    mounted?.el.remove();
+
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 'blank', kind: 'doc', title: '新标签页', filePath: '' }],
+      activeId: 'blank',
+    });
+    const openFile = vi.fn(async () => '/docs/note.md');
+    const openPath = vi.fn(async () => '/docs/note.md');
+    const newTab = vi.fn(async () => undefined);
+    const bridge = (window as unknown as { electron: ElectronAppBridge }).electron;
+    bridge.openFile = openFile;
+    bridge.openPath = openPath;
+    bridge.newTab = newTab;
+    bridge.fileTreeRoot = async () => '/docs';
+    bridge.listFileTree = async (dir: string) => {
+      if (dir === '/docs') {
+        return {
+          dir,
+          entries: [{ name: 'note.md', path: '/docs/note.md', kind: 'file' as const }],
+          error: '',
+        };
+      }
+      return { dir, entries: [], error: '' };
+    };
+
+    const el = mount();
+    await flush();
+    const blankPage = el.querySelector('.blank-page') as HTMLElement;
+    const blank = el.querySelector('.blank-open') as HTMLButtonElement;
+    expect(blankPage).not.toBeNull();
+    expect(blank).not.toBeNull();
+    expect(blank.textContent?.trim()).toBe('打开');
+    expect(blankPage.querySelector('.blank-hint')?.textContent).toContain('从左侧文件里点开一篇');
+    expect(previewAppSource).toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*flex-end/);
+    expect(previewAppSource).not.toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*center/);
+    const pageStyle = getComputedStyle(blankPage);
+    if (pageStyle.justifyContent) {
+      expect(pageStyle.justifyContent).toBe('flex-end');
+    }
+    expect(blank.classList.contains('chrome-btn')).toBe(true);
+    expect(blank.classList.contains('file-up')).toBe(false);
+    expect(previewAppSource).toMatch(/\.chrome-btn\s*\{[^}]*border-radius:\s*var\(--app-radius-sm\)/);
+    expect(previewAppSource).not.toMatch(/\.blank-open\s*\{[^}]*border-radius/);
+    expect(fileTreeSource).toMatch(/\.file-up,\s*\n\.file-toggle\s*\{[^}]*border-radius:\s*var\(--app-radius-xxs\)/);
+    const shell = el.querySelector('.markly-app') as HTMLElement;
+    expect(shell.style.getPropertyValue('--app-radius-sm')).toBe(APP_RADIUS.sm);
+    expect(shell.style.getPropertyValue('--app-radius-xxs')).toBe(APP_RADIUS.xxs);
+    expect(APP_RADIUS.sm).toBe('12px');
+    expect(APP_RADIUS.xxs).toBe('6px');
+
+    blank.click();
+    await flush();
+    expect(openFile).toHaveBeenCalledTimes(1);
+    expect(newTab).not.toHaveBeenCalled();
+
+    const row = el.querySelector('.tree-row[data-path="/docs/note.md"]') as HTMLButtonElement;
+    expect(row).not.toBeNull();
+    row.click();
+    await flush();
+    expect(openPath).toHaveBeenCalledWith('/docs/note.md');
+    expect(newTab).not.toHaveBeenCalled();
   });
 
   it('打开 JSON 时不拿正文里的 # 当目录', async () => {
