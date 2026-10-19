@@ -41,7 +41,12 @@
           aria-label="上一级目录"
           :disabled="!treeCanGoUp"
           @click="onGoUp"
-        >↑</button>
+        >
+          <!-- 系统字体的 ↑ 线条太细，改成描边箭头，线宽自己定。 -->
+          <svg class="file-up-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 13.2V3.6M3.7 8 8 3.6 12.3 8" />
+          </svg>
+        </button>
         <button
           v-if="!fileTreeCollapsed"
           type="button"
@@ -1072,6 +1077,24 @@ html, body, #app {
   border-radius: var(--app-radius-xxs);
   width: 32px;
   padding: 0;
+}
+.file-up {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-up-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  overflow: visible;
+}
+.file-up-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .file-icon-btn:hover,
 .file-toggle:hover {

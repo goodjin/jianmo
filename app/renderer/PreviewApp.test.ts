@@ -243,7 +243,8 @@ describe('PreviewApp 顶栏与大纲', () => {
     const up = chrome.querySelector('.file-up') as HTMLButtonElement;
     const treeRefresh = chrome.querySelector('.file-icon-btn:not(.file-up)') as HTMLButtonElement;
     const toggle = chrome.querySelector('.file-toggle') as HTMLButtonElement;
-    expect(up.textContent?.trim()).toBe('↑');
+    expect(up.querySelector('.file-up-icon path')).not.toBeNull();
+    expect(up.textContent).not.toContain('↑');
     expect(up.getAttribute('aria-label')).toBe('上一级目录');
     expect(treeRefresh.textContent?.trim()).toBe('刷新');
     expect(treeRefresh.getAttribute('aria-label')).toBe('刷新目录树');
@@ -336,6 +337,8 @@ describe('PreviewApp 顶栏与大纲', () => {
       expect(height('.file-up')).toBe('32px');
       expect(height('.file-toggle')).toBe('32px');
       expect(height('.file-icon-btn:not(.file-up)')).toBe('32px');
+      const shaft = el.querySelector('.file-up-icon path') as SVGPathElement;
+      expect(Number.parseFloat(getComputedStyle(shaft).strokeWidth)).toBeGreaterThan(2);
     } finally {
       style.remove();
     }
