@@ -14,6 +14,7 @@ import {
   openFileTab,
   openSettingsTab,
   tabDisplayTitle,
+  closeTabsForPath,
   renameFileInTabs,
   setActiveContent,
   summarizeTabs,
@@ -323,6 +324,30 @@ describe('tabDisplayTitle', () => {
     expect(tabDisplayTitle({ id: 's', kind: 'settings', filePath: '', content: '' })).toBe(
       SETTINGS_TAB_TITLE
     );
+  });
+});
+
+describe('closeTabsForPath', () => {
+  it('关掉打开这个文件的标签，旁边的标签留着', () => {
+    const next = closeTabsForPath(threeFiles(), '/docs/b.md', 'blank');
+    expect(next.tabs.map((t) => t.filePath)).toEqual(['/docs/a.md', '/docs/c.md']);
+    expect(next.tabs.map((t) => t.content)).toEqual(['# A', '# C']);
+    expect(next.activeId).toBe('c');
+  });
+
+  it('关掉唯一的标签后留下一个空白标签', () => {
+    const only = openFileTab(createInitialState('blank-0'), 'doc', '/docs/a.md', '# A');
+    const next = closeTabsForPath(only, '/docs/a.md', 'blank-1');
+    expect(next.tabs).toHaveLength(1);
+    expect(next.tabs[0]?.filePath).toBe('');
+    expect(next.tabs[0]?.id).toBe('blank-1');
+    expect(next.activeId).toBe('blank-1');
+  });
+
+  it('没打开这个文件时保持原状态', () => {
+    const s = threeFiles();
+    expect(closeTabsForPath(s, '/docs/missing.md', 'blank')).toBe(s);
+    expect(closeTabsForPath(s, '  ', 'blank')).toBe(s);
   });
 });
 

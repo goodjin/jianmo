@@ -55,10 +55,25 @@
         @mousedown.stop
         @contextmenu.prevent
       >
-        <button type="button" role="menuitem" @click="beginRename">重命名</button>
-        <button type="button" role="menuitem" @click="revealInFinder">在 Finder 打开</button>
-        <button type="button" role="menuitem" @click="copyFullPath">复制全路径</button>
-        <button type="button" role="menuitem" @click="copyFileName">复制文件名</button>
+        <template v-if="!menu.confirming">
+          <button type="button" role="menuitem" @click="beginRename">重命名</button>
+          <button type="button" role="menuitem" @click="revealInFinder">在 Finder 打开</button>
+          <button type="button" role="menuitem" @click="copyFullPath">复制全路径</button>
+          <button type="button" role="menuitem" @click="copyFileName">复制文件名</button>
+          <button type="button" role="menuitem" class="tree-menu-danger" @click="askTrash">删除</button>
+        </template>
+        <template v-else>
+          <p class="tree-menu-confirm">要把「{{ menu.name }}」移到废纸篓吗？</p>
+          <p v-if="menu.error" class="tree-menu-error">{{ menu.error }}</p>
+          <button
+            type="button"
+            role="menuitem"
+            class="tree-menu-danger"
+            :disabled="menu.busy"
+            @click="confirmTrash"
+          >{{ menu.busy ? '正在移到废纸篓…' : '移到废纸篓' }}</button>
+          <button type="button" role="menuitem" :disabled="menu.busy" @click="closeMenu">取消</button>
+        </template>
       </div>
     </Teleport>
   </aside>
@@ -80,6 +95,7 @@ import { electronApp } from './electronBridge';
 import FileTreeNode from './FileTreeNode.vue';
 import { FileTreeKey, type FileTreeContext } from './fileTreeContext';
 import { parseRenameResult, planRename } from '../electron/fileRename';
+import { parseTrashResult } from '../electron/trashFile';
 
 const props = defineProps<{ collapsed: boolean; activePath: string }>();
 const emit = defineEmits<{ (e: 'toggle'): void }>();
@@ -103,6 +119,9 @@ interface FileMenuState {
   name: string;
   x: number;
   y: number;
+  confirming: boolean;
+  busy: boolean;
+  error: string;
 }
 
 const menu = ref<FileMenuState | null>(null);
@@ -226,20 +245,51 @@ function closeMenu(): void {
   menu.value = null;
 }
 
-function openFileMenu(entry: FileTreeEntry, x: number, y: number): void {
-  if (entry.kind !== 'file') return;
-  cancelRename();
+function placeMenu(x: number, y: number, height: number): { x: number; y: number } {
   const pad = 8;
-  const width = 168;
-  const height = 148;
+  const width = 220;
   const maxX = Math.max(pad, window.innerWidth - width - pad);
   const maxY = Math.max(pad, window.innerHeight - height - pad);
-  menu.value = {
-    path: entry.path,
-    name: entry.name,
+  return {
     x: Math.min(Math.max(pad, x), maxX),
     y: Math.min(Math.max(pad, y), maxY),
   };
+}
+
+function openFileMenu(entry: FileTreeEntry, x: number, y: number): void {
+  if (entry.kind !== 'file') return;
+  cancelRename();
+  const placed = placeMenu(x, y, 188);
+  menu.value = {
+    path: entry.path,
+    name: entry.name,
+    confirming: false,
+    busy: false,
+    error: '',
+    ...placed,
+  };
+}
+
+function askTrash(): void {
+  const current = menu.value;
+  if (!current || current.confirming) return;
+  const placed = placeMenu(current.x, current.y, 132);
+  menu.value = { ...current, confirming: true, busy: false, error: '', ...placed };
+}
+
+async function confirmTrash(): Promise<void> {
+  const current = menu.value;
+  if (!current?.confirming || current.busy) return;
+  menu.value = { ...current, busy: true, error: '' };
+  const result = parseTrashResult(await electronApp()?.trashFile?.(current.path));
+  if (!menu.value || menu.value.path !== current.path || !menu.value.confirming) return;
+  if (!result.ok) {
+    menu.value = { ...menu.value, busy: false, error: result.error };
+    return;
+  }
+  closeMenu();
+  const parent = parentDir(current.path);
+  if (parent) await fetchDir(parent);
 }
 
 function beginRename(): void {
@@ -518,5 +568,24 @@ onUnmounted(() => {
 }
 .tree-menu button:hover {
   background: var(--markly-surfaceHover, #eaeef2);
+}
+.tree-menu button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.tree-menu-danger {
+  color: var(--markly-error, #cf222e);
+}
+.tree-menu-confirm,
+.tree-menu-error {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.tree-menu-error {
+  color: var(--markly-error, #cf222e);
+  padding-top: 0;
 }
 </style>

@@ -148,6 +148,20 @@ export function closeTab(state: TabsState, id: string, blankId: string): TabsSta
 }
 
 /**
+ * 文件进了废纸篓后，关掉所有打开它的标签。
+ * 一个都没打开时原样返回。全部关掉时留一个空白标签。
+ */
+export function closeTabsForPath(state: TabsState, filePath: string, blankId: string): TabsState {
+  const target = String(filePath ?? '').trim();
+  if (!target) return state;
+  const ids = state.tabs.filter((tab) => tab.kind === 'doc' && tab.filePath === target).map((tab) => tab.id);
+  if (ids.length === 0) return state;
+  let next = state;
+  for (const id of ids) next = closeTab(next, id, blankId);
+  return next;
+}
+
+/**
  * 磁盘上的文件改名后，已打开的标签跟着换路径。正文不动。
  * 没有这个路径的标签时原样返回。
  */

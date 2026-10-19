@@ -44,6 +44,7 @@ import {
 } from './recentFiles';
 import { resolveFileTreeRoot } from './fileTreeModel';
 import { applyFileRename, destinationTaken } from './fileRename';
+import { planTrash } from './trashFile';
 import {
   activateTab,
   closeTab,
@@ -53,6 +54,7 @@ import {
   openBlankTab,
   openFileTab,
   openSettingsTab,
+  closeTabsForPath,
   renameFileInTabs,
   setActiveContent,
   summarizeTabs,
@@ -264,6 +266,32 @@ function renameOpenedFile(from: string, nextName: string): { ok: boolean; path: 
     emitActiveDocument();
   }
   return { ok: true, path: result.to, error: '' };
+}
+
+/** 移到系统废纸篓，不是直接抹掉。打开着的标签和最近打开记录一起清掉。 */
+async function trashOpenedFile(raw: string): Promise<{ ok: boolean; path: string; error: string }> {
+  const requested = String(raw ?? '').trim();
+  const resolved = requested ? path.resolve(requested) : '';
+  const plan = planTrash(resolved, (filePath) => {
+    try {
+      return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+    } catch {
+      return false;
+    }
+  });
+  if (!plan.ok) return plan;
+  try {
+    await shell.trashItem(plan.path);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.trim() : '';
+    return { ok: false, path: plan.path, error: detail || '无法移到废纸篓' };
+  }
+  writeRecent(removeRecentFile(removeRecentFile(readRecent(), requested), plan.path));
+  const before = tabs;
+  tabs = closeTabsForPath(tabs, requested, nextTabId());
+  if (plan.path !== requested) tabs = closeTabsForPath(tabs, plan.path, nextTabId());
+  if (tabs !== before) emitActiveDocument();
+  return { ok: true, path: plan.path, error: '' };
 }
 
 /**
@@ -772,6 +800,9 @@ app.whenReady().then(() => {
     const name = typeof obj.name === 'string' ? obj.name : '';
     return renameOpenedFile(from, name);
   });
+  ipcMain.handle('app:trash-file', (_e, filePath: unknown) =>
+    trashOpenedFile(typeof filePath === 'string' ? filePath : '')
+  );
   ipcMain.handle('app:file-tree:list', (_e, dir: unknown) => {
     // 目录树从文件系统根铺开，不再限制在曾经选过的文件夹里。
     const target = typeof dir === 'string' ? dir.trim() : '';

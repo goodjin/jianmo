@@ -214,6 +214,7 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
       '在 Finder 打开',
       '复制全路径',
       '复制文件名',
+      '删除',
     ]);
 
     menuItems()[3]!.click();
@@ -232,6 +233,99 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     menuItems()[1]!.click();
     await flush();
     expect(revealInFolder).toHaveBeenCalledWith('/docs/notes/b.md');
+  });
+
+  function clickMenu(label: string): void {
+    const btn = menuItems().find((item) => item.textContent === label);
+    expect(btn).toBeTruthy();
+    btn!.click();
+  }
+
+  it('点删除只出现确认，再点移到废纸篓才删掉并刷新目录', async () => {
+    let trashed = false;
+    const listFileTree = vi.fn(async (dir: string) => {
+      if (trashed && dir === '/docs/notes') return { dir, entries: [], error: '' };
+      return TREE[dir] ?? { dir, entries: [], error: '' };
+    });
+    const trashFile = vi.fn(async (filePath: string) => {
+      trashed = true;
+      return { ok: true, path: filePath, error: '' };
+    });
+    install({ listFileTree, trashFile });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    expect(trashFile).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.tree-menu-confirm')?.textContent).toBe('要把「b.md」移到废纸篓吗？');
+
+    clickMenu('取消');
+    await flush();
+    expect(trashFile).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(el.querySelector('[data-path="/docs/notes/b.md"]')).not.toBeNull();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    clickMenu('移到废纸篓');
+    await flush();
+    expect(trashFile).toHaveBeenCalledTimes(1);
+    expect(trashFile).toHaveBeenCalledWith('/docs/notes/b.md');
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(el.querySelector('[data-path="/docs/notes/b.md"]')).toBeNull();
+  });
+
+  it('移到废纸篓失败时留下说明，文件还在', async () => {
+    const trashFile = vi.fn(async (filePath: string) => ({
+      ok: false,
+      path: filePath,
+      error: '文件正在使用',
+    }));
+    install({ listFileTree: fakeList(), trashFile });
+    const el = mount({ activePath: '/docs/a.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    clickMenu('移到废纸篓');
+    await flush();
+
+    expect(trashFile).toHaveBeenCalledWith('/docs/a.md');
+    expect(document.body.querySelector('.tree-menu-error')?.textContent).toBe('文件正在使用');
+    expect(el.querySelector('[data-path="/docs/a.md"]')).not.toBeNull();
+    expect(menuItems().some((btn) => btn.textContent === '移到废纸篓')).toBe(true);
+  });
+
+  it('确认时按 Esc 或点外面会取消，不会删除', async () => {
+    const trashFile = vi.fn(async () => ({ ok: true, path: '/docs/a.md', error: '' }));
+    install({ listFileTree: fakeList(), trashFile });
+    const el = mount({ activePath: '/docs/a.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(trashFile).not.toHaveBeenCalled();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(trashFile).not.toHaveBeenCalled();
   });
 
   it('点菜单外面或按 Esc 会收起；文件夹右键没有这几个菜单', async () => {
