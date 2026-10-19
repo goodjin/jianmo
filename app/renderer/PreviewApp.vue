@@ -32,6 +32,39 @@
         >▾</button>
         <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" />
       </div>
+      <div class="file-tree-chrome">
+        <button
+          v-if="!fileTreeCollapsed"
+          type="button"
+          class="file-icon-btn file-up"
+          title="上一级目录"
+          aria-label="上一级目录"
+          :disabled="!treeCanGoUp"
+          @click="onGoUp"
+        >
+          <!-- 系统字体的 ↑ 线条太细，改成描边箭头，线宽自己定。 -->
+          <svg class="file-up-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 13.2V3.6M3.7 8 8 3.6 12.3 8" />
+          </svg>
+        </button>
+        <button
+          v-if="!fileTreeCollapsed"
+          type="button"
+          class="file-icon-btn"
+          title="刷新目录树"
+          aria-label="刷新目录树"
+          :disabled="!treeHasRoot"
+          @click="onRefreshTree"
+        >刷新</button>
+        <button
+          class="file-toggle"
+          type="button"
+          :title="fileTreeCollapsed ? '展开文件' : '收起文件'"
+          :aria-label="fileTreeCollapsed ? '展开文件' : '收起文件'"
+          :aria-expanded="!fileTreeCollapsed"
+          @click="toggleFileTree"
+        >{{ fileTreeCollapsed ? '›' : '‹' }}</button>
+      </div>
     </div>
     <TabBar
       :tabs="tabs"
@@ -117,9 +150,10 @@
       </template>
     </TabBar>
     <FileTree
+      ref="fileTreeRef"
       :collapsed="fileTreeCollapsed"
       :active-path="activeFilePath"
-      @toggle="toggleFileTree"
+      @chrome="onFileTreeChrome"
     />
     <main class="preview-area">
       <p
@@ -267,6 +301,9 @@ const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
 const outlineCollapsed = ref(false);
 const fileTreeCollapsed = ref(false);
+const treeCanGoUp = ref(false);
+const treeHasRoot = ref(false);
+const fileTreeRef = ref<{ goUp: () => Promise<void>; refresh: () => Promise<void> } | null>(null);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
@@ -700,6 +737,19 @@ function toggleFileTree(): void {
   }
 }
 
+function onFileTreeChrome(state: { canGoUp: boolean; hasRoot: boolean }): void {
+  treeCanGoUp.value = state.canGoUp;
+  treeHasRoot.value = state.hasRoot;
+}
+
+function onGoUp(): void {
+  void fileTreeRef.value?.goUp();
+}
+
+function onRefreshTree(): void {
+  void fileTreeRef.value?.refresh();
+}
+
 function closeRecent(): void {
   recentOpen.value = false;
 }
@@ -1123,7 +1173,8 @@ html, body, #app {
   height: 100%;
 }
 .markly-app {
-  --files-col: 220px;
+  /* 打开和上一级、刷新目录、收起要排在同一栏，220 会挤出去盖住标签。 */
+  --files-col: 260px;
   --chrome-row: 40px;
   /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -1133,14 +1184,15 @@ html, body, #app {
   height: 100vh;
   margin: 0;
 }
-.markly-app.files-collapsed { --files-col: 40px; }
+/* 收起后树没了，这一列只留「开」和展开按钮，宽度跟着按钮走。 */
+.markly-app.files-collapsed { --files-col: max-content; }
 .markly-app > .tab-bar {
   position: relative;
   z-index: 20;
   grid-column: 2;
   grid-row: 1;
 }
-/* 打开按钮留在文件树正上方。标签从文件树右缘开始，底边和正文连成一块 */
+/* 打开按钮留在文件树正上方，右边是目录操作。标签从文件树右缘开始。 */
 .open-rail {
   grid-column: 1;
   grid-row: 1;
@@ -1148,6 +1200,7 @@ html, body, #app {
   z-index: 30;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
   min-height: 40px;
   padding: 0 8px;
@@ -1155,6 +1208,64 @@ html, body, #app {
   background: var(--markly-surface, #f6f8fa);
   border-right: 1px solid var(--markly-border-color, #d0d7de);
   border-bottom: 1px solid var(--markly-border-color, #d0d7de);
+}
+.file-tree-chrome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.file-icon-btn,
+.file-toggle {
+  box-sizing: border-box;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm);
+  background: var(--markly-background, #fff);
+  color: var(--markly-text, #24292e);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+  height: 32px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。高度跟打开按钮对齐。 */
+.file-up,
+.file-toggle {
+  border-radius: var(--app-radius-xxs);
+  width: 32px;
+  padding: 0;
+}
+.file-up {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-up-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  overflow: visible;
+}
+.file-up-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.file-icon-btn:hover,
+.file-toggle:hover {
+  background: var(--markly-surface, #f6f8fa);
+}
+.file-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.markly-app.files-collapsed .open-rail {
+  min-width: max-content;
+  gap: 4px;
+  padding: 0 6px;
 }
 .markly-app.files-collapsed .open-label { display: none; }
 .markly-app.files-collapsed .open-main::before { content: '开'; }
