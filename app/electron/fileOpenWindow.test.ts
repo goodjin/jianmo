@@ -24,6 +24,7 @@ function fakeWindow(overrides: Partial<RevealableWindow> = {}): RevealableWindow
     setVisibleOnAllWorkspaces: (visible, options) => {
       calls.push(visible ? 'spaces-on' : 'spaces-off');
       calls.push(options?.visibleOnFullScreen ? 'over-fullscreen' : 'not-over-fullscreen');
+      calls.push(options?.skipTransformProcessType ? 'keep-dock' : 'drop-dock');
     },
     moveTop: () => calls.push('moveTop'),
     ...overrides,
@@ -34,9 +35,11 @@ describe('revealAppWindow', () => {
   it('最小化时先还原，再显示并聚焦', () => {
     const win = fakeWindow({ isMinimized: () => true });
     const focus = vi.fn();
-    revealAppWindow(win, { focus }, 'win32');
+    const showDock = vi.fn();
+    revealAppWindow(win, { focus, showDock }, 'win32');
     expect(win.calls).toEqual(['restore', 'show', 'focus']);
     expect(focus).not.toHaveBeenCalled();
+    expect(showDock).not.toHaveBeenCalled();
   });
 
   it('macOS 抢到前台，并临时跨桌面显示后再回到当前桌面', () => {
@@ -49,9 +52,11 @@ describe('revealAppWindow', () => {
       'focus',
       'spaces-on',
       'not-over-fullscreen',
+      'keep-dock',
       'focus',
       'spaces-off',
       'not-over-fullscreen',
+      'keep-dock',
       'moveTop',
     ]);
     expect(focus).toHaveBeenCalledTimes(1);

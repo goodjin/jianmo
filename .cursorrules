@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **桌面版程序坞图标**（0.7.4）：跨桌面时 `visibleOnFullScreen: false`，并且 `skipTransformProcessType: true`。前者避免窗口铺满挡住程序坞，后者避免进程被改成菜单栏小工具后图标消失。然后 `setActivationPolicy('regular')` + `dock.show()`。不要先 hide 再 show。
 - [X] **导出菜单只写格式**（0.7.3）：下拉只写 PDF / HTML，按钮仍叫「导出」。菜单仍同宽贴着往下拉。
 - [X] **导出按钮稍宽**（0.7.2）：按钮加宽到菜单项各自一行。菜单仍跟按钮同宽、贴着往下拉、相接处无横框。不要改回两行，也不要加回一大条。
 - [X] **桌面版导出菜单贴合、打开挪到底**（0.7.1）：导出菜单跟按钮同宽、左右对齐，相接边不留缝也不留横框，圆角只在外轮廓。空标签的「打开」和说明放在底部。源码位置和填空标签的行为不动。
@@ -118,6 +119,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - [X] **文件右键菜单 + 代码框复制按钮**（桌面 0.6.6，预览样式 2.3.2）：文件行右键「重命名 / 在 Finder 打开 / 复制全路径 / 复制文件名」。代码块语言名留在框内右上角，复制按钮改到框外上方，悬停才出现。所有 `.markly-codeblock` 共用这一套。
 - [X] **桌面版刷新**（0.6.5）：复制按钮前面「刷新」。成功读盘后顶部绿条，约 2 秒消失。文件不在或读失败不改正文，黄条留着。不要走 `loadFile`，那条失败时会把正文换成错误说明。
 - [X] **桌面版查看源码**（0.6.4）：复制按钮右侧「源码」，点一下看原文，再点回预览。JSON / JSONL 用两空格 pretty；解析失败的原文原样留下，并在上面说明。每个标签各自记住。不改插件。源码区用等宽字体，不套思源黑体。
+>>>>>>> origin/main
 - [X] **桌面版窄图标按钮圆角**（0.6.3）：文件树「上一级」「收起」用 6px。约 22px 宽上 8px 仍会胖成胶囊。同排的「刷新」和顶栏宽按钮仍是 12px。高度没改。
 - [X] **桌面版复制图标**（0.6.2）：顶栏空闲状态换成两个错开的圆角矩形，线宽跟打勾一致。成功打勾和失败红框不动。插件工具栏没有这个图标。
 - [X] **桌面版正文字体下拉**（0.6.1）：系统默认、思源黑体，然后是运行时枚举到的系统字体。缺了已记住的字体就回到思源黑体。不改插件。
@@ -155,6 +157,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - 桌面预览会先过滤 iframe 里的脚本。JSON 树的点击脚本在正文外面，必须带 `MARKLY_COPY_BOX` 才会被留下；正文里的同名脚本仍然删掉。点框复制走 `app:copy-text`，选中文字复制走 `app:copy-selection`，两套都要留。
 - 最近打开菜单盖在预览 iframe 上时，父页面收不到 iframe 里的点击。要另铺一层透明遮罩来收起，不能只听文档上的 mousedown。
 - macOS 从访达双击文档启动时，窗口不会自己出现在前台。要在窗口能画出来之后 `show` + `focus`，并 `app.focus({ steal: true })`。`activate` 在 `app.ready` 之前不能 `new BrowserWindow`（会抛错）；点程序坞时如果窗口已经在，也要再拉一次前台，不能只在「零窗口」时新建。
+- macOS 上 `setVisibleOnAllWorkspaces` 必须同时带 `visibleOnFullScreen: false` 和 `skipTransformProcessType: true`。前者避免全屏辅助挡住程序坞，后者避免进程被改成菜单栏小工具后图标从程序坞和 Cmd+Tab 消失。跨桌面之后 `setActivationPolicy('regular')` 并 `dock.show()`。不要先 `hide` 再 `show`，否则会叠出两个图标。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
 - 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。
