@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BLANK_TAB_CONTENT,
   BLANK_TAB_TITLE,
+  WELCOME_EMAIL,
+  WELCOME_REPO,
   SETTINGS_TAB_TITLE,
   activateTab,
   closeTab,
@@ -63,6 +65,13 @@ describe('nextTabId', () => {
 });
 
 describe('createBlankTab / createInitialState / isBlankTab', () => {
+  it('空白页记下仓库地址和邮箱', () => {
+    expect(WELCOME_REPO).toBe('https://github.com/goodjin/jianmo');
+    expect(WELCOME_EMAIL).toBe('goodjin2@gmail.com');
+    expect(BLANK_TAB_CONTENT).toContain(`仓库：${WELCOME_REPO}`);
+    expect(BLANK_TAB_CONTENT).toContain(`邮箱：${WELCOME_EMAIL}`);
+  });
+
   it('空白标签无路径且带占位正文', () => {
     const t = createBlankTab('x');
     expect(t).toEqual({
