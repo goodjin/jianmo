@@ -69,11 +69,11 @@ describe('点击水波和小星星', () => {
     expect(square.y + square.diameter / 2).toBe(36);
   });
 
-  it('复制散开八颗，别的按钮五颗，方向各不相同', () => {
+  it('复制散开四颗，别的按钮三颗，方向各不相同，都很小很浅', () => {
     const rich = makeStars(true, () => 0.5);
     const plain = makeStars(false, () => 0.5);
-    expect(rich).toHaveLength(8);
-    expect(plain).toHaveLength(5);
+    expect(rich).toHaveLength(4);
+    expect(plain).toHaveLength(3);
     expect(rich.filter((star) => star.shape === 'star').length).toBeGreaterThan(0);
     expect(rich.filter((star) => star.shape === 'dot').length).toBeGreaterThan(0);
 
@@ -81,14 +81,17 @@ describe('点击水波和小星星', () => {
     expect(new Set(angles).size).toBe(rich.length);
     for (const star of rich) {
       const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(20);
-      expect(dist).toBeLessThan(50);
+      expect(dist).toBeGreaterThan(18);
+      expect(dist).toBeLessThan(30);
+      expect(star.size).toBeLessThan(9);
+      expect(star.color.startsWith('#f') || star.color.startsWith('#c')).toBe(true);
       expect(star.spin).not.toBe(0);
     }
     for (const star of plain) {
       const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(12);
-      expect(dist).toBeLessThan(32);
+      expect(dist).toBeGreaterThan(14);
+      expect(dist).toBeLessThan(24);
+      expect(star.size).toBeLessThan(8);
     }
     expect(Math.hypot(rich[0]!.dx, rich[0]!.dy)).toBeGreaterThan(Math.hypot(plain[0]!.dx, plain[0]!.dy));
   });

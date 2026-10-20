@@ -28,8 +28,9 @@ export const PLAIN_BURST_CLASSES = [
   'recent-more',
 ] as const;
 
-const RICH_COLORS = ['#e8a317', '#f5c542', '#ff7eb3', '#5b9dff', '#f08a24'];
-const PLAIN_COLORS = ['#3d8bfd', '#e8a317', '#ff7eb3', '#6aa7ff', '#f5c542'];
+/** 浅色就好。深色再叠在图标上，按钮本身就看不清了。 */
+const RICH_COLORS = ['#f6d98a', '#ffd0e4', '#c5dcff', '#ffe7b0'];
+const PLAIN_COLORS = ['#c5dcff', '#f6d98a', '#ffd6ea'];
 
 export type StarShape = 'star' | 'dot';
 
@@ -79,21 +80,21 @@ export function prefersReducedMotion(): boolean {
 }
 
 export function makeStars(rich: boolean, rand: () => number = Math.random): StarSpec[] {
-  const count = rich ? 8 : 5;
+  const count = rich ? 4 : 3;
   const colors = rich ? RICH_COLORS : PLAIN_COLORS;
-  const base = rich ? 26 : 16;
-  const spread = rich ? 18 : 10;
+  const base = rich ? 20 : 16;
+  const spread = rich ? 6 : 4;
   const stars: StarSpec[] = [];
   for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + (rand() - 0.5) * 0.7;
+    const angle = (Math.PI * 2 * i) / count + (rand() - 0.5) * 0.45;
     const dist = base + rand() * spread;
-    const shape: StarShape = i % 3 === 2 ? 'dot' : 'star';
+    const shape: StarShape = i === count - 1 ? 'dot' : 'star';
     stars.push({
       dx: Math.cos(angle) * dist,
       dy: Math.sin(angle) * dist,
-      delay: rand() * 50,
-      size: shape === 'dot' ? 3.5 + rand() * 2 : (rich ? 11 : 8) + rand() * (rich ? 3 : 2),
-      spin: (i % 2 === 0 ? 1 : -1) * (28 + rand() * 40),
+      delay: rand() * 40,
+      size: shape === 'dot' ? 2.2 + rand() * 0.8 : (rich ? 6 : 5) + rand() * 1.5,
+      spin: (i % 2 === 0 ? 1 : -1) * (16 + rand() * 18),
       color: colors[i % colors.length]!,
       shape,
     });

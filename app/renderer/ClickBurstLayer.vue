@@ -11,7 +11,6 @@
           <div class="click-ripple-origin" :style="originStyle(burst)">
             <span class="click-wave" :style="rippleStyle(burst)"></span>
             <span class="click-ripple" :style="rippleStyle(burst)"></span>
-            <span class="click-ripple click-ripple-late" :style="rippleStyle(burst, 0.72)"></span>
           </div>
         </div>
         <div class="click-star-origin" :style="{ left: burst.x + 'px', top: burst.y + 'px' }">
@@ -144,22 +143,18 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 .click-wave {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0%, rgba(126, 182, 255, 0.42) 46%, rgba(126, 182, 255, 0) 72%);
-  animation: click-ripple-out 500ms ease-out forwards;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.38) 0%, rgba(186, 214, 255, 0.14) 52%, rgba(186, 214, 255, 0) 74%);
+  animation: click-ripple-out 480ms ease-out forwards;
 }
 .click-ripple {
-  border: 1.5px solid rgba(126, 182, 255, 0.9);
-  animation: click-ripple-out 540ms cubic-bezier(0.16, 0.7, 0.22, 1) forwards;
-}
-.click-ripple-late {
-  animation-delay: 110ms;
-  border-width: 1.15px;
+  border: 1px solid rgba(176, 208, 255, 0.42);
+  animation: click-ripple-out 520ms cubic-bezier(0.16, 0.7, 0.22, 1) forwards;
 }
 .click-burst.is-rich .click-wave {
-  background: radial-gradient(circle, rgba(255, 248, 214, 0.96) 0%, rgba(246, 196, 69, 0.5) 42%, rgba(246, 196, 69, 0) 72%);
+  background: radial-gradient(circle, rgba(255, 252, 240, 0.42) 0%, rgba(246, 214, 150, 0.16) 50%, rgba(246, 214, 150, 0) 74%);
 }
 .click-burst.is-rich .click-ripple {
-  border-color: rgba(246, 196, 69, 0.95);
+  border-color: rgba(230, 198, 120, 0.4);
 }
 .click-star {
   position: absolute;
@@ -167,36 +162,31 @@ onUnmounted(() => {
   top: 0;
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 0 1px rgba(36, 41, 46, 0.28));
-  animation: click-star-fly 640ms cubic-bezier(0.16, 0.72, 0.2, 1) forwards;
+  opacity: 0.72;
+  animation: click-star-fly 560ms cubic-bezier(0.16, 0.72, 0.2, 1) forwards;
 }
 .click-star path {
   fill: currentColor;
 }
 .click-dot {
   border-radius: 50%;
-  box-shadow: 0 0 4px currentColor;
 }
 @keyframes click-ripple-out {
-  0% { transform: scale(0.25); opacity: 0.9; }
+  0% { transform: scale(0.35); opacity: 0.55; }
   100% { transform: scale(var(--ripple-scale, 1)); opacity: 0; }
 }
 @keyframes click-star-fly {
   0% {
-    transform: translate(-50%, -50%) scale(0.15) rotate(0deg);
     opacity: 0;
+    transform: translate(calc(-50% + var(--dx) * 0.62), calc(-50% + var(--dy) * 0.62)) scale(0.75) rotate(0deg);
   }
-  16% {
-    opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.22), calc(-50% + var(--dy) * 0.22)) scale(1.08) rotate(calc(var(--spin) * 0.2));
-  }
-  68% {
-    opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.78), calc(-50% + var(--dy) * 0.78)) scale(0.92) rotate(calc(var(--spin) * 0.65));
+  30% {
+    opacity: 0.7;
+    transform: translate(calc(-50% + var(--dx) * 0.78), calc(-50% + var(--dy) * 0.78)) scale(1) rotate(calc(var(--spin) * 0.3));
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.4) rotate(var(--spin));
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.55) rotate(var(--spin));
   }
 }
 @media (prefers-reduced-motion: reduce) {
