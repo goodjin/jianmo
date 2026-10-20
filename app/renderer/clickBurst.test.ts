@@ -9,7 +9,6 @@ import {
   clickBursts,
   inkAmplitude,
   inkPush,
-  makeStars,
   paintInkMap,
   placeRipple,
   spawnClickBurst,
@@ -55,7 +54,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('点击水波和小星星', () => {
+describe('点击水波', () => {
   it('水波圈不超过按钮较短的一边，点在边上也会收进按钮里', () => {
     const wide = placeRipple({ left: 0, top: 10, width: 80, height: 26 }, 2, 12);
     expect(wide.diameter).toBe(26);
@@ -72,69 +71,45 @@ describe('点击水波和小星星', () => {
     expect(square.y + square.diameter / 2).toBe(36);
   });
 
-  it('复制散开十颗，别的按钮七颗，都透，方向各不相同', () => {
-    const rich = makeStars(true, () => 0.5);
-    const plain = makeStars(false, () => 0.5);
-    expect(rich).toHaveLength(10);
-    expect(plain).toHaveLength(7);
-    expect(rich.filter((star) => star.shape === 'star').length).toBeGreaterThan(0);
-    expect(rich.filter((star) => star.shape === 'dot').length).toBeGreaterThan(1);
-
-    const angles = rich.map((star) => Math.atan2(star.dy, star.dx).toFixed(3));
-    expect(new Set(angles).size).toBe(rich.length);
-    for (const star of rich) {
-      const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(16);
-      expect(dist).toBeLessThan(32);
-      expect(star.size).toBeLessThan(9);
-      expect(star.alpha).toBeGreaterThan(0.2);
-      expect(star.alpha).toBeLessThan(0.5);
-      expect(star.color.startsWith('#f') || star.color.startsWith('#c')).toBe(true);
-      expect(star.spin).not.toBe(0);
-    }
-    for (const star of plain) {
-      const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(12);
-      expect(dist).toBeLessThan(26);
-      expect(star.size).toBeLessThan(8);
-      expect(star.alpha).toBeLessThan(rich[0]!.alpha);
-    }
-    expect(Math.hypot(rich[0]!.dx, rich[0]!.dy)).toBeGreaterThan(Math.hypot(plain[0]!.dx, plain[0]!.dy));
-  });
-
-  it('水波从点击处向外推，贴图让字跟着这一圈走', () => {
+  it('水波是一列波峰波谷，从点击处向外走', () => {
     expect(inkAmplitude(0)).toBe(0);
     expect(inkAmplitude(1)).toBe(0);
-    expect(inkAmplitude(0.5)).toBeGreaterThan(inkAmplitude(0.2));
-    expect(inkPush(0.08, 0, 0.1)).toBeGreaterThan(inkPush(0.9, 0, 0.1));
-    expect(inkPush(0.95, 0, 0.85)).toBeGreaterThan(inkPush(0.05, 0, 0.85));
+    expect(inkAmplitude(0.5)).toBe(5);
+    expect(inkAmplitude(0.5)).toBeGreaterThan(inkAmplitude(0.04));
 
-    const size = 41;
+    const phase = 0.22;
+    const front = 0.05 + phase * 1.12;
+    expect(inkPush(front + 0.05, 0, phase)).toBeGreaterThan(0);
+    expect(inkPush(front - 0.05, 0, phase)).toBeLessThan(0);
+    expect(Math.abs(inkPush(0.02, 0, 0.12))).toBeGreaterThan(Math.abs(inkPush(0.95, 0, 0.12)));
+    expect(Math.abs(inkPush(0.98, 0, 0.9))).toBeGreaterThan(Math.abs(inkPush(0.05, 0, 0.9)));
+
+    const size = 81;
     const data = new Uint8ClampedArray(size * size * 4);
-    paintInkMap(data, size, 0.5, 0.5, 0.25);
+    paintInkMap(data, size, 0.5, 0.5, phase);
+    const mid = (size - 1) / 2;
+    const y = Math.round(mid);
     let maxRed = -1;
     let minRed = 999;
     let maxX = 0;
     let minX = 0;
-    const mid = (size - 1) / 2;
-    for (let i = 0; i < size * size; i++) {
-      const red = data[i * 4]!;
+    for (let x = Math.ceil(mid); x < size; x++) {
+      const red = data[(y * size + x) * 4]!;
       if (red > maxRed) {
         maxRed = red;
-        maxX = i % size;
+        maxX = x;
       }
       if (red < minRed) {
         minRed = red;
-        minX = i % size;
+        minX = x;
       }
     }
-    expect(maxX).toBeGreaterThan(mid);
-    expect(minX).toBeLessThan(mid);
     expect(maxRed).toBeGreaterThan(200);
-    expect(minRed).toBeLessThan(60);
+    expect(minRed).toBeLessThan(80);
+    expect(maxX).toBeGreaterThan(minX);
 
     const corner = data[0]!;
-    expect(Math.abs(corner - 128)).toBeLessThan(30);
+    expect(Math.abs(corner - 128)).toBeLessThan(55);
   });
 
   it('复制是热闹的一档，壳层按钮是轻的一档，文件行和禁用按钮不播', () => {
