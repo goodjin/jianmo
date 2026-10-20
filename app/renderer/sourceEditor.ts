@@ -34,16 +34,23 @@ export interface SourceEditorHandle {
   focus(): void;
   reveal(pos: number): void;
   setFontSize(px: number): void;
+  setWordWrap(on: boolean): void;
   destroy(): void;
+}
+
+function wrapExtension(on: boolean): typeof EditorView.lineWrapping | [] {
+  return on ? EditorView.lineWrapping : [];
 }
 
 export function mountSourceEditor(
   parent: HTMLElement,
   content: string,
   fontSize: number,
-  onChange: (text: string, history: EditHistory) => void
+  onChange: (text: string, history: EditHistory) => void,
+  wordWrap = true
 ): SourceEditorHandle {
   const fontSlot = new Compartment();
+  const wrapSlot = new Compartment();
   const holder = document.createElement('div');
   holder.className = 'source-editor-mount';
   holder.style.height = '100%';
@@ -63,6 +70,7 @@ export function mountSourceEditor(
   const newline: '\n' | '\r\n' = text.includes('\r\n') ? '\r\n' : '\n';
   const state = createEditorState(text, 'source', [
     fontSlot.of(fontTheme(fontSize)),
+    wrapSlot.of(wrapExtension(wordWrap)),
     EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
       onChange(textOf(update.state), report(update.state));
@@ -94,6 +102,9 @@ export function mountSourceEditor(
     },
     setFontSize: (px: number) => {
       view.dispatch({ effects: fontSlot.reconfigure(fontTheme(px)) });
+    },
+    setWordWrap: (on: boolean) => {
+      view.dispatch({ effects: wrapSlot.reconfigure(wrapExtension(on)) });
     },
     destroy: () => {
       destroyEditor(view);

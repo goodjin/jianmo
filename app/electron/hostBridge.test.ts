@@ -284,4 +284,19 @@ describe('预览 HTML 的主题与字体', () => {
     expect(htmls[0]).toContain(`--bg-color: ${getEditorPalette('github-light').colors.background}`);
     expect(htmls[1]).toContain(`--bg-color: ${getEditorPalette('nord').colors.background}`);
   });
+
+  it('预览默认铺满并自动换行，关掉后长行可以在正文里横滚', async () => {
+    const wrapped = makeBridge();
+    await wrapped.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const html = String((wrapped.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(html).toContain('class="markly-wrap"');
+    expect(html).toContain('max-width: none;');
+    expect(html).not.toContain('1360px');
+
+    const scrolled = makeBridge({ getWordWrap: () => false });
+    await scrolled.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const plain = String((scrolled.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(plain).toMatch(/<body[^>]*class="markly-scroll"/);
+    expect(plain).not.toMatch(/<body[^>]*markly-wrap/);
+  });
 });

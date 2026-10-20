@@ -5,6 +5,7 @@ import { headingNodeId, parseHeadings } from '@wv/shared/outline';
 import { chromeRadiusStyle } from '../chromeRadius';
 import PreviewApp from './PreviewApp.vue';
 import previewAppSource from './PreviewApp.vue?raw';
+import fileTreeSource from './FileTree.vue?raw';
 import { installVsCodeShim } from './vscodeShim';
 import {
   RELOAD_MISSING_TIP,
@@ -1301,6 +1302,47 @@ describe('原文编辑', () => {
     await flush();
     expect(saveDocument).toHaveBeenCalledTimes(1);
     expect(el.querySelector('.reload-tip')?.textContent).toContain('已保存');
+  });
+});
+
+describe('滚动条和自动换行', () => {
+  it('整页不滚动，文件树和正文各自滚', () => {
+    expect(previewAppSource).toMatch(/html,\s*body,\s*#app\s*\{[^}]*overflow:\s*hidden/s);
+    expect(previewAppSource).toMatch(/grid-template-columns:\s*var\(--files-col\)\s+minmax\(0,\s*1fr\)/);
+    expect(previewAppSource).toMatch(/grid-template-rows:\s*var\(--chrome-row\)\s+minmax\(0,\s*1fr\)/);
+    expect(previewAppSource).toMatch(/\.markly-app\s*\{[^}]*overflow:\s*hidden/s);
+    const treeScroll = fileTreeSource.match(/\.tree-scroll\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(treeScroll).toMatch(/overflow-y:\s*auto/);
+    expect(treeScroll).toMatch(/overflow-x:\s*hidden/);
+    expect(previewAppSource).toMatch(/\.markly-app\.word-wrap\s+\.source-view\s*\{[^}]*overflow-x:\s*hidden/s);
+  });
+
+  it('默认自动换行，设置里取消后正文不再折行', async () => {
+    const updateReaderPrefs = vi.fn(async (patch: { wordWrap?: boolean }) => patch);
+    install({
+      postMessage: vi.fn(),
+      onPush: vi.fn(() => () => undefined),
+      storeGet: vi.fn(() => undefined),
+      storeSet: vi.fn(),
+      tabsState: vi.fn(() => ({
+        tabs: [{ id: 's', kind: 'settings', title: '设置', filePath: '' }],
+        activeId: 's',
+      })),
+      getAppearance: vi.fn(() => ({ theme: 'auto', fontFamily: '', fontSize: 14, prefersDark: false })),
+      getReaderPrefs: vi.fn(() => ({ copyOnSelect: true, wordWrap: true })),
+      updateReaderPrefs,
+      openSettingsTab: vi.fn(async () => undefined),
+    });
+    const el = mount();
+    await flush();
+    expect(el.querySelector('.markly-app')?.classList.contains('word-wrap')).toBe(true);
+    const box = el.querySelector('#settings-word-wrap') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(updateReaderPrefs).toHaveBeenCalledWith({ wordWrap: false });
+    expect(el.querySelector('.markly-app')?.classList.contains('word-wrap')).toBe(false);
   });
 });
 

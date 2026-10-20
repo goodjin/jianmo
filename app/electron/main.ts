@@ -93,8 +93,12 @@ let pendingFiles: string[] = [];
 let store: Store;
 /** hostBridge 持有同一个对象引用，改这里的字段即刻影响下一次预览渲染。 */
 let appConfig: ExtensionConfig;
-/** 阅读偏好：选择即复制、同时打开的标签上限。和 appConfig 一起从 ~/.markly/config.json 读出。 */
-let readerPrefs: ReaderPrefs = { copyOnSelect: true, maxOpenTabs: DEFAULT_MAX_OPEN_TABS };
+/** 阅读偏好：选择即复制、自动换行、同时打开的标签上限。和 appConfig 一起从 ~/.markly/config.json 读出。 */
+let readerPrefs: ReaderPrefs = {
+  copyOnSelect: true,
+  wordWrap: true,
+  maxOpenTabs: DEFAULT_MAX_OPEN_TABS,
+};
 /** 查看时间。同一毫秒里连续打开也要分出先后。 */
 let viewClock = 0;
 /** 关掉未保存标签时用户选了取消，先别反复追问，等下次再开新标签。 */
@@ -614,7 +618,11 @@ function updateReaderPrefs(raw: unknown): ReaderPrefs {
   if (patch) {
     readerPrefs = { ...readerPrefs, ...patch };
     saveAppConfigPatch({
-      reader: { copyOnSelect: readerPrefs.copyOnSelect, maxOpenTabs: readerPrefs.maxOpenTabs },
+      reader: {
+        copyOnSelect: readerPrefs.copyOnSelect,
+        wordWrap: readerPrefs.wordWrap,
+        maxOpenTabs: readerPrefs.maxOpenTabs,
+      },
     });
     installAppMenu();
     if (patch.maxOpenTabs !== undefined) {
@@ -1031,6 +1039,7 @@ app.whenReady().then(() => {
       }
     },
     getPrefersDark: prefersDark,
+    getWordWrap: () => readerPrefs.wordWrap,
   });
 
   // 主题设为 auto 时，系统明暗切换要即时反映到预览与外壳

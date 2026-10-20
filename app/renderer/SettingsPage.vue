@@ -117,6 +117,18 @@
           </label>
           <p class="field-hint">在预览里选中文字后自动放进剪贴板。关掉后，仍可以用正文右上角的复制或快捷键。</p>
         </div>
+        <div class="field">
+          <label class="auto-row copy-on-select-row" for="settings-word-wrap">
+            <input
+              id="settings-word-wrap"
+              type="checkbox"
+              :checked="wordWrap"
+              @change="onToggleWordWrap(($event.target as HTMLInputElement).checked)"
+            />
+            <span>自动换行</span>
+          </label>
+          <p class="field-hint">勾选后，太长的文字会自动折到下一行，正文下面不再出现左右滚动条。取消后，长行保持一行，只在正文里面左右滚动。</p>
+        </div>
       </section>
 
       <section class="settings-section" aria-labelledby="settings-tabs">
@@ -157,14 +169,20 @@ const props = withDefaults(
     appearance: AppearanceState;
     systemFonts?: string[];
     copyOnSelect?: boolean;
+    wordWrap?: boolean;
     maxOpenTabs?: number;
   }>(),
-  { systemFonts: () => [], copyOnSelect: true, maxOpenTabs: DEFAULT_MAX_OPEN_TABS }
+  {
+    systemFonts: () => [],
+    copyOnSelect: true,
+    wordWrap: true,
+    maxOpenTabs: DEFAULT_MAX_OPEN_TABS,
+  }
 );
 
 const emit = defineEmits<{
   (e: 'update', patch: Partial<AppearanceState>): void;
-  (e: 'updateReader', patch: { copyOnSelect?: boolean; maxOpenTabs?: number }): void;
+  (e: 'updateReader', patch: { copyOnSelect?: boolean; wordWrap?: boolean; maxOpenTabs?: number }): void;
 }>();
 
 const minOpenTabs = MIN_MAX_OPEN_TABS;
@@ -232,6 +250,10 @@ function onToggleAuto(checked: boolean): void {
 
 function onToggleCopyOnSelect(checked: boolean): void {
   emit('updateReader', { copyOnSelect: checked });
+}
+
+function onToggleWordWrap(checked: boolean): void {
+  emit('updateReader', { wordWrap: checked });
 }
 </script>
 

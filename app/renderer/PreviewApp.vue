@@ -4,6 +4,7 @@
     :style="chromeRadiusStyle"
     :class="{
       'files-collapsed': fileTreeCollapsed,
+      'word-wrap': wordWrap,
     }"
   >
     <div ref="openSplitRef" class="open-rail">
@@ -223,6 +224,7 @@
         :appearance="appearance"
         :system-fonts="systemFonts"
         :copy-on-select="copyOnSelect"
+        :word-wrap="wordWrap"
         :max-open-tabs="maxOpenTabs"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
@@ -399,6 +401,7 @@ const copyFailed = ref(false);
 /** 每次成功都 +1，让打勾重新画一遍，连点时动画会再播一次。 */
 const copiedTick = ref(0);
 const copyOnSelect = ref(true);
+const wordWrap = ref(true);
 const maxOpenTabs = ref(DEFAULT_MAX_OPEN_TABS);
 const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -510,7 +513,13 @@ function syncEditor(focus: boolean): void {
   const same = editor && editor.getContent() === markdownContent.value;
   if (!editor || !same) {
     editor?.destroy();
-    editor = mountSourceEditor(host, markdownContent.value, appearance.value.fontSize, onEditorChange);
+    editor = mountSourceEditor(
+      host,
+      markdownContent.value,
+      appearance.value.fontSize,
+      onEditorChange,
+      wordWrap.value
+    );
     editors.set(id, editor);
     if (focus) editor.focus();
   } else if (editor.dom.parentElement !== host) {
@@ -891,28 +900,47 @@ function refreshReaderPrefs(): void {
   try {
     const prefs = readReaderPrefs(electronApp()?.getReaderPrefs?.() ?? {});
     copyOnSelect.value = prefs.copyOnSelect;
+    wordWrap.value = prefs.wordWrap;
     maxOpenTabs.value = prefs.maxOpenTabs;
   } catch {
     copyOnSelect.value = true;
+    wordWrap.value = true;
     maxOpenTabs.value = DEFAULT_MAX_OPEN_TABS;
   }
 }
 
-async function onUpdateReader(patch: { copyOnSelect?: boolean; maxOpenTabs?: number }): Promise<void> {
+async function onUpdateReader(patch: {
+  copyOnSelect?: boolean;
+  wordWrap?: boolean;
+  maxOpenTabs?: number;
+}): Promise<void> {
   const api = electronApp();
+  const apply = (prefs: { copyOnSelect: boolean; wordWrap: boolean; maxOpenTabs: number }): void => {
+    copyOnSelect.value = prefs.copyOnSelect;
+    wordWrap.value = prefs.wordWrap;
+    maxOpenTabs.value = prefs.maxOpenTabs;
+  };
   if (!api?.updateReaderPrefs) {
-    if (typeof patch.copyOnSelect === 'boolean') copyOnSelect.value = patch.copyOnSelect;
-    if (typeof patch.maxOpenTabs === 'number') maxOpenTabs.value = patch.maxOpenTabs;
-    return;
+    apply({
+      copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
+      wordWrap: patch.wordWrap ?? wordWrap.value,
+      maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+    });
+  } else {
+    try {
+      apply(readReaderPrefs(await api.updateReaderPrefs(patch)));
+    } catch (err) {
+      console.warn('[markly] 保存阅读设置失败', err);
+      apply({
+        copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
+        wordWrap: patch.wordWrap ?? wordWrap.value,
+        maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+      });
+    }
   }
-  try {
-    const next = readReaderPrefs(await api.updateReaderPrefs(patch));
-    copyOnSelect.value = next.copyOnSelect;
-    maxOpenTabs.value = next.maxOpenTabs;
-  } catch (err) {
-    console.warn('[markly] 保存阅读设置失败', err);
-    if (typeof patch.copyOnSelect === 'boolean') copyOnSelect.value = patch.copyOnSelect;
-    if (typeof patch.maxOpenTabs === 'number') maxOpenTabs.value = patch.maxOpenTabs;
+  if (patch.wordWrap !== undefined) {
+    previewCache.clear();
+    requestPreview();
   }
 }
 
@@ -1373,6 +1401,10 @@ watch(
   }
 );
 
+watch(wordWrap, (on) => {
+  for (const editor of editors.values()) editor.setWordWrap(on);
+});
+
 onMounted(() => {
   refreshTabs();
   refreshAppearance();
@@ -1438,7 +1470,9 @@ onUnmounted(() => {
 html, body, #app {
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 .markly-app {
   /* 打开和上一级、刷新目录、收起要排在同一栏，220 会挤出去盖住标签。 */
@@ -1447,10 +1481,14 @@ html, body, #app {
   /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   display: grid;
-  grid-template-columns: var(--files-col) 1fr;
-  grid-template-rows: var(--chrome-row) 1fr;
-  height: 100vh;
+  /* 1fr 实际是 minmax(auto, 1fr)。内容一宽或文件树一长，整页就会被撑开，
+     横向滚动条从文件树底下一直拉到正文。写成 minmax(0, 1fr)，两边各自滚。 */
+  grid-template-columns: var(--files-col) minmax(0, 1fr);
+  grid-template-rows: var(--chrome-row) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 /* 收起后树和「打开」都拿掉，这一列只留展开箭头，宽度跟着这颗按钮走。 */
 .markly-app.files-collapsed { --files-col: max-content; }
@@ -1459,6 +1497,7 @@ html, body, #app {
   z-index: 20;
   grid-column: 2;
   grid-row: 1;
+  min-width: 0;
 }
 /* 打开按钮留在文件树正上方，右边是目录操作。标签从文件树右缘开始。 */
 .open-rail {
@@ -1976,6 +2015,7 @@ html, body, #app {
   .doc-copy:active { transform: none; }
 }
 .preview-frame {
+  display: block;
   width: 100%;
   height: 100%;
   border: 0;
@@ -2031,6 +2071,12 @@ html, body, #app {
 .edit-host :deep(.source-editor-mount),
 .edit-host :deep(.cm-editor) {
   height: 100%;
+  width: 100%;
+  max-width: 100%;
+}
+.edit-host :deep(.cm-scroller) {
+  max-width: 100%;
+  overflow: auto;
 }
 .source-pane {
   position: absolute;
@@ -2055,6 +2101,8 @@ html, body, #app {
   margin: 0;
   padding: 16px 20px;
   overflow: auto;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   box-sizing: border-box;
   white-space: pre;
@@ -2063,6 +2111,12 @@ html, body, #app {
   line-height: 1.55;
   color: var(--markly-text, #24292e);
   background: var(--markly-background, #fff);
+}
+.markly-app.word-wrap .source-view {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
 }
 .selection-toast {
   position: absolute;
