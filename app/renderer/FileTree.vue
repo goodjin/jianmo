@@ -453,7 +453,10 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 .tree-scroll {
-  overflow: auto;
+  /* 只在文件树里滚。名字超出用省略号，不要再出一条横条和正文连成一条。 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
   min-height: 0;
   flex: 1;
   padding: 6px 0 12px;

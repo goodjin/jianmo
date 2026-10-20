@@ -16,7 +16,12 @@ export interface PreviewFontOptions {
   fontSize?: number;
   /** 打进应用的正文字体的 @font-face。系统字体时留空，不要把字体文件塞进正文。 */
   fontFaceCss?: string;
+  /** 长行是否折行。没写时默认折行，正文不出现横向滚动条。 */
+  wordWrap?: boolean;
 }
+
+export const PREVIEW_WRAP_CLASS = 'markly-wrap';
+export const PREVIEW_SCROLL_CLASS = 'markly-scroll';
 
 /** 字号落在导出管线接受的 8–72px 内；非法值退回 16。 */
 export function normalizePreviewFontSize(size: unknown): number {
@@ -52,13 +57,54 @@ export function buildPreviewThemeCss(palette: EditorPalette, font: PreviewFontOp
       --link-color: ${c.link};
       --link-hover: ${c.linkHover};${family ? `\n      --font-body: ${family};` : ''}
     }
+    /* 导出样式把正文收成中间一条（max-width + margin:auto）。
+       目录已经在预览左边，再居中的话，宽窗口上正文左侧会空出一大块。
+       这里铺满内容列，只留一圈边距。导出文件不受影响。 */
     body {
 ${bodyFont}
-      /* 预览列宽跟随窗口：导出管线的 860px 书页宽在全屏下挤在中间。
-         上限 1360px 保证大屏上的行宽仍可读；导出 HTML 不受此覆盖影响。 */
-      max-width: min(1360px, 100%);
-      padding-left: clamp(28px, 6vw, 88px);
-      padding-right: clamp(28px, 6vw, 88px);
+      margin: 0;
+      max-width: none;
+      padding: 28px 32px 64px;
+    }
+    body:has(.json-view) {
+      padding: 0;
+    }
+    html:has(body.${PREVIEW_WRAP_CLASS}) {
+      overflow-x: hidden;
+    }
+    html:has(body.${PREVIEW_SCROLL_CLASS}) {
+      overflow-x: auto;
+    }
+    body.${PREVIEW_WRAP_CLASS} {
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    body.${PREVIEW_WRAP_CLASS} pre,
+    body.${PREVIEW_WRAP_CLASS} pre code,
+    body.${PREVIEW_WRAP_CLASS} .box-leaf,
+    body.${PREVIEW_WRAP_CLASS} th,
+    body.${PREVIEW_WRAP_CLASS} td {
+      white-space: pre-wrap;
+      overflow-x: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    body.${PREVIEW_WRAP_CLASS} .markly-table-wrap {
+      overflow-x: hidden;
+    }
+    body.${PREVIEW_WRAP_CLASS} img,
+    body.${PREVIEW_WRAP_CLASS} svg,
+    body.${PREVIEW_WRAP_CLASS} canvas {
+      max-width: 100%;
+    }
+    body.${PREVIEW_SCROLL_CLASS} pre,
+    body.${PREVIEW_SCROLL_CLASS} pre code,
+    body.${PREVIEW_SCROLL_CLASS} .box-leaf {
+      white-space: pre;
+      overflow-x: auto;
+      overflow-wrap: normal;
+      word-break: normal;
     }
     h1, h2, h3, h4, h5, h6 {
       color: ${c.heading};
@@ -77,8 +123,26 @@ ${bodyFont}
     }`;
 }
 
+/** 给 body 加上折行或横滚的类。已有 class 保留，两种类不会同时在。找不到 body 时原样返回。 */
+export function applyPreviewBodyClass(html: string, wordWrap: boolean): string {
+  const source = typeof html === 'string' ? html : '';
+  const next = wordWrap ? PREVIEW_WRAP_CLASS : PREVIEW_SCROLL_CLASS;
+  if (!/<body\b/i.test(source)) return source;
+  return source.replace(/<body\b([^>]*)>/i, (_open, attrs: string) => {
+    const classAttr = String(attrs).match(/\sclass\s*=\s*(['"])([\s\S]*?)\1/i);
+    if (!classAttr) return `<body class="${next}"${attrs}>`;
+    const names = classAttr[2]
+      .split(/\s+/)
+      .filter((name) => name && name !== PREVIEW_WRAP_CLASS && name !== PREVIEW_SCROLL_CLASS);
+    names.push(next);
+    const updated = String(attrs).replace(classAttr[0], ` class="${names.join(' ')}"`);
+    return `<body${updated}>`;
+  });
+}
+
 /**
  * 注入到 </head> 之前。找不到 </head> 时原样返回，宁可不上主题也不产出坏文档。
+ * 同时给 body 标上折行或横滚，样式才能对上。
  */
 export function applyPreviewTheme(
   html: string,
@@ -91,10 +155,13 @@ export function applyPreviewTheme(
   // 字符串带着字面 `</head><body>`，无脑 lastIndexOf('</head>') 会把主题样式注进脚本中间，
   // 让主题（连同列宽覆盖）静默失效。
   const boundary = source.indexOf('\n</head>\n<body');
+  let injected = source;
   if (boundary >= 0) {
-    return source.slice(0, boundary) + `\n${style}` + source.slice(boundary);
+    injected = source.slice(0, boundary) + `\n${style}` + source.slice(boundary);
+  } else {
+    const closing = source.toLowerCase().indexOf('</head>');
+    if (closing < 0) return source;
+    injected = source.slice(0, closing) + style + source.slice(closing);
   }
-  const closing = source.toLowerCase().indexOf('</head>');
-  if (closing < 0) return source;
-  return source.slice(0, closing) + style + source.slice(closing);
+  return applyPreviewBodyClass(injected, font.wordWrap !== false);
 }

@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **横向滚动和自动换行**（桌面 0.8.1）：窗口本身不滚动。`1fr` 要写成 `minmax(0, 1fr)`，否则文件树一长或正文一宽，滚动条会从文件树拉到正文。文件树只纵向滚，名字超出用省略号。设置「阅读」里「自动换行」默认开：预览、源码、编辑都折行。预览不要沿用导出 HTML 的 `max-width` + `margin: auto`，否则宽窗口上正文左侧空出一块。目录仍画在正文内部左侧。
 - [X] **桌面版原文编辑**（0.8.0）：阅读、源码、编辑三种看法。编辑改的是文件原文，JSON/JSONL 不排版。手动保存。撤销、重做、保存只在编辑时出现。离开、关标签、刷新、退出或删到废纸篓前，有未保存修改先问。磁盘被改过不覆盖。每个标签自己的撤销步骤，换标签还在。不改插件。所见即所得留到下一期。
 - [X] **上一级箭头加粗**（桌面 0.7.6）：系统字体的 ↑ 线条太细，改成 16px 描边箭头，线宽 2.4。只动这一颗按钮。
 - [X] **文件树顶栏三个按钮升到「打开」右边**（桌面 0.7.6）：去掉「文件」文案和整条标题栏。按钮画在打开那一栏里，不 Teleport（Teleport 进同一页的兄弟节点，父组件一更新就会在补丁时崩）。收起后只留「开」和 ›，列宽跟按钮走。展开时左列 260px，才能放下「打开」和这三个按钮。
@@ -147,6 +148,8 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 ## Lessons（项目）
 
+- 桌面壳层不要让窗口自己滚动。`grid-template-rows` 里的 `1fr` 实际是 `minmax(auto, 1fr)`，文件树一长整页就被撑高，横向滚动条会从文件树底下一直拉到正文。行和列都写成 `minmax(0, 1fr)`，外壳 `overflow: hidden`。文件树只在 `.tree-scroll` 里纵向滚。
+- 预览正文不要沿用导出 HTML 的 `max-width` 加 `margin: 0 auto`。那会把文章收在中间，宽窗口上正文左侧空出一块。目录已经在正文左边，预览要铺满内容列，只留一圈边距。导出文件不要跟着改。
 - 桌面原文编辑复用 `webview/src/core/editor.ts`，但 CodeMirror 必须装在 `app` 里，并用 alias 指到 `app/node_modules`。插件目录还有一份，两份叠在一起会报 Unrecognized extension。读正文用 `state.sliceDoc()`，不要用 `doc.toString()`：后者永远拼成 LF。文件里有 CRLF 时，读出来再把 LF 拼回 CRLF，保存才不会改换行。
 - 页面不能 import 带 `fs` 的模块。保存结果的解析放在 `saveResult.ts`，写盘留在 `saveDocument.ts`。
 - 换标签时先到的是标签条，正文还是上一份。这时不要按新标签重建编辑器，等 `CONTENT_UPDATE` 到了再接上，否则撤销步骤会被清掉。

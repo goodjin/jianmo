@@ -56,7 +56,7 @@ export interface ElectronAppBridge {
   updateAppearance?: (patch: Partial<AppearanceState>) => Promise<unknown>;
   listSystemFonts?: () => Promise<unknown>;
   getReaderPrefs?: () => unknown;
-  updateReaderPrefs?: (patch: { copyOnSelect: boolean }) => Promise<unknown>;
+  updateReaderPrefs?: (patch: { copyOnSelect?: boolean; wordWrap?: boolean }) => Promise<unknown>;
   storeGet?: (key: string) => unknown;
   storeSet?: (key: string, val: unknown) => void;
 }

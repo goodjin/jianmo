@@ -60,4 +60,17 @@ describe('mountSourceEditor', () => {
     lf.destroy();
     parent.remove();
   });
+
+  it('默认自动换行，关掉后长行不再折', () => {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const editor = mountSourceEditor(parent, 'hello', 14, () => undefined);
+    expect(editor.view.contentDOM.classList.contains('cm-lineWrapping')).toBe(true);
+    editor.setWordWrap(false);
+    expect(editor.view.contentDOM.classList.contains('cm-lineWrapping')).toBe(false);
+    editor.setWordWrap(true);
+    expect(editor.view.contentDOM.classList.contains('cm-lineWrapping')).toBe(true);
+    editor.destroy();
+    parent.remove();
+  });
 });

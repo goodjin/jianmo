@@ -87,7 +87,7 @@ let store: Store;
 /** hostBridge 持有同一个对象引用，改这里的字段即刻影响下一次预览渲染。 */
 let appConfig: ExtensionConfig;
 /** 阅读偏好：选择即复制。和 appConfig 一起从 ~/.markly/config.json 读出。 */
-let readerPrefs: ReaderPrefs = { copyOnSelect: true };
+let readerPrefs: ReaderPrefs = { copyOnSelect: true, wordWrap: true };
 
 function activeFilePath(): string | null {
   const p = getActiveTab(tabs)?.filePath ?? '';
@@ -542,7 +542,9 @@ function updateReaderPrefs(raw: unknown): ReaderPrefs {
   const patch = normalizeReaderPatch(raw);
   if (patch) {
     readerPrefs = { ...readerPrefs, ...patch };
-    saveAppConfigPatch({ reader: { copyOnSelect: readerPrefs.copyOnSelect } });
+    saveAppConfigPatch({
+      reader: { copyOnSelect: readerPrefs.copyOnSelect, wordWrap: readerPrefs.wordWrap },
+    });
     installAppMenu();
   }
   return { ...readerPrefs };
@@ -953,6 +955,7 @@ app.whenReady().then(() => {
       }
     },
     getPrefersDark: prefersDark,
+    getWordWrap: () => readerPrefs.wordWrap,
   });
 
   // 主题设为 auto 时，系统明暗切换要即时反映到预览与外壳

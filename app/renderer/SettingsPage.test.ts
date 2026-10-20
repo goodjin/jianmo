@@ -208,4 +208,22 @@ describe('设置页 · 阅读', () => {
     change(box);
     expect(onUpdateReader).toHaveBeenCalledWith({ copyOnSelect: true });
   });
+
+  it('自动换行默认勾选，取消时抛出关', () => {
+    const el = mount({});
+    const box = el.querySelector('#settings-word-wrap') as HTMLInputElement;
+    expect(box).not.toBeNull();
+    expect(box.checked).toBe(true);
+    expect(el.textContent).toContain('自动换行');
+    expect(el.textContent).toContain('不再出现左右滚动条');
+  });
+
+  it('关掉自动换行会抛出布尔值', () => {
+    const onUpdateReader = vi.fn();
+    const el = mount({ wordWrap: true, onUpdateReader });
+    const box = el.querySelector('#settings-word-wrap') as HTMLInputElement;
+    box.checked = false;
+    change(box);
+    expect(onUpdateReader).toHaveBeenCalledWith({ wordWrap: false });
+  });
 });

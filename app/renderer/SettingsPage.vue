@@ -117,6 +117,18 @@
           </label>
           <p class="field-hint">在预览里选中文字后自动放进剪贴板。关掉后，仍可以用顶栏复制或快捷键。</p>
         </div>
+        <div class="field">
+          <label class="auto-row copy-on-select-row" for="settings-word-wrap">
+            <input
+              id="settings-word-wrap"
+              type="checkbox"
+              :checked="wordWrap"
+              @change="onToggleWordWrap(($event.target as HTMLInputElement).checked)"
+            />
+            <span>自动换行</span>
+          </label>
+          <p class="field-hint">勾选后，太长的文字会自动折到下一行，正文下面不再出现左右滚动条。取消后，长行保持一行，只在正文里面左右滚动。</p>
+        </div>
       </section>
     </div>
   </div>
@@ -130,13 +142,18 @@ import { FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK, readingFontOptions } from '../ele
 import type { AppearanceState } from './electronBridge';
 
 const props = withDefaults(
-  defineProps<{ appearance: AppearanceState; systemFonts?: string[]; copyOnSelect?: boolean }>(),
-  { systemFonts: () => [], copyOnSelect: true }
+  defineProps<{
+    appearance: AppearanceState;
+    systemFonts?: string[];
+    copyOnSelect?: boolean;
+    wordWrap?: boolean;
+  }>(),
+  { systemFonts: () => [], copyOnSelect: true, wordWrap: true }
 );
 
 const emit = defineEmits<{
   (e: 'update', patch: Partial<AppearanceState>): void;
-  (e: 'updateReader', patch: { copyOnSelect: boolean }): void;
+  (e: 'updateReader', patch: { copyOnSelect?: boolean; wordWrap?: boolean }): void;
 }>();
 
 const palettes = EDITOR_PALETTES;
@@ -195,6 +212,10 @@ function onToggleAuto(checked: boolean): void {
 
 function onToggleCopyOnSelect(checked: boolean): void {
   emit('updateReader', { copyOnSelect: checked });
+}
+
+function onToggleWordWrap(checked: boolean): void {
+  emit('updateReader', { wordWrap: checked });
 }
 </script>
 
