@@ -153,6 +153,14 @@
               <circle cx="8" cy="12.8" r="1.15" />
             </svg>
           </button>
+          <!-- 不占高度，只把按钮撑到和下拉里最宽的一项一样宽。 -->
+          <div class="actions-sizer" aria-hidden="true">
+            <span>刷新</span>
+            <span>编辑</span>
+            <span>导出 PDF</span>
+            <span>导出 HTML</span>
+            <span>设置</span>
+          </div>
           <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="操作">
             <button
               class="action-item tab-reload"
@@ -1687,7 +1695,8 @@ html, body, #app {
 .actions-split {
   position: relative;
   align-self: center;
-  display: flex;
+  display: inline-grid;
+  grid-template-columns: max-content;
 }
 .actions-split::after {
   content: '';
@@ -1698,15 +1707,33 @@ html, body, #app {
   height: 8px;
 }
 .tab-actions {
+  grid-area: 1 / 1;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
   height: 26px;
   min-height: 26px;
   box-sizing: border-box;
-  padding: 0 7px;
+  padding: 0 10px;
   font-size: 12px;
+}
+.actions-sizer {
+  grid-area: 1 / 1;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.actions-sizer span {
+  display: block;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 0;
+  white-space: nowrap;
 }
 .actions-dots {
   width: 12px;
@@ -1727,12 +1754,12 @@ html, body, #app {
 .actions-menu {
   position: absolute;
   top: calc(100% - 1px);
-  left: auto;
+  left: 0;
   right: 0;
   z-index: 30;
   box-sizing: border-box;
-  width: max-content;
-  min-width: 100%;
+  width: auto;
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
