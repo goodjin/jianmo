@@ -147,19 +147,19 @@
             @click="onExportButtonClick"
           >
             <span>操作</span>
-            <svg class="actions-dots" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="8" cy="3.2" r="1.15" />
-              <circle cx="8" cy="8" r="1.15" />
-              <circle cx="8" cy="12.8" r="1.15" />
+            <svg class="actions-dots" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="6" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="18" r="2" />
             </svg>
           </button>
-          <!-- 不占高度，只把按钮撑到和下拉里最宽的一项一样宽。 -->
+          <!-- 跟菜单项同一套字和内边距，把按钮撑到最宽的那一项。 -->
           <div class="actions-sizer" aria-hidden="true">
-            <span>刷新</span>
-            <span>编辑</span>
-            <span>导出 PDF</span>
-            <span>导出 HTML</span>
-            <span>设置</span>
+            <span class="action-item">刷新</span>
+            <span class="action-item">编辑</span>
+            <span class="action-item">导出 PDF</span>
+            <span class="action-item">导出 HTML</span>
+            <span class="action-item">设置</span>
           </div>
           <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="操作">
             <button
@@ -1697,6 +1697,7 @@ html, body, #app {
   align-self: center;
   display: inline-grid;
   grid-template-columns: max-content;
+  grid-template-rows: 26px;
 }
 .actions-split::after {
   content: '';
@@ -1708,36 +1709,35 @@ html, body, #app {
 }
 .tab-actions {
   grid-area: 1 / 1;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   height: 26px;
   min-height: 26px;
   box-sizing: border-box;
-  padding: 0 10px;
+  padding: 0 12px;
   font-size: 12px;
+  border-radius: var(--app-radius-xs);
 }
 .actions-sizer {
   grid-area: 1 / 1;
-  height: 0;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  height: 26px;
   overflow: hidden;
   visibility: hidden;
   pointer-events: none;
 }
-.actions-sizer span {
-  display: block;
-  box-sizing: border-box;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  line-height: 0;
-  white-space: nowrap;
-}
 .actions-dots {
-  width: 12px;
-  height: 12px;
+  width: 18px;
+  height: 18px;
   display: block;
   flex: 0 0 auto;
 }
@@ -1747,7 +1747,7 @@ html, body, #app {
 }
 .actions-split:has(.actions-menu) .tab-actions,
 .actions-split:has(.actions-menu) .tab-actions:hover {
-  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
+  border-radius: var(--app-radius-xs) var(--app-radius-xs) 0 0;
   border-bottom-color: var(--markly-background, #fff);
   background: var(--markly-background, #fff);
 }
@@ -1755,16 +1755,17 @@ html, body, #app {
   position: absolute;
   top: calc(100% - 1px);
   left: 0;
-  right: 0;
+  right: auto;
   z-index: 30;
   box-sizing: border-box;
-  width: auto;
-  min-width: 0;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
   border-top: 0;
-  border-radius: 0 0 var(--app-radius-sm) var(--app-radius-sm);
+  border-radius: 0 0 var(--app-radius-xs) var(--app-radius-xs);
   background: var(--markly-background, #fff);
   box-shadow: none;
   overflow: hidden;
@@ -1782,9 +1783,14 @@ html, body, #app {
   color: var(--markly-text, #24292e);
   font-size: 12px;
   line-height: 1.35;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: 0;
   cursor: pointer;
+}
+.actions-sizer .action-item {
+  width: max-content;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
 }
 .action-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
 .action-item:disabled { opacity: 0.45; cursor: default; }
