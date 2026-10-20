@@ -9,6 +9,7 @@ import {
   clickBursts,
   placeRipple,
   RIPPLE_EDGE_PAD,
+  RIPPLE_MS,
   RIPPLE_WAVES,
   ringRadius,
   spawnClickBurst,
@@ -90,6 +91,13 @@ describe('点击水波', () => {
       expect(radii[i]!).toBeLessThan(radii[i - 1]!);
     }
     expect(ringRadius(2, 1)).toBe(0.6);
+  });
+
+  it('水波像慢动作散开，最后一圈走完才消失', () => {
+    expect(RIPPLE_MS).toBeGreaterThanOrEqual(2000);
+    const lastDelay = RIPPLE_WAVES[RIPPLE_WAVES.length - 1]!.delay;
+    expect(lastDelay).toBeGreaterThanOrEqual(800);
+    expect(CLICK_BURST_MS).toBe(lastDelay + RIPPLE_MS);
   });
 
   it('复制是热闹的一档，壳层按钮是轻的一档，文件行和禁用按钮不播', () => {
