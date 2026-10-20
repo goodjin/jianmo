@@ -269,6 +269,7 @@
       </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
+    <ClickBurstLayer />
   </div>
 </template>
 
@@ -320,6 +321,7 @@ import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
 import TabBar from './TabBar.vue';
+import ClickBurstLayer from './ClickBurstLayer.vue';
 
 const { postMessage, onMessage } = useVSCode();
 
@@ -1507,6 +1509,29 @@ html, body, #app {
 }
 .chrome-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .chrome-btn:disabled { opacity: 0.55; cursor: default; }
+/* 按下时略缩一下，表示点到了。水波和小星星另外画在页面外面。 */
+.chrome-btn,
+.file-icon-btn,
+.file-toggle,
+.tab-new,
+.tab-close,
+.doc-outline-toggle {
+  transition: transform 90ms ease-out;
+}
+.chrome-btn:active:not(:disabled),
+.file-icon-btn:active:not(:disabled),
+.file-toggle:active:not(:disabled),
+.tab-new:active,
+.tab-close:active,
+.doc-outline-toggle:active {
+  transform: scale(0.96);
+}
+/* 打开是左右拼在一起的。导出菜单已经展开时，按钮一缩，接缝就会裂开。 */
+.chrome-btn.open-main:active,
+.chrome-btn.open-caret:active,
+.export-split:has(.export-menu) .chrome-btn.tab-export:active {
+  transform: none;
+}
 .chrome-btn.active {
   border-color: var(--markly-primary, #0969da);
   color: var(--markly-primary, #0969da);
@@ -1627,6 +1652,22 @@ html, body, #app {
   .tab-copy-mark path {
     animation: none;
     stroke-dashoffset: 0;
+  }
+  .chrome-btn,
+  .file-icon-btn,
+  .file-toggle,
+  .tab-new,
+  .tab-close,
+  .doc-outline-toggle {
+    transition: none;
+  }
+  .chrome-btn:active,
+  .file-icon-btn:active,
+  .file-toggle:active,
+  .tab-new:active,
+  .tab-close:active,
+  .doc-outline-toggle:active {
+    transform: none;
   }
 }
 /* 导出：紧挨复制，悬停或点击展开 PDF / HTML */
