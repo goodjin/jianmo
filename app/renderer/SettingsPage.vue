@@ -115,7 +115,25 @@
             />
             <span>选择即复制</span>
           </label>
-          <p class="field-hint">在预览里选中文字后自动放进剪贴板。关掉后，仍可以用顶栏复制或快捷键。</p>
+          <p class="field-hint">在预览里选中文字后自动放进剪贴板。关掉后，仍可以用「操作」里的复制或快捷键。</p>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="settings-tabs">
+        <h3 id="settings-tabs" class="section-title">标签</h3>
+        <div class="field">
+          <label class="field-label" for="settings-max-tabs">最多同时打开</label>
+          <p class="field-hint">标签变多时会变窄。多过这个数量，就关掉最久没有查看的那一张。正在看的不会被关掉。那张如果还有没保存的修改，会先问你。</p>
+          <input
+            id="settings-max-tabs"
+            class="field-control tabs-limit"
+            type="number"
+            :min="minOpenTabs"
+            :max="maxOpenTabsLimit"
+            step="1"
+            :value="String(maxOpenTabs)"
+            @change="onMaxTabs"
+          />
         </div>
       </section>
     </div>
@@ -127,17 +145,36 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { EDITOR_PALETTES } from '@wv/shared/themeConfig';
 import { resolveEditorPaletteId } from '@types';
 import { FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK, readingFontOptions } from '../electron/appearance';
+import {
+  DEFAULT_MAX_OPEN_TABS,
+  MAX_MAX_OPEN_TABS,
+  MIN_MAX_OPEN_TABS,
+} from '../electron/readerPrefs';
 import type { AppearanceState } from './electronBridge';
 
 const props = withDefaults(
-  defineProps<{ appearance: AppearanceState; systemFonts?: string[]; copyOnSelect?: boolean }>(),
-  { systemFonts: () => [], copyOnSelect: true }
+  defineProps<{
+    appearance: AppearanceState;
+    systemFonts?: string[];
+    copyOnSelect?: boolean;
+    maxOpenTabs?: number;
+  }>(),
+  { systemFonts: () => [], copyOnSelect: true, maxOpenTabs: DEFAULT_MAX_OPEN_TABS }
 );
 
 const emit = defineEmits<{
   (e: 'update', patch: Partial<AppearanceState>): void;
-  (e: 'updateReader', patch: { copyOnSelect: boolean }): void;
+  (e: 'updateReader', patch: { copyOnSelect?: boolean; maxOpenTabs?: number }): void;
 }>();
+
+const minOpenTabs = MIN_MAX_OPEN_TABS;
+const maxOpenTabsLimit = MAX_MAX_OPEN_TABS;
+
+function onMaxTabs(ev: Event): void {
+  const n = Number((ev.target as HTMLInputElement).value);
+  if (!Number.isFinite(n)) return;
+  emit('updateReader', { maxOpenTabs: n });
+}
 
 const palettes = EDITOR_PALETTES;
 const fontSizes = FONT_SIZE_OPTIONS;
@@ -248,6 +285,9 @@ function onToggleCopyOnSelect(checked: boolean): void {
   border-radius: var(--app-radius-sm);
   background: var(--markly-background, #fff);
   color: inherit;
+}
+.field-control.tabs-limit {
+  width: 96px;
 }
 .font-picker {
   position: relative;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApp, type App } from 'vue';
+import { createApp, nextTick, type App } from 'vue';
 import TabBar from './TabBar.vue';
 import type { TabSummary } from './electronBridge';
 
@@ -124,5 +124,48 @@ describe('TabBar 交互', () => {
     click(el.querySelector('.tab-new')!);
     expect(onNew).toHaveBeenCalledTimes(1);
     expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('加号跟在最后一个标签后面，不挤到工具区', () => {
+    const el = mount({});
+    const strip = el.querySelector('.tab-strip')!;
+    const titles = [...strip.querySelectorAll('.tab')];
+    const plus = strip.querySelector('.tab-new');
+    expect(plus).not.toBeNull();
+    expect(titles[titles.length - 1]!.nextElementSibling).toBe(plus);
+    expect(el.querySelector('.tab-tools')).not.toBeNull();
+    expect(el.querySelector('.tab-tools .tab-new')).toBeNull();
+    expect((strip as HTMLElement).getAttribute('style') ?? '').toContain('--tab-min: 120px');
+  });
+
+  it('标签条比窗口宽时才出现左右移动', async () => {
+    const el = mount({});
+    const strip = el.querySelector('.tab-strip') as HTMLElement;
+    for (const key of ['clientWidth', 'scrollWidth', 'scrollLeft'] as const) {
+      const desc = Object.getOwnPropertyDescriptor(strip, key) ?? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(strip), key);
+      if (desc && desc.configurable === false) continue;
+    }
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, get: () => 200 });
+    Object.defineProperty(strip, 'scrollWidth', { configurable: true, get: () => 800 });
+    let left = 0;
+    Object.defineProperty(strip, 'scrollLeft', {
+      configurable: true,
+      get: () => left,
+      set: (value: number) => {
+        left = value;
+      },
+    });
+    strip.dispatchEvent(new Event('scroll'));
+    await nextTick();
+    expect(strip.clientWidth).toBe(200);
+    expect(strip.scrollWidth).toBe(800);
+    expect(el.querySelector('.tab-scroll-left')).toBeNull();
+    expect(el.querySelector('.tab-scroll-right')).not.toBeNull();
+
+    strip.scrollLeft = 120;
+    strip.dispatchEvent(new Event('scroll'));
+    await nextTick();
+    expect(el.querySelector('.tab-scroll-left')).not.toBeNull();
+    expect(el.querySelector('.tab-scroll-right')).not.toBeNull();
   });
 });
