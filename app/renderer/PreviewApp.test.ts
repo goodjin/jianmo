@@ -1297,6 +1297,107 @@ describe('原文编辑', () => {
   });
 });
 
+describe('按钮点击的水波和小星星', () => {
+  function bursts(): HTMLElement[] {
+    return [...document.body.querySelectorAll('.click-burst')] as HTMLElement[];
+  }
+
+  it('点复制会从指尖冒出小星星，水波收在按钮里面', async () => {
+    const el = mount();
+    await flush();
+    const copy = el.querySelector('.doc-copy.tab-copy') as HTMLButtonElement;
+    expect(copy).not.toBeNull();
+    copy.getBoundingClientRect = () => ({
+      x: 100, y: 8, left: 100, top: 8, right: 128, bottom: 36, width: 28, height: 28, toJSON() { return {}; },
+    });
+    copy.dispatchEvent(new MouseEvent('pointerdown', {
+      bubbles: true,
+      clientX: 120,
+      clientY: 16,
+      button: 0,
+    }));
+    await flush();
+
+    const burst = document.body.querySelector('.click-burst.is-rich') as HTMLElement | null;
+    expect(burst).not.toBeNull();
+    expect(copy.querySelector('.click-burst')).toBeNull();
+    const stars = burst!.querySelector('.click-star-origin') as HTMLElement;
+    expect(stars.style.left).toBe('120px');
+    expect(stars.style.top).toBe('16px');
+    const clip = burst!.querySelector('.click-ripple-clip') as HTMLElement;
+    expect(clip.style.width).toBe('28px');
+    expect(clip.style.height).toBe('28px');
+    expect(burst!.querySelectorAll('.click-wave')).toHaveLength(1);
+    expect(burst!.querySelectorAll('.click-ripple')).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-star')).toHaveLength(10);
+    const ring = burst!.querySelector('.click-ripple') as HTMLElement;
+    expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(28);
+    const inner = burst!.querySelector('.click-ripple-late') as HTMLElement;
+    expect(Number(inner.style.getPropertyValue('--ripple-scale')) * 12).toBeLessThan(28);
+    const star = burst!.querySelector('.click-star') as HTMLElement;
+    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeGreaterThan(0.2);
+    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeLessThan(0.5);
+    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+  });
+
+  it('别的壳层按钮也有，星星少一些；标签空白、禁用按钮和松开鼠标不再来一颗', async () => {
+    const el = mount();
+    await flush();
+    const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
+    reload.dispatchEvent(new MouseEvent('pointerdown', {
+      bubbles: true,
+      clientX: 30,
+      clientY: 12,
+      button: 0,
+    }));
+    await flush();
+    const plain = bursts();
+    expect(plain).toHaveLength(1);
+    expect(plain[0]!.classList.contains('is-rich')).toBe(false);
+    expect(plain[0]!.querySelectorAll('.click-star')).toHaveLength(7);
+
+    const tab = el.querySelector('.tab') as HTMLElement;
+    tab.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 8, clientY: 8, button: 0 }));
+    await flush();
+    expect(bursts()).toHaveLength(1);
+
+    const edit = el.querySelector('.tab-edit') as HTMLButtonElement;
+    edit.disabled = true;
+    edit.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 4, clientY: 4, button: 0 }));
+    await flush();
+    expect(bursts()).toHaveLength(1);
+
+    reload.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    await flush();
+    expect(bursts()).toHaveLength(1);
+  });
+
+  it('用键盘确认时从按钮中心再来一圈', async () => {
+    const el = mount();
+    await flush();
+    const copy = el.querySelector('.doc-copy.tab-copy') as HTMLButtonElement;
+    copy.getBoundingClientRect = () => ({
+      x: 10,
+      y: 20,
+      left: 10,
+      top: 20,
+      right: 38,
+      bottom: 46,
+      width: 28,
+      height: 26,
+      toJSON() { return {}; },
+    });
+    copy.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+    await flush();
+    const burst = document.body.querySelector('.click-burst.is-rich') as HTMLElement;
+    const stars = burst.querySelector('.click-star-origin') as HTMLElement;
+    expect(stars.style.left).toBe('24px');
+    expect(stars.style.top).toBe('33px');
+    const ring = burst.querySelector('.click-ripple') as HTMLElement;
+    expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(26);
+  });
+});
+
 function electronStub<K extends keyof ElectronAppBridge>(key: K): ReturnType<typeof vi.fn> {
   return (window as unknown as { electron: Record<string, ReturnType<typeof vi.fn>> }).electron[
     key as string
