@@ -101,6 +101,43 @@
           </svg>
         </button>
         <button
+          v-if="editing"
+          class="chrome-btn tab-undo"
+          type="button"
+          :disabled="!canUndo"
+          title="撤销"
+          aria-label="撤销"
+          @click="onUndo"
+        >撤销</button>
+        <button
+          v-if="editing"
+          class="chrome-btn tab-redo"
+          type="button"
+          :disabled="!canRedo"
+          title="重做"
+          aria-label="重做"
+          @click="onRedo"
+        >重做</button>
+        <button
+          v-if="editing"
+          class="chrome-btn tab-save"
+          type="button"
+          :disabled="!activeDirty || saving"
+          title="保存（Cmd/Ctrl+S）"
+          aria-label="保存"
+          @click="onSave"
+        >保存</button>
+        <button
+          class="chrome-btn tab-edit"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: editing }"
+          :title="editTitle"
+          :aria-label="editTitle"
+          :aria-pressed="editing"
+          @click="toggleEdit"
+        >编辑</button>
+        <button
           class="chrome-btn tab-source"
           type="button"
           :disabled="isSettingsTab"
@@ -198,9 +235,13 @@
           </ul>
         </aside>
         <div class="doc-body">
-          <div v-if="isBlankDoc && !sourceOpen" class="blank-page">
+          <div v-if="isBlankDoc && !sourceOpen && !editing" class="blank-page">
             <button class="chrome-btn blank-open" type="button" @click="onOpen">打开</button>
             <p class="blank-hint">从左侧文件里点开一篇，或在这里选择文件。</p>
+          </div>
+          <div v-else-if="editing" class="edit-pane">
+            <p v-if="editNote" class="source-note">{{ editNote }}</p>
+            <div ref="editHost" class="edit-host"></div>
           </div>
           <div v-else-if="sourceOpen" class="source-pane">
             <p v-if="sourceNote" class="source-note">{{ sourceNote }}</p>
@@ -240,7 +281,9 @@ import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
-import { formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import { editingOriginalNote, formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import { parseSaveResult } from '../electron/saveResult';
+import { mountSourceEditor, type SourceEditorHandle } from './sourceEditor';
 import {
   parseReloadResult,
   RELOAD_MISSING_TIP,
@@ -347,6 +390,7 @@ const exportTitle = computed(() => {
  */
 interface TabReading {
   source: boolean;
+  editing: boolean;
   anchor: PlaceAnchor | null;
 }
 
@@ -365,9 +409,23 @@ const sourceTitle = computed(() => {
 
 const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
 const sourceNote = computed(() => sourceFormatNote(markdownContent.value, activeFilePath.value));
+const editNote = computed(() => editingOriginalNote(activeFilePath.value));
+const editing = ref(false);
+const editHost = ref<HTMLElement | null>(null);
+const canUndo = ref(false);
+const canRedo = ref(false);
+const saving = ref(false);
+const editors = new Map<string, SourceEditorHandle>();
+const activeDirty = computed(
+  () => tabs.value.find((tab) => tab.id === activeTabId.value)?.dirty === true
+);
+const editTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能编辑';
+  return editing.value ? '结束编辑' : '编辑原文';
+});
 
 function readingOf(id: string): TabReading {
-  return readingByTab.get(id) ?? { source: false, anchor: null };
+  return readingByTab.get(id) ?? { source: false, editing: false, anchor: null };
 }
 
 function putReading(id: string, patch: Partial<TabReading>): void {
@@ -378,9 +436,118 @@ function putReading(id: string, patch: Partial<TabReading>): void {
 function syncSourceOpen(): void {
   if (isSettingsTab.value || !activeTabId.value) {
     sourceOpen.value = false;
+    editing.value = false;
     return;
   }
   sourceOpen.value = readingOf(activeTabId.value).source;
+  editing.value = readingOf(activeTabId.value).editing && !sourceOpen.value;
+}
+
+function refreshHistory(editor: SourceEditorHandle | undefined): void {
+  const history = editor?.history() ?? { canUndo: false, canRedo: false };
+  canUndo.value = history.canUndo;
+  canRedo.value = history.canRedo;
+}
+
+function onEditorChange(text: string, history: { canUndo: boolean; canRedo: boolean }): void {
+  canUndo.value = history.canUndo;
+  canRedo.value = history.canRedo;
+  if (text === markdownContent.value) return;
+  markdownContent.value = text;
+  postMessage({ type: 'CONTENT_CHANGE', payload: { content: text, version: Date.now() } });
+}
+
+/** 把当前标签的编辑器接到页面上。正文若从磁盘换过，就新建一份，撤销步骤清空。 */
+function syncEditor(focus: boolean): void {
+  const host = editHost.value;
+  const id = activeTabId.value;
+  if (!editing.value || !host || !id) return;
+  for (const [otherId, other] of editors) {
+    if (otherId !== id) other.dom.remove();
+  }
+  let editor = editors.get(id);
+  const same = editor && editor.getContent() === markdownContent.value;
+  if (!editor || !same) {
+    editor?.destroy();
+    editor = mountSourceEditor(host, markdownContent.value, appearance.value.fontSize, onEditorChange);
+    editors.set(id, editor);
+    if (focus) editor.focus();
+  } else if (editor.dom.parentElement !== host) {
+    host.appendChild(editor.dom);
+    if (focus) editor.focus();
+  }
+  refreshHistory(editor);
+}
+
+function destroyEditor(id: string): void {
+  editors.get(id)?.destroy();
+  editors.delete(id);
+}
+
+async function leaveEdit(): Promise<boolean> {
+  if (!editing.value || !activeTabId.value) return true;
+  const id = activeTabId.value;
+  const api = electronApp();
+  const settled = api?.settleEdits ? await api.settleEdits() : 'clean';
+  if (settled === 'cancel') return false;
+  editors.get(id)?.dom.remove();
+  putReading(id, { editing: false });
+  if (activeTabId.value === id) editing.value = false;
+  requestPreview();
+  return true;
+}
+
+async function toggleEdit(): Promise<void> {
+  if (isSettingsTab.value || !activeTabId.value) return;
+  const id = activeTabId.value;
+  if (editing.value) {
+    await leaveEdit();
+    return;
+  }
+  if (sourceOpen.value) {
+    putReading(id, { source: false, editing: true });
+    sourceOpen.value = false;
+  } else {
+    putReading(id, { editing: true });
+  }
+  editing.value = true;
+  console.info('[markly] 进入编辑', { file: activeFilePath.value });
+  await nextTick();
+  syncEditor(true);
+}
+
+function onUndo(): void {
+  const editor = editors.get(activeTabId.value);
+  if (!editing.value || !editor) return;
+  editor.undo();
+}
+
+function onRedo(): void {
+  const editor = editors.get(activeTabId.value);
+  if (!editing.value || !editor) return;
+  editor.redo();
+}
+
+async function onSave(): Promise<void> {
+  if (!editing.value || saving.value) return;
+  const api = electronApp();
+  if (!api?.saveDocument) {
+    showReloadTip('unreadable', '没能保存，屏幕上的字还在', false);
+    return;
+  }
+  saving.value = true;
+  try {
+    const result = parseSaveResult(await api.saveDocument());
+    console.info('[markly] 保存', { ok: result.ok, file: activeFilePath.value });
+    if (result.ok) showReloadTip('ok', '已保存', true);
+    else if (result.reason === 'failed') showReloadTip('unreadable', result.message || '没能保存，屏幕上的字还在', false);
+    else if (result.reason === 'reloaded') showReloadTip('unreadable', result.message || '已重新打开磁盘上的版本', false);
+  } catch (err) {
+    showReloadTip('unreadable', '没能保存，屏幕上的字还在', false);
+    console.warn('[markly] 保存失败', err);
+  } finally {
+    saving.value = false;
+  }
 }
 
 function captureSourceNow(): PlaceAnchor | null {
@@ -463,6 +630,10 @@ async function rememberActivePlace(): Promise<void> {
 
 async function toggleSource(): Promise<void> {
   if (placeBusy || isSettingsTab.value || !activeTabId.value) return;
+  if (editing.value) {
+    const stayed = !(await leaveEdit());
+    if (stayed) return;
+  }
   const id = activeTabId.value;
   placeBusy = true;
   try {
@@ -499,7 +670,7 @@ const reloadTitle = computed(() => {
 interface ReloadTip {
   tabId: string;
   seq: number;
-  kind: 'ok' | 'missing' | 'unreadable';
+  kind: 'ok' | 'missing' | 'unreadable' | 'warn';
   text: string;
 }
 
@@ -545,8 +716,11 @@ async function onReload(): Promise<void> {
     const result = parseReloadResult(await api.reloadDocument());
     if (activeTabId.value !== tabId) return;
     console.info('[markly] 重新加载', { ok: result.ok, reason: result.ok ? '' : result.reason, file: activeFilePath.value });
-    if (result.ok) showReloadTip('ok', RELOAD_OK_TIP, true);
-    else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
+    if (!result.ok && result.reason === 'cancelled') return;
+    if (result.ok) {
+      destroyEditor(tabId);
+      showReloadTip('ok', RELOAD_OK_TIP, true);
+    } else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
     else if (result.reason === 'unreadable') showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
   } catch (err) {
     if (activeTabId.value !== tabId) return;
@@ -578,6 +752,11 @@ const hasOutline = computed(
 );
 
 function jumpToHeading(headingId: string): void {
+  if (editing.value) {
+    const item = outline.value.find((heading) => heading.id === headingId);
+    if (item) editors.get(activeTabId.value)?.reveal(item.from);
+    return;
+  }
   frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
 }
 
@@ -593,6 +772,7 @@ function applyTabsView(raw: unknown): void {
   const view = parseTabsView(raw);
   const leaving = activeTabId.value;
   const arriving = view.activeId;
+  const switched = Boolean(leaving && leaving !== arriving);
   if (leaving && leaving !== arriving) {
     if (!isSettingsTab.value) {
       const sync = sourceOpen.value ? captureSourceNow() : null;
@@ -611,11 +791,17 @@ function applyTabsView(raw: unknown): void {
   for (const id of [...readingByTab.keys()]) {
     if (!alive.has(id)) readingByTab.delete(id);
   }
+  for (const id of [...editors.keys()]) {
+    if (!alive.has(id)) destroyEditor(id);
+    else if (switched) editors.get(id)?.dom.remove();
+  }
   if (reloadTip.value && !alive.has(reloadTip.value.tabId)) {
     reloadTip.value = null;
     clearReloadTipTimer();
   }
   syncSourceOpen();
+  // 换标签时正文还是上一份，等 CONTENT_UPDATE 到了再接编辑器，避免把撤销步骤清掉。
+  if (editing.value && !switched) void nextTick(() => syncEditor(false));
 }
 
 /** 把所选配色写成根节点上的 CSS 变量，外壳（顶栏/标签条/侧栏/设置页）据此变色。 */
@@ -817,6 +1003,9 @@ async function onPickExport(format: AppExportFormat): Promise<void> {
     return;
   }
   if (exporting.value || isSettingsTab.value) return;
+  if (activeDirty.value) {
+    showReloadTip('warn', '导出的是还没保存的修改，文件本身还没变。', true);
+  }
   exporting.value = true;
   try {
     const result = parseExportResult(await api.exportDocument(format));
@@ -1068,6 +1257,7 @@ const off = onMessage((msg: ExtensionMessage) => {
       markdownContent.value = msg.payload.content ?? '';
       requestPreview();
       restoreArmedSource();
+      if (editing.value) void nextTick(() => syncEditor(false));
       break;
     case 'PREVIEW_HTML':
       if (msg.payload.error) {
@@ -1099,6 +1289,21 @@ const offCopyRequest = electronApp()?.onCopyRequest?.(() => {
   void onCopy();
 });
 
+const offEditCommand = electronApp()?.onEditCommand?.((command) => {
+  if (command === 'save') {
+    if (editing.value) void onSave();
+    return;
+  }
+  if (command !== 'undo' && command !== 'redo') return;
+  const editor = editors.get(activeTabId.value);
+  if (editing.value && editor) {
+    if (command === 'undo') editor.undo();
+    else editor.redo();
+    return;
+  }
+  document.execCommand(command);
+});
+
 const offTabsChanged = electronApp()?.onTabsChanged?.((view) => {
   applyTabsView(view);
 });
@@ -1106,6 +1311,17 @@ const offTabsChanged = electronApp()?.onTabsChanged?.((view) => {
 watch(isSettingsTab, (isSettings) => {
   if (isSettings) closeExportMenu();
 });
+
+watch(editing, (on) => {
+  electronApp()?.setEditing?.(on);
+});
+
+watch(
+  () => appearance.value.fontSize,
+  (px) => {
+    editors.get(activeTabId.value)?.setFontSize(px);
+  }
+);
 
 onMounted(() => {
   refreshTabs();
@@ -1136,7 +1352,9 @@ onMounted(() => {
 onUnmounted(() => {
   off();
   offCopyRequest?.();
+  offEditCommand?.();
   offTabsChanged?.();
+  for (const id of [...editors.keys()]) destroyEditor(id);
   window.removeEventListener('message', onSelectionCopyMessage);
   window.removeEventListener('pointerdown', onDocPointerDown, true);
   document.removeEventListener('mousedown', onDocPointerDown);
@@ -1348,7 +1566,11 @@ html, body, #app {
   font-size: 14px;
   line-height: 1;
 }
-.tab-source {
+.tab-source,
+.tab-edit,
+.tab-undo,
+.tab-redo,
+.tab-save {
   align-self: center;
   height: 26px;
   min-height: 26px;
@@ -1530,7 +1752,8 @@ html, body, #app {
   border-bottom-color: #aceebb;
 }
 .reload-tip.is-missing,
-.reload-tip.is-unreadable {
+.reload-tip.is-unreadable,
+.reload-tip.is-warn {
   color: #7d4e00;
   background: #fff8c5;
   border-bottom-color: #eac54f;
@@ -1541,7 +1764,8 @@ html, body, #app {
   border-bottom-color: rgba(63, 185, 80, 0.4);
 }
 :global(html[data-theme='dark']) .reload-tip.is-missing,
-:global(html[data-theme='dark']) .reload-tip.is-unreadable {
+:global(html[data-theme='dark']) .reload-tip.is-unreadable,
+:global(html[data-theme='dark']) .reload-tip.is-warn {
   color: #d29922;
   background: rgba(210, 153, 34, 0.18);
   border-bottom-color: rgba(210, 153, 34, 0.45);
@@ -1665,6 +1889,24 @@ html, body, #app {
   font-size: 13px;
   line-height: 1.5;
   color: var(--markly-textSecondary, #57606a);
+}
+.edit-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--markly-background, #fff);
+}
+.edit-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.edit-host :deep(.source-editor-mount),
+.edit-host :deep(.cm-editor) {
+  height: 100%;
 }
 .source-pane {
   position: absolute;

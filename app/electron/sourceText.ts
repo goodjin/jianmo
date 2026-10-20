@@ -77,3 +77,8 @@ export function sourceFormatNote(content: string, fileName: string): string {
   if (good === 0) return '这些行没法排成缩进，下面是原文。';
   return '有的行没法排成缩进，那些行按原文留下。';
 }
+
+/** 编辑 JSON / JSONL 时提醒：改的是文件原文，不是上面那份排版。Markdown 不需要这句。 */
+export function editingOriginalNote(fileName: string): string {
+  return structuredKindFromName(fileName) ? '正在编辑文件原文，不是排版后的样子。' : '';
+}

@@ -257,7 +257,7 @@ describe('预览 HTML 的主题与字体', () => {
     await bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
     const html = String((sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
     expect(html).toContain('Noto Sans SC');
-    expect(html).toContain('@font-face');
+    expect(html).toContain("font-family:'Noto Sans SC'");
     expect(html).toContain('font-size: 21px;');
     expect(html).toContain('font-weight:700');
 
@@ -268,7 +268,7 @@ describe('预览 HTML 的主题与字体', () => {
     const sysHtml = String((sys.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
     expect(sysHtml).toContain('-apple-system');
     expect(sysHtml).not.toContain('Noto Sans SC');
-    expect(sysHtml).not.toContain('@font-face');
+    expect(sysHtml).not.toContain('data:font/woff2');
   });
 
   it('改主题后重新出图会换成新配色', async () => {

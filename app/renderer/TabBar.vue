@@ -13,6 +13,7 @@
         @auxclick.middle.prevent="emit('close', tab.id)"
       >
         <span class="tab-title">{{ tab.title }}</span>
+        <span v-if="tab.dirty" class="tab-dirty" title="未保存" aria-label="未保存"></span>
         <button
           class="tab-close"
           type="button"
@@ -120,6 +121,13 @@ const emit = defineEmits<{
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tab-dirty {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 .tab-close {
   flex-shrink: 0;

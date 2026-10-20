@@ -31,6 +31,19 @@ afterEach(() => {
 });
 
 describe('TabBar 渲染', () => {
+  it('未保存的标签多一个圆点', () => {
+    const el = mount({
+      tabs: [
+        { id: 'a', title: 'a.md', filePath: '/docs/a.md', dirty: true },
+        { id: 'b', title: 'b.md', filePath: '/docs/b.md', dirty: false },
+      ],
+      activeId: 'a',
+    });
+    const tabs = [...el.querySelectorAll('.tab')];
+    expect(tabs[0]!.querySelector('.tab-dirty')).not.toBeNull();
+    expect(tabs[1]!.querySelector('.tab-dirty')).toBeNull();
+  });
+
   it('每个标签渲染一格，标题取 title', () => {
     const el = mount({});
     const titles = [...el.querySelectorAll('.tab-title')].map((n) => n.textContent);
