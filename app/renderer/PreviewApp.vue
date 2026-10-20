@@ -165,28 +165,6 @@
               @click="onReload"
             >刷新</button>
             <button
-              class="action-item tab-copy"
-              :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
-              type="button"
-              role="menuitem"
-              data-action="copy"
-              :disabled="copying"
-              :title="copyTitle"
-              :aria-label="copyTitle"
-              @click="onCopy"
-            >
-              <span class="action-icon" :key="copiedTick">
-                <svg v-if="copied" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
-                </svg>
-                <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
-                  <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
-                  <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
-                </svg>
-              </span>
-              <span>{{ copied ? '已复制' : '复制' }}</span>
-            </button>
-            <button
               class="action-item tab-edit"
               type="button"
               role="menuitem"
@@ -310,6 +288,25 @@
               @load="onFrameLoad"
             ></iframe>
           </template>
+          <button
+            class="doc-copy tab-copy"
+            :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
+            type="button"
+            :disabled="copying"
+            :title="copyTitle"
+            :aria-label="copyTitle"
+            @click="onCopy"
+          >
+            <span class="action-icon" :key="copiedTick">
+              <svg v-if="copied" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
+              </svg>
+              <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
+                <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+              </svg>
+            </span>
+          </button>
         </div>
       </template>
       </div>
@@ -1703,18 +1700,17 @@ html, body, #app {
 .tab-actions {
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: center;
+  gap: 4px;
   height: 26px;
   min-height: 26px;
-  min-width: 108px;
   box-sizing: border-box;
-  padding: 0 8px 0 10px;
+  padding: 0 7px;
   font-size: 12px;
 }
 .actions-dots {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
   flex: 0 0 auto;
 }
@@ -1731,12 +1727,12 @@ html, body, #app {
 .actions-menu {
   position: absolute;
   top: calc(100% - 1px);
-  left: 0;
+  left: auto;
   right: 0;
   z-index: 30;
   box-sizing: border-box;
-  width: auto;
-  min-width: 0;
+  width: max-content;
+  min-width: 100%;
   margin: 0;
   padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
@@ -1913,6 +1909,24 @@ html, body, #app {
   overflow: hidden;
   background: var(--markly-background, #fff);
 }
+.doc-copy {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm);
+  background: color-mix(in srgb, var(--markly-background, #fff) 92%, transparent);
+  color: var(--markly-textSecondary, #57606a);
+  cursor: pointer;
+}
+.doc-copy:hover { background: var(--markly-surfaceHover, #eaeef2); color: var(--markly-text, #24292e); }
 .preview-frame {
   width: 100%;
   height: 100%;

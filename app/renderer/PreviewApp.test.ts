@@ -240,20 +240,20 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     await openActions(el);
     const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
-    const copy = el.querySelector('.tab-copy') as HTMLElement;
     const edit = el.querySelector('.tab-edit') as HTMLButtonElement;
     const settings = el.querySelector('.tab-settings') as HTMLElement;
+    const copy = el.querySelector('.doc-body .doc-copy') as HTMLElement;
     expect(reload.textContent?.trim()).toBe('刷新');
     expect(reload.getAttribute('aria-label')).toBe('重新加载文档');
     expect(reload.disabled).toBe(false);
-    expect(reload.nextElementSibling).toBe(copy);
-    expect(copy.nextElementSibling).toBe(edit);
+    expect(reload.nextElementSibling).toBe(edit);
+    expect(el.querySelector('.actions-menu .tab-copy')).toBeNull();
     expect(edit.textContent?.trim()).toBe('编辑');
     expect(edit.nextElementSibling?.getAttribute('data-format')).toBe('pdf');
     expect(el.querySelector('[data-format="html"]')?.textContent?.trim()).toBe('导出 HTML');
     expect(el.querySelector('[data-format="html"]')?.nextElementSibling).toBe(settings);
     expect(settings.textContent?.trim()).toBe('设置');
-    expect(copy.textContent).toContain('复制');
+    expect(copy.getAttribute('aria-label')).toContain('复制全文');
     expect(copy.querySelector('.tab-copy-mark')).toBeNull();
     expectCopySheets(copy);
 
@@ -373,8 +373,7 @@ describe('PreviewApp 顶栏与大纲', () => {
 
       const el = mount();
       await flush();
-      await openActions(el);
-      const copy = el.querySelector('.tab-copy') as HTMLButtonElement;
+      const copy = el.querySelector('.doc-body .doc-copy') as HTMLButtonElement;
       copy.click();
       await flush();
 
@@ -406,8 +405,7 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const el = mount();
     await flush();
-    await openActions(el);
-    const copy = el.querySelector('.tab-copy') as HTMLButtonElement;
+    const copy = el.querySelector('.doc-body .doc-copy') as HTMLButtonElement;
     copy.click();
     await flush();
 
@@ -479,12 +477,17 @@ describe('PreviewApp 顶栏与大纲', () => {
     const itemRule = previewAppSource.match(/\.action-item\s*\{[^}]+\}/)?.[0] ?? '';
     expect(itemRule).toMatch(/white-space:\s*nowrap/);
     const actionRule = previewAppSource.match(/\.tab-actions\s*\{[^}]+\}/)?.[0] ?? '';
-    const minWidth = Number(actionRule.match(/min-width:\s*(\d+)px/)?.[1] ?? 0);
-    expect(minWidth).toBeGreaterThan(60);
+    expect(actionRule).not.toMatch(/min-width/);
+    const copyRule = previewAppSource.match(/\.doc-copy\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(copyRule).toMatch(/position:\s*absolute/);
+    expect(copyRule).toMatch(/top:\s*12px/);
+    expect(copyRule).toMatch(/right:\s*12px/);
     const menuRule = previewAppSource.match(/\.actions-menu\s*\{[^}]+\}/)?.[0] ?? '';
     expect(menuRule).toMatch(/top:\s*calc\(100% - 1px\)/);
-    expect(menuRule).toMatch(/left:\s*0/);
+    expect(menuRule).toMatch(/left:\s*auto/);
     expect(menuRule).toMatch(/right:\s*0/);
+    expect(menuRule).toMatch(/width:\s*max-content/);
+    expect(menuRule).toMatch(/min-width:\s*100%/);
     expect(menuRule).toMatch(/border-top:\s*0/);
     expect(menuRule).toMatch(/border-radius:\s*0 0 var\(--app-radius-sm\) var\(--app-radius-sm\)/);
     const joined = previewAppSource.match(/\.actions-split:has\(\.actions-menu\) \.tab-actions,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions:hover\s*\{[^}]+\}/)?.[0] ?? '';
@@ -529,6 +532,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const pdf = el.querySelector('[data-format="pdf"]') as HTMLButtonElement;
     const settings = el.querySelector('.tab-settings') as HTMLButtonElement;
     expect(pdf.disabled).toBe(true);
+    expect(el.querySelector('.doc-copy')).toBeNull();
     expect((el.querySelector('[data-action="edit"]') as HTMLButtonElement).disabled).toBe(true);
     expect(settings.disabled).toBe(false);
     expect(settings.classList.contains('active')).toBe(true);
