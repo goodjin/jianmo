@@ -275,6 +275,16 @@
             <h1 class="welcome-title">{{ WELCOME_TITLE }}</h1>
             <p class="welcome-lead">{{ WELCOME_LEAD }}</p>
             <p v-for="line in WELCOME_LINES" :key="line" class="welcome-line">{{ line }}</p>
+            <div class="welcome-meta">
+              <p class="welcome-meta-row">
+                <span class="welcome-meta-label">{{ WELCOME_REPO_LABEL }}</span>
+                <button type="button" class="welcome-link" @click="openWelcomeRepo">{{ WELCOME_REPO }}</button>
+              </p>
+              <p class="welcome-meta-row">
+                <span class="welcome-meta-label">{{ WELCOME_EMAIL_LABEL }}</span>
+                <span class="welcome-email">{{ WELCOME_EMAIL }}</span>
+              </p>
+            </div>
           </div>
           <div v-else-if="editing" class="edit-pane">
             <p v-if="editNote" class="source-note">{{ editNote }}</p>
@@ -360,7 +370,15 @@ import {
   type PlaceAnchor,
 } from '../electron/viewPlace';
 import { DEFAULT_MAX_OPEN_TABS, readReaderPrefs } from '../electron/readerPrefs';
-import { WELCOME_LEAD, WELCOME_LINES, WELCOME_TITLE } from '../electron/tabs';
+import {
+  WELCOME_EMAIL,
+  WELCOME_EMAIL_LABEL,
+  WELCOME_LEAD,
+  WELCOME_LINES,
+  WELCOME_REPO,
+  WELCOME_REPO_LABEL,
+  WELCOME_TITLE,
+} from '../electron/tabs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import { parseSystemFontList } from '../electron/appearance';
@@ -1404,6 +1422,10 @@ function onFrameLoad(): void {
   }
 }
 
+function openWelcomeRepo(): void {
+  postMessage({ type: 'OPEN_EXTERNAL_LINK', payload: { url: WELCOME_REPO } });
+}
+
 function requestPreview(): void {
   if (isSettingsTab.value) {
     loading.value = false;
@@ -2197,6 +2219,39 @@ html, body, #app {
 .welcome-lead {
   font-size: 16px;
   color: var(--markly-text, #1f2328);
+}
+.welcome-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.welcome-meta-row {
+  margin: 0;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--markly-textSecondary, #57606a);
+}
+.welcome-meta-label {
+  flex: 0 0 4em;
+  white-space: nowrap;
+}
+.welcome-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--markly-primary, #0969da);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.welcome-link:hover { text-decoration: underline; }
+.welcome-email {
+  color: var(--markly-text, #1f2328);
+  user-select: text;
 }
 .edit-pane {
   position: absolute;

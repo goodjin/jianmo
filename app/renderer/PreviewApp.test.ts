@@ -1122,6 +1122,15 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(blankPage.textContent).toContain('也可以把文件拖进窗口');
     expect(blankPage.textContent).toContain('源码、刷新和编辑');
     expect(blankPage.textContent).toContain('三个点');
+    const labels = [...blankPage.querySelectorAll('.welcome-meta-label')].map((node) => node.textContent);
+    expect(labels).toEqual(['仓库地址', '联系邮箱']);
+    expect(blankPage.querySelector('.welcome-link')?.textContent).toBe('https://github.com/goodjin/jianmo');
+    expect(blankPage.querySelector('.welcome-email')?.textContent).toBe('goodjin2@gmail.com');
+    (blankPage.querySelector('.welcome-link') as HTMLButtonElement).click();
+    expect(electronStub('postMessage')).toHaveBeenCalledWith({
+      type: 'OPEN_EXTERNAL_LINK',
+      payload: { url: 'https://github.com/goodjin/jianmo' },
+    });
     expect(previewAppSource).toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*flex-start/);
     const pageStyle = getComputedStyle(blankPage);
     if (pageStyle.justifyContent) {

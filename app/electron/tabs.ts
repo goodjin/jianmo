@@ -18,6 +18,11 @@ export const WELCOME_LINES = [
   '右上角有源码、刷新和编辑。复制浮在正文右上角。导出和设置在最右边三个点的菜单里。',
 ] as const;
 
+export const WELCOME_REPO = 'https://github.com/goodjin/jianmo';
+export const WELCOME_EMAIL = 'goodjin2@gmail.com';
+export const WELCOME_REPO_LABEL = '仓库地址';
+export const WELCOME_EMAIL_LABEL = '联系邮箱';
+
 export const BLANK_TAB_CONTENT = [
   `**${WELCOME_TITLE}**`,
   '',
@@ -26,6 +31,10 @@ export const BLANK_TAB_CONTENT = [
   WELCOME_LINES[0],
   '',
   WELCOME_LINES[1],
+  '',
+  `${WELCOME_REPO_LABEL}：${WELCOME_REPO}`,
+  '',
+  `${WELCOME_EMAIL_LABEL}：${WELCOME_EMAIL}`,
 ].join('\n');
 
 /** doc 承载打开的文档；settings 是应用内设置页，全局至多一个。 */
