@@ -74,7 +74,7 @@ describe('点击水波', () => {
   it('水波是一列波峰波谷，从点击处向外走', () => {
     expect(inkAmplitude(0)).toBe(0);
     expect(inkAmplitude(1)).toBe(0);
-    expect(inkAmplitude(0.5)).toBe(5);
+    expect(inkAmplitude(0.5)).toBe(2.5);
     expect(inkAmplitude(0.5)).toBeGreaterThan(inkAmplitude(0.04));
 
     const phase = 0.22;

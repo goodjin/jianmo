@@ -123,19 +123,19 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 .click-wave {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.5) 0%, rgba(186, 216, 240, 0.16) 42%, rgba(186, 216, 240, 0) 70%);
-  animation: click-ripple-out 380ms ease-out forwards;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.42) 0%, rgba(186, 216, 240, 0.12) 42%, rgba(186, 216, 240, 0) 70%);
+  animation: click-ripple-out 380ms ease-out both;
 }
 .click-ripple {
   background: radial-gradient(
     circle,
-    rgba(255, 255, 255, 0) 58%,
-    rgba(255, 255, 255, 0.82) 70%,
-    rgba(176, 210, 236, 0.34) 76%,
-    rgba(70, 100, 130, 0.16) 82%,
-    rgba(255, 255, 255, 0) 90%
+    rgba(255, 255, 255, 0) 62%,
+    rgba(255, 255, 255, 0.55) 73%,
+    rgba(176, 210, 236, 0.2) 79%,
+    rgba(70, 100, 130, 0.1) 85%,
+    rgba(255, 255, 255, 0) 92%
   );
-  animation: click-ripple-out 760ms cubic-bezier(0.12, 0.55, 0.2, 1) forwards;
+  animation: click-ripple-out 760ms cubic-bezier(0.12, 0.55, 0.2, 1) both;
 }
 .markly-ink-defs {
   position: absolute;

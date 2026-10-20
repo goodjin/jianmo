@@ -23,7 +23,7 @@ export const RIPPLE_WAVES = [
 export const INK_RIPPLE_MS = 980;
 
 /** 波峰处字被推开的像素。再大就会把字揉糊。 */
-export const INK_CREST_PX = 5;
+export const INK_CREST_PX = 2.5;
 
 /** 这些是壳层上的操作按钮。文件行、最近打开里的文件名不算。 */
 export const PLAIN_BURST_CLASSES = [
@@ -106,9 +106,9 @@ export function inkAmplitude(phase: number): number {
 export function inkPush(dx: number, dy: number, phase: number): number {
   const dist = Math.hypot(dx, dy);
   const front = 0.05 + clamp(phase, 0, 1) * 1.12;
-  const wavelength = 0.2;
+  const wavelength = 0.34;
   const signed = Math.sin(((dist - front) / wavelength) * Math.PI * 2);
-  const sigma = 0.26;
+  const sigma = 0.16;
   const band = Math.exp(-((dist - front) ** 2) / (2 * sigma * sigma));
   return signed * band;
 }
