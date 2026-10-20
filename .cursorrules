@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **收起文件树只留箭头**（桌面 0.8.7）：收起后整颗「打开」（含缩短的「开」）都不画，左列只留 ›，宽度跟着这颗按钮。展开后再出现打开、上一级、刷新目录。左侧「刷新」是重读文件夹列表，不是重读正文；右边顶栏那个才是重新加载文档。两个都留着。不改插件。
 - [X] **桌面按钮点击动效**（0.8.6）：接在 0.8.5 的按钮位置上。复制在正文右上角，顶栏是源码、刷新、编辑和三个竖点。按下时散开一些很透的浅色小星星，复制十颗、别的按钮七颗，不盖住图标。水波收到按钮较短的一边里，并按圆角裁住。同一圈波会把按钮上的字往外推一下，像在纸面上荡开，播完卸掉滤镜。文件列表和右键菜单不跟。系统减少动效时不播。打开那一对不缩，免得接缝裂开。不改插件。
 - [X] **三个点菜单**（桌面 0.8.5）：源码、刷新、编辑留在顶栏外面，顺序在回退/重做/保存之后。最右边只留三个竖点，不写「操作」。按钮 28px 圆形、无边框，悬停才有底。菜单 `width: max-content`、`right: 0`、`top: calc(100% + 4px)`，圆角 `--app-radius-md`，按最长一行定宽，不要跟按钮锁成一样宽，也不要 `border-top: 0` 贴成一块。里面只留导出 PDF、导出 HTML、设置。复制仍浮在正文右上角。不要改插件。
 - [X] **操作按钮和菜单同一宽度**（桌面 0.8.4）：量宽用和菜单项同一套 `.action-item`。按钮和菜单都是这条宽度的 `100%`，再加 `min-width/max-width: 100%`，菜单不能比按钮宽，也不能比它窄。圆角用 `--app-radius-xs`，12px 会把 26px 高的按钮收成胶囊，看起来比菜单窄。三个点用 18px，别缩成一个冒号。改菜单文案时，量宽的那一份一起改。不要改插件。
@@ -173,6 +174,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - macOS 上 `setVisibleOnAllWorkspaces` 必须同时带 `visibleOnFullScreen: false` 和 `skipTransformProcessType: true`。前者避免全屏辅助挡住程序坞，后者避免进程被改成菜单栏小工具后图标从程序坞和 Cmd+Tab 消失。跨桌面之后 `setActivationPolicy('regular')` 并 `dock.show()`。不要先 `hide` 再 `show`，否则会叠出两个图标。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
+- 桌面版文件树收起后，左列只留展开箭头。不要再把「打开」缩成「开」留在旁边，那一个字也会把列撑宽。展开后打开、上一级、刷新目录才回到这一栏。左侧刷新是重读目录，不要跟标签栏「重新加载文档」合成一颗。
 - 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。不要把文件树按钮 Teleport 到同一页里的打开栏：目标在父组件模板里时，父组件一更新，Vue 补丁会碰到空节点并抛 `Cannot set properties of null (setting '__vnode')`。按钮放在打开栏自己的模板里，再调用文件树暴露的方法。
 - 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。
 - 桌面版删除文件走 `shell.trashItem`，移到系统废纸篓。右键第一次只打开确认，第二次才真正移走。成功后要关掉对应标签、去掉最近打开，并刷新文件树所在目录。

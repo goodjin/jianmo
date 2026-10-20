@@ -7,7 +7,7 @@
     }"
   >
     <div ref="openSplitRef" class="open-rail">
-      <div class="open-split">
+      <div v-if="!fileTreeCollapsed" class="open-split">
         <!--
           预览在沙箱 iframe 里，父页面收不到里面的空白点击。
           菜单打开时铺一层全屏透明层，点到菜单和打开按钮以外就收起。
@@ -967,6 +967,7 @@ function toggleOutline(): void {
 
 function toggleFileTree(): void {
   fileTreeCollapsed.value = !fileTreeCollapsed.value;
+  if (fileTreeCollapsed.value) closeRecent();
   try {
     electronApp()?.storeSet?.('fileTreeCollapsed', fileTreeCollapsed.value);
   } catch {
@@ -1451,7 +1452,7 @@ html, body, #app {
   height: 100vh;
   margin: 0;
 }
-/* 收起后树没了，这一列只留「开」和展开按钮，宽度跟着按钮走。 */
+/* 收起后树和「打开」都拿掉，这一列只留展开箭头，宽度跟着这颗按钮走。 */
 .markly-app.files-collapsed { --files-col: max-content; }
 .markly-app > .tab-bar {
   position: relative;
@@ -1496,17 +1497,15 @@ html, body, #app {
   padding: 0 8px;
   flex-shrink: 0;
 }
-/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。高度跟打开按钮对齐。 */
+/* 几乎方的小图标。宽的「刷新目录」仍用上面的 12px。高度跟打开按钮对齐。 */
 .file-up,
 .file-toggle {
-  border-radius: var(--app-radius-xxs);
-  width: 32px;
-  padding: 0;
-}
-.file-up {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--app-radius-xxs);
+  width: 32px;
+  padding: 0;
 }
 .file-up-icon {
   width: 16px;
@@ -1530,17 +1529,10 @@ html, body, #app {
   cursor: default;
 }
 .markly-app.files-collapsed .open-rail {
-  min-width: max-content;
-  gap: 4px;
-  padding: 0 6px;
-}
-.markly-app.files-collapsed .open-label { display: none; }
-.markly-app.files-collapsed .open-main::before { content: '开'; }
-.markly-app.files-collapsed .open-caret { display: none; }
-.markly-app.files-collapsed .open-main {
-  border-radius: var(--app-radius-sm);
-  min-width: 28px;
-  padding: 0 6px;
+  justify-content: center;
+  min-width: 0;
+  gap: 0;
+  padding: 0 4px;
 }
 .chrome-btn {
   font-size: 12px;
