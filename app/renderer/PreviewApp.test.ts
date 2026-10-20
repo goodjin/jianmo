@@ -215,7 +215,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const bar = el.querySelector('.tab-bar') as HTMLElement;
     expect(rail.querySelector('.open-split')).not.toBeNull();
     expect(bar.querySelector('.open-split')).toBeNull();
-    // 标签条在左，加号跟着最后一张。源码和操作在最右。
+    // 标签条在左，加号跟着最后一张。源码、刷新、编辑和三个点在最右。
     expect(bar.firstElementChild!.classList.contains('tab-scroller')).toBe(true);
     expect(el.querySelector('.tab.active')).not.toBeNull();
     const strip = el.querySelector('.tab-strip')!;
@@ -232,26 +232,32 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(source.getAttribute('aria-label')).toBe('查看源码');
     expect(source.getAttribute('aria-pressed')).toBe('false');
     expect(source.disabled).toBe(false);
-    expect(source.nextElementSibling).toBe(el.querySelector('.actions-split'));
-    expect(actions.textContent).toContain('操作');
-    expect(actions.querySelectorAll('.actions-dots circle')).toHaveLength(3);
-    expect(el.querySelector('.actions-menu')).toBeNull();
-    expect(el.querySelector('.tab-export')).toBeNull();
-
-    await openActions(el);
     const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
     const edit = el.querySelector('.tab-edit') as HTMLButtonElement;
-    const settings = el.querySelector('.tab-settings') as HTMLElement;
-    const copy = el.querySelector('.doc-body .doc-copy') as HTMLElement;
+    expect(source.nextElementSibling).toBe(reload);
     expect(reload.textContent?.trim()).toBe('刷新');
     expect(reload.getAttribute('aria-label')).toBe('重新加载文档');
     expect(reload.disabled).toBe(false);
     expect(reload.nextElementSibling).toBe(edit);
-    expect(el.querySelector('.actions-menu .tab-copy')).toBeNull();
     expect(edit.textContent?.trim()).toBe('编辑');
-    expect(edit.nextElementSibling?.getAttribute('data-format')).toBe('pdf');
-    expect(el.querySelector('[data-format="html"]')?.textContent?.trim()).toBe('导出 HTML');
-    expect(el.querySelector('[data-format="html"]')?.nextElementSibling).toBe(settings);
+    expect(edit.nextElementSibling).toBe(el.querySelector('.actions-split'));
+    expect(actions.textContent?.trim()).toBe('');
+    expect(actions.getAttribute('aria-label')).toBe('菜单');
+    expect(actions.querySelectorAll('.actions-dots circle')).toHaveLength(3);
+    expect(el.querySelector('.actions-menu')).toBeNull();
+    expect(el.querySelector('.actions-sizer')).toBeNull();
+    expect(el.querySelector('.tab-export')).toBeNull();
+
+    await openActions(el);
+    const menu = el.querySelector('.actions-menu') as HTMLElement;
+    const settings = menu.querySelector('.tab-settings') as HTMLElement;
+    const copy = el.querySelector('.doc-body .doc-copy') as HTMLElement;
+    expect(menu.contains(reload)).toBe(false);
+    expect(menu.contains(edit)).toBe(false);
+    expect(el.querySelector('.actions-menu .tab-copy')).toBeNull();
+    const items = [...menu.querySelectorAll(':scope > .action-item')].map((node) => node.textContent?.trim());
+    expect(items).toEqual(['导出 PDF', '导出 HTML', '设置']);
+    expect(menu.querySelector('[data-format="html"]')?.nextElementSibling).toBe(settings);
     expect(settings.textContent?.trim()).toBe('设置');
     expect(copy.getAttribute('aria-label')).toContain('复制全文');
     expect(copy.querySelector('.tab-copy-mark')).toBeNull();
@@ -459,55 +465,57 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(electronStub('exportDocument')).toHaveBeenLastCalledWith('pdf');
   });
 
-  it('操作菜单贴住按钮，打开时不让系统提示盖住', async () => {
+  it('三个点菜单按每一行定宽，右对齐浮在按钮下面，打开时不让系统提示盖住', async () => {
     const el = mount();
     await flush();
     const button = el.querySelector('.tab-actions') as HTMLButtonElement;
-    expect(button.title).toBe('操作');
+    expect(button.title).toBe('菜单');
+    expect(button.textContent?.trim()).toBe('');
     expect(button.querySelectorAll('.actions-dots circle')).toHaveLength(3);
     button.click();
     await flush();
 
     const menu = el.querySelector('.actions-menu') as HTMLElement;
     expect(menu).not.toBeNull();
+    expect(menu.querySelector('.tab-reload')).toBeNull();
+    expect(menu.querySelector('.tab-edit')).toBeNull();
     expect(menu.querySelector('[data-format="pdf"]')?.textContent?.trim()).toBe('导出 PDF');
-    expect(menu.querySelector('[data-action="edit"]')?.textContent?.trim()).toBe('编辑');
-    expect(button.textContent).toContain('操作');
+    expect(menu.querySelector('[data-format="html"]')?.textContent?.trim()).toBe('导出 HTML');
+    expect(button.textContent).not.toContain('操作');
     expect(button.textContent).not.toContain('导出');
     const itemRule = previewAppSource.match(/\.action-item\s*\{[^}]+\}/)?.[0] ?? '';
     expect(itemRule).toMatch(/white-space:\s*nowrap/);
     const actionRule = previewAppSource.match(/\.tab-actions\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(actionRule).toMatch(/width:\s*100%/);
-    expect(actionRule).toMatch(/min-width:\s*100%/);
-    expect(actionRule).toMatch(/max-width:\s*100%/);
+    expect(actionRule).toMatch(/(?<![\w-])width:\s*28px/);
+    expect(actionRule).toMatch(/padding:\s*0/);
+    expect(actionRule).toMatch(/border:\s*0/);
+    expect(actionRule).toMatch(/border-radius:\s*var\(--app-radius-pill\)/);
+    expect(actionRule).not.toMatch(/width:\s*100%/);
     const splitRule = previewAppSource.match(/\.actions-split\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(splitRule).toMatch(/grid-template-columns:\s*max-content/);
-    const sizer = [...el.querySelectorAll('.actions-sizer .action-item')].map((node) => node.textContent?.trim());
-    const items = [...menu.querySelectorAll(':scope > .action-item')].map((node) => node.textContent?.trim());
-    expect(sizer).toEqual(items);
-    expect(sizer).toContain('导出 HTML');
+    expect(splitRule).not.toMatch(/grid-template-columns/);
+    expect(el.querySelector('.actions-sizer')).toBeNull();
     const copyRule = previewAppSource.match(/\.doc-copy\s*\{[^}]+\}/)?.[0] ?? '';
     expect(copyRule).toMatch(/position:\s*absolute/);
     expect(copyRule).toMatch(/top:\s*12px/);
     expect(copyRule).toMatch(/right:\s*12px/);
     const menuRule = previewAppSource.match(/\.actions-menu\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(menuRule).toMatch(/top:\s*calc\(100% - 1px\)/);
-    expect(menuRule).toMatch(/left:\s*0/);
-    expect(menuRule).toMatch(/width:\s*100%/);
-    expect(menuRule).toMatch(/min-width:\s*100%/);
-    expect(menuRule).toMatch(/max-width:\s*100%/);
-    expect(menuRule).toMatch(/border-top:\s*0/);
-    expect(menuRule).toMatch(/border-radius:\s*0 0 var\(--app-radius-xs\) var\(--app-radius-xs\)/);
-    const joined = previewAppSource.match(/\.actions-split:has\(\.actions-menu\) \.tab-actions,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions:hover\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(joined).toMatch(/border-radius:\s*var\(--app-radius-xs\) var\(--app-radius-xs\) 0 0/);
-    expect(joined).toMatch(/border-bottom-color:\s*var\(--markly-background/);
+    expect(menuRule).toMatch(/top:\s*calc\(100% \+ 4px\)/);
+    expect(menuRule).toMatch(/right:\s*0/);
+    expect(menuRule).toMatch(/left:\s*auto/);
+    expect(menuRule).toMatch(/width:\s*max-content/);
+    expect(menuRule).not.toMatch(/width:\s*100%/);
+    expect(menuRule).not.toMatch(/border-top:\s*0/);
+    expect(menuRule).toMatch(/border-radius:\s*var\(--app-radius-md\)/);
+    expect(menuRule).toMatch(/box-shadow:/);
+    const openRule = previewAppSource.match(/\.tab-actions:hover,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions:hover\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(openRule).toMatch(/background:\s*rgba\(31,\s*35,\s*40,\s*0\.08\)/);
     expect(button.title).toBe('');
-    expect(button.getAttribute('aria-label')).toBe('操作');
+    expect(button.getAttribute('aria-label')).toBe('菜单');
 
     button.click();
     await flush();
     expect(el.querySelector('.actions-menu')).toBeNull();
-    expect(button.title).toBe('操作');
+    expect(button.title).toBe('菜单');
   });
 
   it('点击操作按钮后再次点击收起；点到外面也收起', async () => {
@@ -541,7 +549,9 @@ describe('PreviewApp 顶栏与大纲', () => {
     const settings = el.querySelector('.tab-settings') as HTMLButtonElement;
     expect(pdf.disabled).toBe(true);
     expect(el.querySelector('.doc-copy')).toBeNull();
-    expect((el.querySelector('[data-action="edit"]') as HTMLButtonElement).disabled).toBe(true);
+    const edit = el.querySelector('.tab-edit') as HTMLButtonElement;
+    expect(el.querySelector('.actions-menu')!.contains(edit)).toBe(false);
+    expect(edit.disabled).toBe(true);
     expect(settings.disabled).toBe(false);
     expect(settings.classList.contains('active')).toBe(true);
     pdf.click();
@@ -664,7 +674,6 @@ describe('PreviewApp 顶栏与大纲', () => {
       pushMsg('PREVIEW_HTML', { html: '<h1>旧标题</h1>' });
       await flush();
 
-      await openActions(el);
       (el.querySelector('.tab-reload') as HTMLButtonElement).click();
       await flush();
 
@@ -693,7 +702,6 @@ describe('PreviewApp 顶栏与大纲', () => {
       pushMsg('PREVIEW_HTML', { html: '<h1>旧标题</h1><p>旧正文</p>' });
       await flush();
 
-      await openActions(el);
       (el.querySelector('.tab-reload') as HTMLButtonElement).click();
       await flush();
 
@@ -731,7 +739,6 @@ describe('PreviewApp 顶栏与大纲', () => {
     pushMsg('CONTENT_UPDATE', { content: '# 还在\n\n正文' });
     await flush();
 
-    await openActions(el);
     (el.querySelector('.tab-reload') as HTMLButtonElement).click();
     await flush();
     expect(el.querySelector('.reload-tip')?.textContent).toBe(RELOAD_UNREADABLE_TIP);
@@ -758,7 +765,6 @@ describe('PreviewApp 顶栏与大纲', () => {
     (window as unknown as { electron: ElectronAppBridge }).electron.reloadDocument = reloadDocument;
     const el = mount();
     await flush();
-    await openActions(el);
     const blank = el.querySelector('.tab-reload') as HTMLButtonElement;
     expect(blank.disabled).toBe(true);
     expect(blank.getAttribute('aria-label')).toBe('还没有文件可刷新');
@@ -775,7 +781,6 @@ describe('PreviewApp 顶栏与大纲', () => {
     mounted?.el.remove();
     const again = mount();
     await flush();
-    await openActions(again);
     const settings = again.querySelector('.tab-reload') as HTMLButtonElement;
     expect(again.querySelector('.settings-page')).not.toBeNull();
     expect(settings.disabled).toBe(true);
@@ -1107,6 +1112,8 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(blankPage.querySelector('.welcome-title')?.textContent).toBe('Markly');
     expect(blankPage.textContent).toContain('干净、好读的文档查看器');
     expect(blankPage.textContent).toContain('也可以把文件拖进窗口');
+    expect(blankPage.textContent).toContain('源码、刷新和编辑');
+    expect(blankPage.textContent).toContain('三个点');
     expect(previewAppSource).toMatch(/\.blank-page\s*\{[^}]*justify-content:\s*flex-start/);
     const pageStyle = getComputedStyle(blankPage);
     if (pageStyle.justifyContent) {
@@ -1202,7 +1209,6 @@ describe('原文编辑', () => {
     expect(el.querySelector('.tab-save')).toBeNull();
     expect(el.querySelector('.cm-editor')).toBeNull();
 
-    await openActions(el);
     (el.querySelector('.tab-edit') as HTMLButtonElement).click();
     await flush();
 
@@ -1219,7 +1225,6 @@ describe('原文编辑', () => {
     expect((el.querySelector('.tab-save') as HTMLButtonElement).disabled).toBe(true);
     expect(el.querySelector('.tab-source .chrome-glyph')).not.toBeNull();
 
-    await openActions(el);
     (el.querySelector('.tab-edit') as HTMLButtonElement).click();
     await flush();
     expect(el.querySelector('.tab-save')).toBeNull();
@@ -1253,7 +1258,6 @@ describe('原文编辑', () => {
     await flush();
     pushMsg('CONTENT_UPDATE', { content: raw });
     await flush();
-    await openActions(el);
     (el.querySelector('.tab-edit') as HTMLButtonElement).click();
     await flush();
 

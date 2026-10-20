@@ -130,6 +130,24 @@
           </svg>
           <span>{{ sourceLabel }}</span>
         </button>
+        <button
+          class="chrome-btn tab-reload"
+          type="button"
+          :disabled="reloadDisabled"
+          :title="reloadTitle"
+          :aria-label="reloadTitle"
+          @click="onReload"
+        >刷新</button>
+        <button
+          class="chrome-btn tab-edit"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: editing }"
+          :title="editTitle"
+          :aria-label="editTitle"
+          :aria-pressed="editing"
+          @click="toggleEdit"
+        >编辑</button>
         <div
           ref="exportSplitRef"
           class="actions-split"
@@ -140,50 +158,19 @@
             class="chrome-btn tab-actions"
             type="button"
             :title="exportOpen ? '' : actionsTitle"
-            aria-label="操作"
+            aria-label="菜单"
             aria-haspopup="menu"
             :aria-expanded="exportOpen"
             aria-controls="actions-menu"
             @click="onExportButtonClick"
           >
-            <span>操作</span>
             <svg class="actions-dots" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="6" r="2" />
               <circle cx="12" cy="12" r="2" />
               <circle cx="12" cy="18" r="2" />
             </svg>
           </button>
-          <!-- 跟菜单项同一套字和内边距，把按钮撑到最宽的那一项。 -->
-          <div class="actions-sizer" aria-hidden="true">
-            <span class="action-item">刷新</span>
-            <span class="action-item">编辑</span>
-            <span class="action-item">导出 PDF</span>
-            <span class="action-item">导出 HTML</span>
-            <span class="action-item">设置</span>
-          </div>
-          <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="操作">
-            <button
-              class="action-item tab-reload"
-              type="button"
-              role="menuitem"
-              data-action="reload"
-              :disabled="reloadDisabled"
-              :title="reloadTitle"
-              :aria-label="reloadTitle"
-              @click="onReload"
-            >刷新</button>
-            <button
-              class="action-item tab-edit"
-              type="button"
-              role="menuitem"
-              data-action="edit"
-              :disabled="isSettingsTab"
-              :class="{ active: editing }"
-              :title="editTitle"
-              :aria-label="editTitle"
-              :aria-pressed="editing"
-              @click="toggleEdit"
-            >编辑</button>
+          <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="菜单">
             <button
               type="button"
               class="action-item"
@@ -433,7 +420,7 @@ let exportHintTimer: ReturnType<typeof setTimeout> | null = null;
 const actionsTitle = computed(() => {
   if (exporting.value) return '正在导出…';
   if (exportHint.value) return exportHint.value;
-  return '操作';
+  return '菜单';
 });
 
 /**
@@ -1604,7 +1591,9 @@ html, body, #app {
   min-width: 32px;
 }
 .tab-source,
-.tab-save {
+.tab-save,
+.tab-reload,
+.tab-edit {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1691,13 +1680,11 @@ html, body, #app {
     stroke-dashoffset: 0;
   }
 }
-/* 操作：最右侧，悬停或点击展开。菜单和按钮连成一块。 */
+/* 最右侧三个竖点。菜单按最长一行自己定宽，右对齐浮在按钮下面。 */
 .actions-split {
   position: relative;
   align-self: center;
-  display: inline-grid;
-  grid-template-columns: max-content;
-  grid-template-rows: 26px;
+  display: inline-flex;
 }
 .actions-split::after {
   content: '';
@@ -1705,35 +1692,33 @@ html, body, #app {
   left: 0;
   right: 0;
   top: 100%;
-  height: 8px;
+  height: 10px;
 }
 .tab-actions {
-  grid-area: 1 / 1;
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-width: 100%;
-  max-width: 100%;
-  height: 26px;
-  min-height: 26px;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
   box-sizing: border-box;
-  padding: 0 12px;
-  font-size: 12px;
-  border-radius: var(--app-radius-xs);
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-pill);
+  background: transparent;
 }
-.actions-sizer {
-  grid-area: 1 / 1;
-  z-index: 0;
-  display: flex;
-  flex-direction: column;
-  width: max-content;
-  height: 26px;
-  overflow: hidden;
-  visibility: hidden;
-  pointer-events: none;
+.tab-actions:hover,
+.actions-split:has(.actions-menu) .tab-actions,
+.actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(31, 35, 40, 0.08);
+}
+:global(html[data-theme='dark']) .tab-actions:hover,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 .actions-dots {
   width: 18px;
@@ -1745,36 +1730,30 @@ html, body, #app {
 .actions-split:has(.actions-menu) {
   z-index: 40;
 }
-.actions-split:has(.actions-menu) .tab-actions,
-.actions-split:has(.actions-menu) .tab-actions:hover {
-  border-radius: var(--app-radius-xs) var(--app-radius-xs) 0 0;
-  border-bottom-color: var(--markly-background, #fff);
-  background: var(--markly-background, #fff);
-}
 .actions-menu {
   position: absolute;
-  top: calc(100% - 1px);
-  left: 0;
-  right: auto;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   box-sizing: border-box;
-  width: 100%;
-  min-width: 100%;
-  max-width: 100%;
+  width: max-content;
   margin: 0;
-  padding: 0;
+  padding: 6px 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-top: 0;
-  border-radius: 0 0 var(--app-radius-xs) var(--app-radius-xs);
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
-  box-shadow: none;
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.18);
   overflow: hidden;
 }
 .action-item {
   display: flex;
   align-items: center;
+  align-self: stretch;
   gap: 8px;
-  width: 100%;
   box-sizing: border-box;
   text-align: left;
   white-space: nowrap;
@@ -1783,14 +1762,9 @@ html, body, #app {
   color: var(--markly-text, #24292e);
   font-size: 12px;
   line-height: 1.35;
-  padding: 8px 12px;
+  padding: 8px 16px;
   border-radius: 0;
   cursor: pointer;
-}
-.actions-sizer .action-item {
-  width: max-content;
-  border-left: 1px solid transparent;
-  border-right: 1px solid transparent;
 }
 .action-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
 .action-item:disabled { opacity: 0.45; cursor: default; }

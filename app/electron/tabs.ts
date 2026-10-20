@@ -15,7 +15,7 @@ export const WELCOME_TITLE = 'Markly';
 export const WELCOME_LEAD = '干净、好读的文档查看器。';
 export const WELCOME_LINES = [
   '左边是文件。点开 Markdown、JSON 或 JSONL，也可以把文件拖进窗口。',
-  '右上角在源码和预览之间切换。复制浮在正文右上角。刷新、导出和设置在最右边的「操作」里。',
+  '右上角有源码、刷新和编辑。复制浮在正文右上角。导出和设置在最右边三个点的菜单里。',
 ] as const;
 
 export const BLANK_TAB_CONTENT = [
