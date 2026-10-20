@@ -10,9 +10,23 @@ import { displayNameFromPath } from '../renderer/documentMeta';
 export const BLANK_TAB_TITLE = '新标签页';
 export const SETTINGS_TAB_TITLE = '设置';
 
-/** 空白标签正文。故意不用 `#` heading，避免 generateToc() 产出一个无意义的"Markly"锚点链接。 */
-export const BLANK_TAB_CONTENT =
-  '**Markly** · 独立文档查看器\n\n从左侧 **文件** 栏选择文件夹，在目录树里点开文档；或用 **File → 打开…**（`Cmd/Ctrl+O`）直接选择 `.md`、`.json` 或 `.jsonl` 文件。';
+/** 新标签页上的简介。不用 `#` 标题，避免预览里多出一个空锚点。 */
+export const WELCOME_TITLE = 'Markly';
+export const WELCOME_LEAD = '干净、好读的文档查看器。';
+export const WELCOME_LINES = [
+  '左边是文件。点开 Markdown、JSON 或 JSONL，也可以把文件拖进窗口。',
+  '右上角有源码、刷新和编辑。复制浮在正文右上角。导出和设置在最右边三个点的菜单里。',
+] as const;
+
+export const BLANK_TAB_CONTENT = [
+  `**${WELCOME_TITLE}**`,
+  '',
+  WELCOME_LEAD,
+  '',
+  WELCOME_LINES[0],
+  '',
+  WELCOME_LINES[1],
+].join('\n');
 
 /** doc 承载打开的文档；settings 是应用内设置页，全局至多一个。 */
 export type TabKind = 'doc' | 'settings';
@@ -30,6 +44,8 @@ export interface DocTab {
   savedContent?: string;
   /** 打开或保存时读到的修改时间。空白页、还没对上磁盘时为 null。 */
   diskMtimeMs?: number | null;
+  /** 最近一次被看到的时间。越大越新。没记过的当成最早。 */
+  lastViewedAt?: number;
 }
 
 export interface TabsState {
@@ -105,6 +121,39 @@ export function activateTab(state: TabsState, id: string): TabsState {
   if (!state.tabs.some((t) => t.id === id)) return state;
   if (state.activeId === id) return state;
   return { tabs: state.tabs, activeId: id };
+}
+
+/** 记下这个标签刚刚被看到。未知 id 原样返回。 */
+export function noteTabViewed(state: TabsState, id: string, now: number): TabsState {
+  if (!id || !state.tabs.some((t) => t.id === id)) return state;
+  const when = Number.isFinite(now) ? now : 0;
+  return {
+    tabs: state.tabs.map((t) => (t.id === id ? { ...t, lastViewedAt: when } : t)),
+    activeId: state.activeId,
+  };
+}
+
+/**
+ * 除了正在看的那一张，最久没有查看的标签。
+ * 时间相同就关更靠左的那张。只剩正在看的时返回 null，不会把窗口关空。
+ */
+export function leastRecentlyViewedId(state: TabsState): string | null {
+  const rest = state.tabs.filter((t) => t.id !== state.activeId);
+  if (rest.length === 0) return null;
+  let best = rest[0]!;
+  let bestAt = best.lastViewedAt ?? 0;
+  let bestIndex = state.tabs.indexOf(best);
+  for (let i = 1; i < rest.length; i += 1) {
+    const tab = rest[i]!;
+    const at = tab.lastViewedAt ?? 0;
+    const index = state.tabs.indexOf(tab);
+    if (at < bestAt || (at === bestAt && index < bestIndex)) {
+      best = tab;
+      bestAt = at;
+      bestIndex = index;
+    }
+  }
+  return best.id;
 }
 
 /** 新建空白标签并激活；id 与现有标签冲突时原样返回，避免产生重复 key。 */

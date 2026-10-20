@@ -209,3 +209,23 @@ describe('设置页 · 阅读', () => {
     expect(onUpdateReader).toHaveBeenCalledWith({ copyOnSelect: true });
   });
 });
+
+describe('设置页 · 标签', () => {
+  it('默认最多打开 20 个，改数字会抛出去', () => {
+    const onUpdateReader = vi.fn();
+    const el = mount({ onUpdateReader });
+    const input = el.querySelector('#settings-max-tabs') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.value).toBe('20');
+    expect(el.querySelector('#settings-tabs')!.textContent).toBe('标签');
+    expect(el.textContent).toContain('最久没有查看');
+    input.value = '8';
+    change(input);
+    expect(onUpdateReader).toHaveBeenCalledWith({ maxOpenTabs: 8 });
+  });
+
+  it('已记住的上限会显示出来', () => {
+    const el = mount({ maxOpenTabs: 12 });
+    expect((el.querySelector('#settings-max-tabs') as HTMLInputElement).value).toBe('12');
+  });
+});

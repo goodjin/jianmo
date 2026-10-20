@@ -20,6 +20,8 @@ import {
   closeTabsForPath,
   renameFileInTabs,
   revertTabContent,
+  leastRecentlyViewedId,
+  noteTabViewed,
   setActiveContent,
   summarizeTabs,
   tabTitle,
@@ -502,5 +504,29 @@ describe('renameFileInTabs', () => {
     expect(renameFileInTabs(s, '/docs/missing.md', '/docs/x.md')).toBe(s);
     expect(renameFileInTabs(s, '/docs/b.md', '/docs/b.md')).toBe(s);
     expect(renameFileInTabs(s, '  ', '/docs/x.md')).toBe(s);
+  });
+});
+
+describe('最久没有查看', () => {
+  it('记下查看时间，正在看的那张不算候选', () => {
+    const seen = noteTabViewed(noteTabViewed(threeFiles(), 'a', 10), 'c', 30);
+    expect(seen.tabs.find((t) => t.id === 'a')?.lastViewedAt).toBe(10);
+    expect(seen.tabs.find((t) => t.id === 'b')?.lastViewedAt).toBeUndefined();
+    expect(leastRecentlyViewedId({ ...seen, activeId: 'c' })).toBe('b');
+  });
+
+  it('时间一样时选更靠左的', () => {
+    const seen = noteTabViewed(noteTabViewed(threeFiles(), 'a', 5), 'c', 5);
+    expect(leastRecentlyViewedId({ ...seen, activeId: 'b' })).toBe('a');
+  });
+
+  it('只剩正在看的一张时不再关', () => {
+    expect(leastRecentlyViewedId(createInitialState('only'))).toBeNull();
+  });
+
+  it('未知标签不改状态', () => {
+    const s = threeFiles();
+    expect(noteTabViewed(s, 'missing', 9)).toBe(s);
+    expect(noteTabViewed(s, '', 9)).toBe(s);
   });
 });
