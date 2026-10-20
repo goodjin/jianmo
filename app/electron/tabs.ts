@@ -10,9 +10,23 @@ import { displayNameFromPath } from '../renderer/documentMeta';
 export const BLANK_TAB_TITLE = '新标签页';
 export const SETTINGS_TAB_TITLE = '设置';
 
-/** 空白标签正文。故意不用 `#` heading，避免 generateToc() 产出一个无意义的"Markly"锚点链接。 */
-export const BLANK_TAB_CONTENT =
-  '**Markly** · 独立文档查看器\n\n从左侧 **文件** 栏选择文件夹，在目录树里点开文档；或用 **File → 打开…**（`Cmd/Ctrl+O`）直接选择 `.md`、`.json` 或 `.jsonl` 文件。';
+/** 新标签页上的简介。不用 `#` 标题，避免预览里多出一个空锚点。 */
+export const WELCOME_TITLE = 'Markly';
+export const WELCOME_LEAD = '干净、好读的文档查看器。';
+export const WELCOME_LINES = [
+  '左边是文件。点开 Markdown、JSON 或 JSONL，也可以把文件拖进窗口。',
+  '右上角有源码、刷新和编辑。复制浮在正文右上角。导出和设置在最右边三个点的菜单里。',
+] as const;
+
+export const BLANK_TAB_CONTENT = [
+  `**${WELCOME_TITLE}**`,
+  '',
+  WELCOME_LEAD,
+  '',
+  WELCOME_LINES[0],
+  '',
+  WELCOME_LINES[1],
+].join('\n');
 
 /** doc 承载打开的文档；settings 是应用内设置页，全局至多一个。 */
 export type TabKind = 'doc' | 'settings';
@@ -23,6 +37,15 @@ export interface DocTab {
   /** 空串表示尚未关联文件的空白标签；settings 恒为空 */
   filePath: string;
   content: string;
+  /**
+   * 上次从磁盘读入或成功写入的正文。
+   * 缺省时视为与 content 相同（还没改过）。第一次改字时会把改之前的正文冻在这里。
+   */
+  savedContent?: string;
+  /** 打开或保存时读到的修改时间。空白页、还没对上磁盘时为 null。 */
+  diskMtimeMs?: number | null;
+  /** 最近一次被看到的时间。越大越新。没记过的当成最早。 */
+  lastViewedAt?: number;
 }
 
 export interface TabsState {
@@ -36,6 +59,8 @@ export interface TabSummary {
   kind: TabKind;
   title: string;
   filePath: string;
+  /** 正文和上次保存的不一样。设置页恒为 false。 */
+  dirty: boolean;
 }
 
 let idSeq = 0;
@@ -56,11 +81,27 @@ export function isBlankTab(tab: DocTab | null | undefined): boolean {
 }
 
 export function createBlankTab(id: string): DocTab {
-  return { id, kind: 'doc', filePath: '', content: BLANK_TAB_CONTENT };
+  return {
+    id,
+    kind: 'doc',
+    filePath: '',
+    content: BLANK_TAB_CONTENT,
+    savedContent: BLANK_TAB_CONTENT,
+    diskMtimeMs: null,
+  };
 }
 
 export function createSettingsTab(id: string): DocTab {
-  return { id, kind: 'settings', filePath: '', content: '' };
+  return { id, kind: 'settings', filePath: '', content: '', savedContent: '', diskMtimeMs: null };
+}
+
+/** 没单独记过基线时，当前正文就算已保存。 */
+export function savedBaseline(tab: DocTab): string {
+  return tab.savedContent ?? tab.content;
+}
+
+export function isTabDirty(tab: DocTab | null | undefined): boolean {
+  return !!tab && tab.kind === 'doc' && tab.content !== savedBaseline(tab);
 }
 
 /** 标签条与窗口标题上显示的名字。 */
@@ -82,6 +123,39 @@ export function activateTab(state: TabsState, id: string): TabsState {
   return { tabs: state.tabs, activeId: id };
 }
 
+/** 记下这个标签刚刚被看到。未知 id 原样返回。 */
+export function noteTabViewed(state: TabsState, id: string, now: number): TabsState {
+  if (!id || !state.tabs.some((t) => t.id === id)) return state;
+  const when = Number.isFinite(now) ? now : 0;
+  return {
+    tabs: state.tabs.map((t) => (t.id === id ? { ...t, lastViewedAt: when } : t)),
+    activeId: state.activeId,
+  };
+}
+
+/**
+ * 除了正在看的那一张，最久没有查看的标签。
+ * 时间相同就关更靠左的那张。只剩正在看的时返回 null，不会把窗口关空。
+ */
+export function leastRecentlyViewedId(state: TabsState): string | null {
+  const rest = state.tabs.filter((t) => t.id !== state.activeId);
+  if (rest.length === 0) return null;
+  let best = rest[0]!;
+  let bestAt = best.lastViewedAt ?? 0;
+  let bestIndex = state.tabs.indexOf(best);
+  for (let i = 1; i < rest.length; i += 1) {
+    const tab = rest[i]!;
+    const at = tab.lastViewedAt ?? 0;
+    const index = state.tabs.indexOf(tab);
+    if (at < bestAt || (at === bestAt && index < bestIndex)) {
+      best = tab;
+      bestAt = at;
+      bestIndex = index;
+    }
+  }
+  return best.id;
+}
+
 /** 新建空白标签并激活；id 与现有标签冲突时原样返回，避免产生重复 key。 */
 export function openBlankTab(state: TabsState, id: string): TabsState {
   if (!id || state.tabs.some((t) => t.id === id)) return state;
@@ -90,23 +164,32 @@ export function openBlankTab(state: TabsState, id: string): TabsState {
 
 /**
  * 把文件装入标签：
- * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）；
- * 2. 当前是空白标签 → 就地占用，这样"+ 新建空白页再打开"不会多留一个空标签；
+ * 1. 已有同路径标签 → 激活它并刷新正文（磁盘内容可能已变）。
+ *    当前若是空标签，这篇已经在别处打开，这张空标签用不上，关掉它。
+ * 2. 当前是空白标签 → 就地占用，这样「+ 新建空白页再打开」不会多留一个空标签。
+ *    只有当前这张是空的才占用；别的空标签不动。
  * 3. 其余情况 → 追加新标签并激活。
  */
 export function openFileTab(
   state: TabsState,
   id: string,
   filePath: string,
-  content: string
+  content: string,
+  diskMtimeMs: number | null = null
 ): TabsState {
   const p = String(filePath ?? '').trim();
   if (!p) return state;
 
   const existing = state.tabs.find((t) => t.filePath === p);
   if (existing) {
+    const active = getActiveTab(state);
+    const dropBlank = isBlankTab(active) && active.id !== existing.id ? active.id : '';
     return {
-      tabs: state.tabs.map((t) => (t.id === existing.id ? { ...t, content } : t)),
+      tabs: state.tabs
+        .filter((t) => t.id !== dropBlank)
+        .map((t) =>
+          t.id === existing.id ? { ...t, content, savedContent: content, diskMtimeMs } : t
+        ),
       activeId: existing.id,
     };
   }
@@ -114,13 +197,18 @@ export function openFileTab(
   const active = getActiveTab(state);
   if (isBlankTab(active)) {
     return {
-      tabs: state.tabs.map((t) => (t.id === active!.id ? { ...t, filePath: p, content } : t)),
+      tabs: state.tabs.map((t) =>
+        t.id === active!.id ? { ...t, filePath: p, content, savedContent: content, diskMtimeMs } : t
+      ),
       activeId: active!.id,
     };
   }
 
   if (!id || state.tabs.some((t) => t.id === id)) return state;
-  return { tabs: [...state.tabs, { id, kind: 'doc', filePath: p, content }], activeId: id };
+  return {
+    tabs: [...state.tabs, { id, kind: 'doc', filePath: p, content, savedContent: content, diskMtimeMs }],
+    activeId: id,
+  };
 }
 
 /** 设置页全局唯一：已存在就激活它，否则追加一个并激活。 */
@@ -148,6 +236,20 @@ export function closeTab(state: TabsState, id: string, blankId: string): TabsSta
 }
 
 /**
+ * 文件进了废纸篓后，关掉所有打开它的标签。
+ * 一个都没打开时原样返回。全部关掉时留一个空白标签。
+ */
+export function closeTabsForPath(state: TabsState, filePath: string, blankId: string): TabsState {
+  const target = String(filePath ?? '').trim();
+  if (!target) return state;
+  const ids = state.tabs.filter((tab) => tab.kind === 'doc' && tab.filePath === target).map((tab) => tab.id);
+  if (ids.length === 0) return state;
+  let next = state;
+  for (const id of ids) next = closeTab(next, id, blankId);
+  return next;
+}
+
+/**
  * 磁盘上的文件改名后，已打开的标签跟着换路径。正文不动。
  * 没有这个路径的标签时原样返回。
  */
@@ -162,11 +264,55 @@ export function renameFileInTabs(state: TabsState, fromPath: string, toPath: str
   };
 }
 
-/** 活动标签正文回写（CONTENT_CHANGE / SAVE）。无活动标签时原样返回。 */
+/**
+ * 活动标签正文回写（编辑器打字）。无活动标签时原样返回。
+ * 第一次和基线分叉时，把改之前的正文冻成 savedContent，这样改回去就不算未保存。
+ */
 export function setActiveContent(state: TabsState, content: string): TabsState {
   if (!getActiveTab(state)) return state;
   return {
-    tabs: state.tabs.map((t) => (t.id === state.activeId ? { ...t, content } : t)),
+    tabs: state.tabs.map((t) => {
+      if (t.id !== state.activeId) return t;
+      return { ...t, content, savedContent: savedBaseline(t) };
+    }),
+    activeId: state.activeId,
+  };
+}
+
+/** 保存成功：基线跟上正文，并记下路径和修改时间。 */
+export function markTabSaved(state: TabsState, id: string, filePath: string, mtimeMs: number): TabsState {
+  const pathName = String(filePath ?? '').trim();
+  if (!pathName || !state.tabs.some((t) => t.id === id && t.kind === 'doc')) return state;
+  return {
+    tabs: state.tabs.map((t) =>
+      t.id === id ? { ...t, filePath: pathName, savedContent: t.content, diskMtimeMs: mtimeMs } : t
+    ),
+    activeId: state.activeId,
+  };
+}
+
+/** 用磁盘上的正文替换标签，并把它当成已保存。刷新和「重新打开」走这里。 */
+export function adoptDiskContent(
+  state: TabsState,
+  id: string,
+  content: string,
+  mtimeMs: number | null
+): TabsState {
+  if (!state.tabs.some((t) => t.id === id && t.kind === 'doc')) return state;
+  return {
+    tabs: state.tabs.map((t) =>
+      t.id === id ? { ...t, content, savedContent: content, diskMtimeMs: mtimeMs } : t
+    ),
+    activeId: state.activeId,
+  };
+}
+
+/** 放弃未保存的修改，正文回到上次保存的那一版。 */
+export function revertTabContent(state: TabsState, id: string): TabsState {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab || tab.kind !== 'doc' || !isTabDirty(tab)) return state;
+  return {
+    tabs: state.tabs.map((t) => (t.id === id ? { ...t, content: savedBaseline(t) } : t)),
     activeId: state.activeId,
   };
 }
@@ -178,6 +324,7 @@ export function summarizeTabs(state: TabsState): { tabs: TabSummary[]; activeId:
       kind: t.kind,
       title: tabDisplayTitle(t),
       filePath: t.filePath,
+      dirty: isTabDirty(t),
     })),
     activeId: state.activeId,
   };

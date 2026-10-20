@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDocumentSource, sourceFormatNote } from './sourceText';
+import { editingOriginalNote, formatDocumentSource, sourceFormatNote } from './sourceText';
 
 describe('formatDocumentSource', () => {
   it('Markdown 原样显示，就算正文看起来像 JSON 也不排版', () => {
@@ -65,5 +65,14 @@ describe('sourceFormatNote', () => {
     expect(sourceFormatNote('{"a":1}\nnope\n', '/docs/rows.jsonl')).toBe(
       '有的行没法排成缩进，那些行按原文留下。'
     );
+  });
+});
+
+describe('editingOriginalNote', () => {
+  it('JSON 和 JSONL 提醒正在改原文，Markdown 不说', () => {
+    expect(editingOriginalNote('/docs/a.json')).toBe('正在编辑文件原文，不是排版后的样子。');
+    expect(editingOriginalNote('rows.JSONL')).toBe('正在编辑文件原文，不是排版后的样子。');
+    expect(editingOriginalNote('/docs/a.md')).toBe('');
+    expect(editingOriginalNote('')).toBe('');
   });
 });

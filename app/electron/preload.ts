@@ -22,6 +22,16 @@ contextBridge.exposeInMainWorld('electron', {
   openFile: (): Promise<string | null> => ipcRenderer.invoke('app:open-file'),
   openPath: (filePath: string): Promise<string | null> => ipcRenderer.invoke('app:open-path', filePath),
   reloadDocument: (): Promise<unknown> => ipcRenderer.invoke('app:reload-document'),
+  saveDocument: (): Promise<unknown> => ipcRenderer.invoke('app:save-document'),
+  settleEdits: (): Promise<unknown> => ipcRenderer.invoke('app:settle-edits'),
+  setEditing: (on: boolean): void => ipcRenderer.send('app:editing', on),
+  onEditCommand: (handler: (command: string) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, command: unknown) => {
+      handler(typeof command === 'string' ? command : '');
+    };
+    ipcRenderer.on('app:edit-command', listener);
+    return () => ipcRenderer.removeListener('app:edit-command', listener);
+  },
   listRecentFiles: (): Promise<unknown> => ipcRenderer.invoke('app:recent-files:list'),
   removeRecentFile: (filePath: string): Promise<unknown> =>
     ipcRenderer.invoke('app:recent-files:remove', filePath),
@@ -35,6 +45,7 @@ contextBridge.exposeInMainWorld('electron', {
   revealInFolder: (filePath: string): Promise<boolean> => ipcRenderer.invoke('app:reveal-in-folder', filePath),
   renameFile: (from: string, name: string): Promise<unknown> =>
     ipcRenderer.invoke('app:rename-file', { from, name }),
+  trashFile: (filePath: string): Promise<unknown> => ipcRenderer.invoke('app:trash-file', filePath),
   onFileTreeRoot: (handler: (root: string) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, root: unknown) => {
       handler(typeof root === 'string' ? root : '');

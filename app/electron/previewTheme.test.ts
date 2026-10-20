@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   PREVIEW_THEME_MARKER,
+  applyPreviewBodyClass,
   applyPreviewTheme,
   buildPreviewThemeCss,
   normalizePreviewFontSize,
+  PREVIEW_SCROLL_CLASS,
+  PREVIEW_WRAP_CLASS,
   sanitizeFontFamily,
 } from './previewTheme';
 import { getEditorPalette } from '../../webview/src/shared/themeConfig';
@@ -84,6 +87,18 @@ describe('buildPreviewThemeCss', () => {
   it('未给字号时用 16px 兜底', () => {
     expect(buildPreviewThemeCss(DRACULA)).toContain('font-size: 16px;');
   });
+
+  it('正文铺满内容列，不再居中收成一条', () => {
+    const css = buildPreviewThemeCss(DRACULA);
+    expect(css).toContain('margin: 0;');
+    expect(css).toContain('max-width: none;');
+    expect(css).not.toContain('1360px');
+    expect(css).not.toContain('margin: 0 auto');
+    expect(css).toContain(`body.${PREVIEW_WRAP_CLASS}`);
+    expect(css).toContain('overflow-x: hidden');
+    expect(css).toContain(`body.${PREVIEW_SCROLL_CLASS} pre`);
+    expect(css).toContain('white-space: pre;');
+  });
 });
 
 describe('applyPreviewTheme', () => {
@@ -98,10 +113,24 @@ describe('applyPreviewTheme', () => {
     expect(out).toContain(`--bg-color: ${DRACULA.colors.background}`);
   });
 
-  it('正文与结构原样保留', () => {
+  it('正文与结构原样保留，并默认标上自动换行', () => {
     const out = applyPreviewTheme(HTML, DRACULA);
-    expect(out).toContain('<body><h1>标题</h1></body>');
+    expect(out).toContain(`<body class="${PREVIEW_WRAP_CLASS}"><h1>标题</h1></body>`);
     expect(out.startsWith('<!DOCTYPE html>')).toBe(true);
+  });
+
+  it('关掉自动换行时改成横滚，原来的 class 还在', () => {
+    const out = applyPreviewTheme(
+      '<html><head></head><body class="markly-export-print-friendly">x</body></html>',
+      DRACULA,
+      { wordWrap: false }
+    );
+    expect(out).toContain(`class="markly-export-print-friendly ${PREVIEW_SCROLL_CLASS}"`);
+    expect(out).not.toMatch(/<body[^>]*markly-wrap/);
+  });
+
+  it('没有 body 时不硬插标签', () => {
+    expect(applyPreviewBodyClass('<div>没有 body</div>', true)).toBe('<div>没有 body</div>');
   });
 
   it('大写 </HEAD> 也能命中', () => {

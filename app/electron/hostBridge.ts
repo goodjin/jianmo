@@ -30,6 +30,8 @@ export interface HostBridgeOptions {
   setCurrentContent: (s: string) => void;
   /** 主题设为 auto 时据此挑明/暗配色；由 main 从 nativeTheme 提供，便于单测注入。 */
   getPrefersDark?: () => boolean;
+  /** 预览长行是否折行。没提供时默认折行。 */
+  getWordWrap?: () => boolean;
 }
 
 export function createHostBridge(opts: HostBridgeOptions) {
@@ -57,11 +59,14 @@ export function createHostBridge(opts: HostBridgeOptions) {
             opts.config.editor.theme,
             opts.getPrefersDark?.() ?? false
           );
-          const font = previewFontOptions(
-            opts.config.editor.fontFamily,
-            opts.config.editor.fontSize,
-            getInstalledFontFamilies()
-          );
+          const font = {
+            ...previewFontOptions(
+              opts.config.editor.fontFamily,
+              opts.config.editor.fontSize,
+              getInstalledFontFamilies()
+            ),
+            wordWrap: opts.getWordWrap?.() !== false,
+          };
           const structured = structuredKindFromName(opts.getCurrentFilePath?.() ?? '');
           if (structured) {
             const html = applyPreviewTheme(buildStructuredPreviewHtml(content, structured), palette, font);

@@ -24,6 +24,10 @@ export interface ElectronAppBridge {
   openFile?: () => Promise<string | null>;
   openPath?: (filePath: string) => Promise<string | null>;
   reloadDocument?: () => Promise<unknown>;
+  saveDocument?: () => Promise<unknown>;
+  settleEdits?: () => Promise<unknown>;
+  setEditing?: (on: boolean) => void;
+  onEditCommand?: (handler: (command: string) => void) => () => void;
   currentFilePath?: () => string | null;
   copyToClipboard?: (payload: { text: string; html: string }) => Promise<boolean>;
   exportDocument?: (format: 'pdf' | 'html') => Promise<unknown>;
@@ -40,6 +44,7 @@ export interface ElectronAppBridge {
   listFileTree?: (dir: string) => Promise<unknown>;
   revealInFolder?: (filePath: string) => Promise<boolean>;
   renameFile?: (from: string, name: string) => Promise<unknown>;
+  trashFile?: (filePath: string) => Promise<unknown>;
   onFileTreeRoot?: (handler: (root: string) => void) => () => void;
   tabsState?: () => unknown;
   newTab?: () => Promise<unknown>;
@@ -51,7 +56,11 @@ export interface ElectronAppBridge {
   updateAppearance?: (patch: Partial<AppearanceState>) => Promise<unknown>;
   listSystemFonts?: () => Promise<unknown>;
   getReaderPrefs?: () => unknown;
-  updateReaderPrefs?: (patch: { copyOnSelect: boolean }) => Promise<unknown>;
+  updateReaderPrefs?: (patch: {
+    copyOnSelect?: boolean;
+    wordWrap?: boolean;
+    maxOpenTabs?: number;
+  }) => Promise<unknown>;
   storeGet?: (key: string) => unknown;
   storeSet?: (key: string, val: unknown) => void;
 }
@@ -87,6 +96,7 @@ export function parseTabsView(raw: unknown): TabsView {
             kind: t.kind === 'settings' ? ('settings' as const) : ('doc' as const),
             title: typeof t.title === 'string' && t.title ? t.title : '新标签页',
             filePath: typeof t.filePath === 'string' ? t.filePath : '',
+            dirty: t.dirty === true,
           },
         ];
       })

@@ -10,7 +10,7 @@ describe('parseTabsView', () => {
         activeId: 'a',
       })
     ).toEqual({
-      tabs: [{ id: 'a', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' }],
+      tabs: [{ id: 'a', kind: 'doc', title: 'a.md', filePath: '/docs/a.md', dirty: false }],
       activeId: 'a',
     });
   });

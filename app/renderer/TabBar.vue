@@ -1,49 +1,138 @@
 <template>
   <div class="tab-bar">
-    <div class="tab-strip" role="tablist">
+    <div class="tab-scroller">
+      <button
+        v-if="canScrollLeft"
+        class="tab-scroll tab-scroll-left"
+        type="button"
+        title="向左看标签"
+        aria-label="向左看标签"
+        @click="scrollTabs(-1)"
+      >‹</button>
       <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="tab"
-        :class="{ active: tab.id === activeId }"
-        role="tab"
-        :aria-selected="tab.id === activeId"
-        :title="tab.filePath || tab.title"
-        @click="emit('activate', tab.id)"
-        @auxclick.middle.prevent="emit('close', tab.id)"
+        ref="stripRef"
+        class="tab-strip"
+        role="tablist"
+        :style="stripStyle"
+        @scroll="measure"
       >
-        <span class="tab-title">{{ tab.title }}</span>
+        <div
+          v-for="tab in tabs"
+          :key="tab.id"
+          class="tab"
+          :class="{ active: tab.id === activeId }"
+          role="tab"
+          :aria-selected="tab.id === activeId"
+          :title="tab.filePath || tab.title"
+          @click="emit('activate', tab.id)"
+          @auxclick.middle.prevent="emit('close', tab.id)"
+        >
+          <span class="tab-title">{{ tab.title }}</span>
+          <span v-if="tab.dirty" class="tab-dirty" title="未保存" aria-label="未保存"></span>
+          <button
+            class="tab-close"
+            type="button"
+            title="关闭标签页"
+            :aria-label="`关闭 ${tab.title}`"
+            @click.stop="emit('close', tab.id)"
+          >×</button>
+        </div>
         <button
-          class="tab-close"
+          class="tab-new"
           type="button"
-          title="关闭标签页"
-          :aria-label="`关闭 ${tab.title}`"
-          @click.stop="emit('close', tab.id)"
-        >×</button>
+          title="新建标签页（Cmd/Ctrl+T）"
+          aria-label="新建标签页"
+          @click="emit('new')"
+        >+</button>
       </div>
+      <button
+        v-if="canScrollRight"
+        class="tab-scroll tab-scroll-right"
+        type="button"
+        title="向右看标签"
+        aria-label="向右看标签"
+        @click="scrollTabs(1)"
+      >›</button>
     </div>
-    <!-- 右槽：新建标签页按钮前的小图标（复制、导出、设置） -->
-    <slot name="pre-new" />
-    <button
-      class="tab-new"
-      type="button"
-      title="新建标签页（Cmd/Ctrl+T）"
-      aria-label="新建标签页"
-      @click="emit('new')"
-    >+</button>
+    <div class="tab-tools">
+      <slot name="tools" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { TabSummary } from './electronBridge';
+import { TAB_MAX_WIDTH_PX, TAB_MIN_WIDTH_PX, tabScrollEdges } from './tabStrip';
 
-defineProps<{ tabs: TabSummary[]; activeId: string }>();
+const props = defineProps<{ tabs: TabSummary[]; activeId: string }>();
 
 const emit = defineEmits<{
   (e: 'activate', id: string): void;
   (e: 'close', id: string): void;
   (e: 'new'): void;
 }>();
+
+const stripStyle = {
+  '--tab-min': `${TAB_MIN_WIDTH_PX}px`,
+  '--tab-max': `${TAB_MAX_WIDTH_PX}px`,
+};
+
+const stripRef = ref<HTMLElement | null>(null);
+const canScrollLeft = ref(false);
+const canScrollRight = ref(false);
+
+function measure(): void {
+  const el = stripRef.value;
+  if (!el) {
+    canScrollLeft.value = false;
+    canScrollRight.value = false;
+    return;
+  }
+  const edges = tabScrollEdges(el.scrollLeft, el.clientWidth, el.scrollWidth);
+  canScrollLeft.value = edges.left;
+  canScrollRight.value = edges.right;
+}
+
+function scrollTabs(dir: -1 | 1): void {
+  const el = stripRef.value;
+  if (!el) return;
+  const step = Math.max(TAB_MIN_WIDTH_PX, Math.round(el.clientWidth * 0.6));
+  el.scrollBy({ left: dir * step, behavior: 'smooth' });
+  measure();
+}
+
+function revealActive(): void {
+  const strip = stripRef.value;
+  const active = strip?.querySelector('.tab.active');
+  if (active && typeof active.scrollIntoView === 'function') {
+    active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  measure();
+}
+
+let observer: ResizeObserver | null = null;
+
+onMounted(() => {
+  const el = stripRef.value;
+  if (el && typeof ResizeObserver !== 'undefined') {
+    observer = new ResizeObserver(() => measure());
+    observer.observe(el);
+  }
+  void nextTick(revealActive);
+});
+
+onUnmounted(() => {
+  observer?.disconnect();
+  observer = null;
+});
+
+watch(
+  () => [props.tabs.length, props.activeId] as const,
+  () => {
+    void nextTick(revealActive);
+  }
+);
 </script>
 
 <style scoped>
@@ -56,11 +145,11 @@ const emit = defineEmits<{
   min-width: 0;
   max-width: 100%;
   min-height: 40px;
+  min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
   background: var(--markly-surface, #f6f8fa);
 }
-/* 底部分界线单独画，活动标签用白底盖住自己脚下的那一段，和正文连成一片 */
 .tab-bar::after {
   content: '';
   position: absolute;
@@ -71,7 +160,22 @@ const emit = defineEmits<{
   background: var(--markly-border-color, #d0d7de);
   z-index: 0;
 }
-/* 标签自身横向滚动，"+" 不会被挤出视野 */
+.tab-scroller {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+  flex: 1;
+  min-width: 0;
+}
+.tab-tools {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  align-self: center;
+  gap: 4px;
+  z-index: 1;
+}
 .tab-strip {
   display: flex;
   align-items: flex-end;
@@ -89,9 +193,9 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 180px;
-  min-width: 90px;
-  max-width: 220px;
+  flex: 1 1 180px;
+  min-width: var(--tab-min, 120px);
+  max-width: var(--tab-max, 220px);
   padding: 0 6px 0 10px;
   margin-top: 6px;
   height: calc(100% - 6px);
@@ -124,6 +228,13 @@ const emit = defineEmits<{
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tab-dirty {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
 .tab-close {
   flex-shrink: 0;
   width: 18px;
@@ -143,10 +254,11 @@ const emit = defineEmits<{
   opacity: 1;
 }
 .tab-new {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   align-self: center;
   width: 26px;
   height: 26px;
+  margin: 0 2px;
   padding: 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
   border-radius: var(--app-radius-sm);
@@ -157,4 +269,22 @@ const emit = defineEmits<{
   cursor: pointer;
 }
 .tab-new:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.tab-scroll {
+  position: absolute;
+  top: 7px;
+  z-index: 3;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-xxs);
+  background: var(--markly-background, #fff);
+  color: var(--markly-text, #24292e);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tab-scroll:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.tab-scroll-left { left: 0; }
+.tab-scroll-right { right: 0; }
 </style>

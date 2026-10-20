@@ -4,7 +4,8 @@
 
 export const FILE_TREE_MIN_WIDTH = 160;
 export const FILE_TREE_MAX_WIDTH = 560;
-export const FILE_TREE_DEFAULT_WIDTH = 220;
+/** 和打开栏同一列。220 会把「打开」和旁边的按钮挤到标签上，所以默认 260。 */
+export const FILE_TREE_DEFAULT_WIDTH = 260;
 /** 右边预览至少留这么宽，避免文件树把正文挤没。 */
 export const PREVIEW_MIN_WIDTH = 320;
 

@@ -9,12 +9,19 @@ import {
   createInitialState,
   getActiveTab,
   isBlankTab,
+  adoptDiskContent,
+  isTabDirty,
+  markTabSaved,
   nextTabId,
   openBlankTab,
   openFileTab,
   openSettingsTab,
   tabDisplayTitle,
+  closeTabsForPath,
   renameFileInTabs,
+  revertTabContent,
+  leastRecentlyViewedId,
+  noteTabViewed,
   setActiveContent,
   summarizeTabs,
   tabTitle,
@@ -58,7 +65,14 @@ describe('nextTabId', () => {
 describe('createBlankTab / createInitialState / isBlankTab', () => {
   it('空白标签无路径且带占位正文', () => {
     const t = createBlankTab('x');
-    expect(t).toEqual({ id: 'x', kind: 'doc', filePath: '', content: BLANK_TAB_CONTENT });
+    expect(t).toEqual({
+      id: 'x',
+      kind: 'doc',
+      filePath: '',
+      content: BLANK_TAB_CONTENT,
+      savedContent: BLANK_TAB_CONTENT,
+      diskMtimeMs: null,
+    });
     expect(isBlankTab(t)).toBe(true);
   });
 
@@ -131,7 +145,14 @@ describe('openFileTab', () => {
   it('空白标签被就地占用，不新增标签', () => {
     const next = openFileTab(createInitialState('t0'), 'new', '/docs/a.md', '# A');
     expect(next.tabs).toHaveLength(1);
-    expect(next.tabs[0]).toEqual({ id: 't0', kind: 'doc', filePath: '/docs/a.md', content: '# A' });
+    expect(next.tabs[0]).toEqual({
+      id: 't0',
+      kind: 'doc',
+      filePath: '/docs/a.md',
+      content: '# A',
+      savedContent: '# A',
+      diskMtimeMs: null,
+    });
     expect(next.activeId).toBe('t0');
   });
 
@@ -154,18 +175,66 @@ describe('openFileTab', () => {
     expect(next.tabs.find((t) => t.id === 'b')?.content).toBe('# B');
   });
 
-  it('同路径命中优先于空白标签占用', () => {
+  it('当前是空标签时，点一篇还没打开的文档会填进这张标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/d.md', '# D');
+    expect(next.tabs).toHaveLength(3);
+    expect(next.activeId).toBe('blank');
+    expect(next.tabs.find((t) => t.id === 'blank')).toEqual({
+      id: 'blank',
+      kind: 'doc',
+      filePath: '/docs/d.md',
+      content: '# D',
+      savedContent: '# D',
+      diskMtimeMs: null,
+    });
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+  });
+
+  it('空标签下再点已经打开的文档，切到那个标签并关掉这张用不上的空标签', () => {
+    const s: TabsState = {
+      tabs: [
+        { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
+        createBlankTab('blank'),
+        createBlankTab('other'),
+      ],
+      activeId: 'blank',
+    };
+    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
+    expect(next.tabs.map((t) => t.id)).toEqual(['a', 'other']);
+    expect(next.activeId).toBe('a');
+    expect(next.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
+    expect(next.tabs.find((t) => t.id === 'blank')).toBeUndefined();
+    expect(next.tabs.find((t) => t.id === 'other')?.filePath).toBe('');
+  });
+
+  it('当前标签已有文档时，再点别的 md 会另开标签，不会填进旁边的空标签', () => {
     const s: TabsState = {
       tabs: [
         { id: 'a', kind: 'doc', filePath: '/docs/a.md', content: '# A' },
         createBlankTab('blank'),
       ],
-      activeId: 'blank',
+      activeId: 'a',
     };
-    const next = openFileTab(s, 'new', '/docs/a.md', '# A2');
-    expect(next.tabs).toHaveLength(2);
-    expect(next.activeId).toBe('a');
-    expect(next.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    const opened = openFileTab(s, 'd', '/docs/d.md', '# D');
+    expect(opened.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(opened.activeId).toBe('d');
+    expect(opened.tabs.find((t) => t.id === 'a')?.content).toBe('# A');
+    expect(opened.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+
+    const again = openFileTab(opened, 'dup', '/docs/a.md', '# A2');
+    expect(again.tabs.map((t) => t.id)).toEqual(['a', 'blank', 'd']);
+    expect(again.activeId).toBe('a');
+    expect(again.tabs.find((t) => t.id === 'blank')?.filePath).toBe('');
+    expect(again.tabs.find((t) => t.id === 'a')?.content).toBe('# A2');
   });
 
   it('空路径不改变状态', () => {
@@ -217,6 +286,8 @@ describe('closeTab', () => {
       kind: 'doc',
       filePath: '',
       content: BLANK_TAB_CONTENT,
+      savedContent: BLANK_TAB_CONTENT,
+      diskMtimeMs: null,
     });
     expect(next.activeId).toBe('blank');
   });
@@ -239,6 +310,67 @@ describe('setActiveContent', () => {
     const s: TabsState = { tabs: [], activeId: 'gone' };
     expect(setActiveContent(s, 'x')).toBe(s);
   });
+
+  it('第一次改字把改之前的正文冻成基线，改回去就不算未保存', () => {
+    const once = setActiveContent(threeFiles(), '# B 改过了');
+    const edited = getActiveTab(once);
+    expect(edited?.savedContent).toBe('# B');
+    expect(isTabDirty(edited)).toBe(true);
+    const back = setActiveContent(once, '# B');
+    expect(isTabDirty(getActiveTab(back))).toBe(false);
+  });
+
+  it('空白欢迎词没改过不算未保存', () => {
+    expect(isTabDirty(getActiveTab(createInitialState('t0')))).toBe(false);
+  });
+});
+
+describe('markTabSaved / revertTabContent', () => {
+  it('保存后圆点消失，并记住路径和修改时间', () => {
+    const dirty = setActiveContent(createInitialState('t0'), '新正文');
+    expect(isTabDirty(getActiveTab(dirty))).toBe(true);
+    const saved = markTabSaved(dirty, 't0', '/docs/new.md', 42);
+    const tab = getActiveTab(saved);
+    expect(tab?.filePath).toBe('/docs/new.md');
+    expect(tab?.content).toBe('新正文');
+    expect(tab?.savedContent).toBe('新正文');
+    expect(tab?.diskMtimeMs).toBe(42);
+    expect(isTabDirty(tab)).toBe(false);
+    expect(summarizeTabs(saved).tabs[0]?.dirty).toBe(false);
+  });
+
+  it('放弃修改后正文回到上次保存的那一版', () => {
+    const dirty = setActiveContent(threeFiles(), '# B 改过了');
+    const back = revertTabContent(dirty, 'b');
+    expect(getActiveTab(back)?.content).toBe('# B');
+    expect(isTabDirty(getActiveTab(back))).toBe(false);
+  });
+
+  it('没有未保存的修改时放弃是原样返回', () => {
+    const s = threeFiles();
+    expect(revertTabContent(s, 'b')).toBe(s);
+  });
+
+  it('刷新换成磁盘正文后，基线跟着走，不再算未保存', () => {
+    const dirty = setActiveContent(threeFiles(), '# B 改过了');
+    const next = adoptDiskContent(dirty, 'b', '# B 磁盘\r\n', 7);
+    const tab = next.tabs.find((t) => t.id === 'b');
+    expect(tab?.content).toBe('# B 磁盘\r\n');
+    expect(tab?.savedContent).toBe('# B 磁盘\r\n');
+    expect(tab?.diskMtimeMs).toBe(7);
+    expect(isTabDirty(tab)).toBe(false);
+    expect(isTabDirty(next.tabs.find((t) => t.id === 'a'))).toBe(false);
+  });
+
+  it('从磁盘重新打开会把基线换成新正文', () => {
+    const dirty = setActiveContent(threeFiles(), '# B 改过了');
+    const next = openFileTab(dirty, 'dup', '/docs/b.md', '# B 磁盘', 99);
+    const tab = next.tabs.find((t) => t.id === 'b');
+    expect(tab?.content).toBe('# B 磁盘');
+    expect(tab?.savedContent).toBe('# B 磁盘');
+    expect(tab?.diskMtimeMs).toBe(99);
+    expect(isTabDirty(tab)).toBe(false);
+  });
 });
 
 describe('summarizeTabs', () => {
@@ -252,8 +384,8 @@ describe('summarizeTabs', () => {
     });
     expect(view).toEqual({
       tabs: [
-        { id: 'a', kind: 'doc', title: 'a.md', filePath: '/docs/a.md' },
-        { id: 'blank', kind: 'doc', title: BLANK_TAB_TITLE, filePath: '' },
+        { id: 'a', kind: 'doc', title: 'a.md', filePath: '/docs/a.md', dirty: false },
+        { id: 'blank', kind: 'doc', title: BLANK_TAB_TITLE, filePath: '', dirty: false },
       ],
       activeId: 'blank',
     });
@@ -267,7 +399,14 @@ describe('设置页标签', () => {
     const next = openSettingsTab(threeFiles(), 'set');
     expect(next.tabs).toHaveLength(4);
     expect(next.activeId).toBe('set');
-    expect(getActiveTab(next)).toEqual({ id: 'set', kind: 'settings', filePath: '', content: '' });
+    expect(getActiveTab(next)).toEqual({
+      id: 'set',
+      kind: 'settings',
+      filePath: '',
+      content: '',
+      savedContent: '',
+      diskMtimeMs: null,
+    });
   });
 
   it('全局唯一：已存在时只激活，不再开第二个', () => {
@@ -306,6 +445,7 @@ describe('设置页标签', () => {
       kind: 'settings',
       title: SETTINGS_TAB_TITLE,
       filePath: '',
+      dirty: false,
     });
   });
 });
@@ -326,6 +466,30 @@ describe('tabDisplayTitle', () => {
   });
 });
 
+describe('closeTabsForPath', () => {
+  it('关掉打开这个文件的标签，旁边的标签留着', () => {
+    const next = closeTabsForPath(threeFiles(), '/docs/b.md', 'blank');
+    expect(next.tabs.map((t) => t.filePath)).toEqual(['/docs/a.md', '/docs/c.md']);
+    expect(next.tabs.map((t) => t.content)).toEqual(['# A', '# C']);
+    expect(next.activeId).toBe('c');
+  });
+
+  it('关掉唯一的标签后留下一个空白标签', () => {
+    const only = openFileTab(createInitialState('blank-0'), 'doc', '/docs/a.md', '# A');
+    const next = closeTabsForPath(only, '/docs/a.md', 'blank-1');
+    expect(next.tabs).toHaveLength(1);
+    expect(next.tabs[0]?.filePath).toBe('');
+    expect(next.tabs[0]?.id).toBe('blank-1');
+    expect(next.activeId).toBe('blank-1');
+  });
+
+  it('没打开这个文件时保持原状态', () => {
+    const s = threeFiles();
+    expect(closeTabsForPath(s, '/docs/missing.md', 'blank')).toBe(s);
+    expect(closeTabsForPath(s, '  ', 'blank')).toBe(s);
+  });
+});
+
 describe('renameFileInTabs', () => {
   it('已打开的文件改名后，标签路径换成新的，正文和活动标签不动', () => {
     const next = renameFileInTabs(threeFiles(), '/docs/b.md', '/docs/renamed.md');
@@ -340,5 +504,29 @@ describe('renameFileInTabs', () => {
     expect(renameFileInTabs(s, '/docs/missing.md', '/docs/x.md')).toBe(s);
     expect(renameFileInTabs(s, '/docs/b.md', '/docs/b.md')).toBe(s);
     expect(renameFileInTabs(s, '  ', '/docs/x.md')).toBe(s);
+  });
+});
+
+describe('最久没有查看', () => {
+  it('记下查看时间，正在看的那张不算候选', () => {
+    const seen = noteTabViewed(noteTabViewed(threeFiles(), 'a', 10), 'c', 30);
+    expect(seen.tabs.find((t) => t.id === 'a')?.lastViewedAt).toBe(10);
+    expect(seen.tabs.find((t) => t.id === 'b')?.lastViewedAt).toBeUndefined();
+    expect(leastRecentlyViewedId({ ...seen, activeId: 'c' })).toBe('b');
+  });
+
+  it('时间一样时选更靠左的', () => {
+    const seen = noteTabViewed(noteTabViewed(threeFiles(), 'a', 5), 'c', 5);
+    expect(leastRecentlyViewedId({ ...seen, activeId: 'b' })).toBe('a');
+  });
+
+  it('只剩正在看的一张时不再关', () => {
+    expect(leastRecentlyViewedId(createInitialState('only'))).toBeNull();
+  });
+
+  it('未知标签不改状态', () => {
+    const s = threeFiles();
+    expect(noteTabViewed(s, 'missing', 9)).toBe(s);
+    expect(noteTabViewed(s, '', 9)).toBe(s);
   });
 });

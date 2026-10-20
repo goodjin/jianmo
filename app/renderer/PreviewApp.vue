@@ -4,11 +4,12 @@
     :style="appChromeStyle"
     :class="{
       'files-collapsed': fileTreeCollapsed,
+      'word-wrap': wordWrap,
       'is-resizing': filesResizing,
     }"
   >
     <div ref="openSplitRef" class="open-rail">
-      <div class="open-split">
+      <div v-if="!fileTreeCollapsed" class="open-split">
         <!--
           预览在沙箱 iframe 里，父页面收不到里面的空白点击。
           菜单打开时铺一层全屏透明层，点到菜单和打开按钮以外就收起。
@@ -33,6 +34,39 @@
         >▾</button>
         <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" />
       </div>
+      <div class="file-tree-chrome">
+        <button
+          v-if="!fileTreeCollapsed"
+          type="button"
+          class="file-icon-btn file-up"
+          title="上一级目录"
+          aria-label="上一级目录"
+          :disabled="!treeCanGoUp"
+          @click="onGoUp"
+        >
+          <!-- 系统字体的 ↑ 线条太细，改成描边箭头，线宽自己定。 -->
+          <svg class="file-up-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 13.2V3.6M3.7 8 8 3.6 12.3 8" />
+          </svg>
+        </button>
+        <button
+          v-if="!fileTreeCollapsed"
+          type="button"
+          class="file-icon-btn"
+          title="刷新目录树"
+          aria-label="刷新目录树"
+          :disabled="!treeHasRoot"
+          @click="onRefreshTree"
+        >刷新</button>
+        <button
+          class="file-toggle"
+          type="button"
+          :title="fileTreeCollapsed ? '展开文件' : '收起文件'"
+          :aria-label="fileTreeCollapsed ? '展开文件' : '收起文件'"
+          :aria-expanded="!fileTreeCollapsed"
+          @click="toggleFileTree"
+        >{{ fileTreeCollapsed ? '›' : '‹' }}</button>
+      </div>
     </div>
     <TabBar
       :tabs="tabs"
@@ -41,33 +75,44 @@
       @close="onCloseTab"
       @new="onNewTab"
     >
-      <template #pre-new>
+      <template #tools>
         <button
-          class="chrome-btn tab-reload"
+          v-if="editing"
+          class="chrome-btn tab-icon tab-undo"
           type="button"
-          :disabled="reloadDisabled"
-          :title="reloadTitle"
-          :aria-label="reloadTitle"
-          @click="onReload"
-        >刷新</button>
-        <button
-          class="chrome-btn tab-copy"
-          :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
-          type="button"
-          :disabled="copying"
-          :title="copyTitle"
-          :aria-label="copyTitle"
-          @click="onCopy"
+          :disabled="!canUndo"
+          title="回退"
+          aria-label="回退"
+          @click="onUndo"
         >
-          <svg v-if="copied" :key="copiedTick" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
-          </svg>
-          <!-- 两个错开的圆角矩形，前一张盖住后一张。线宽和打勾同一套。 -->
-          <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
-            <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+          <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6.2 3.4 3 6.6l3.2 3.2" />
+            <path d="M3.2 6.6h6.1a3.3 3.3 0 1 1 0 6.6H8" />
           </svg>
         </button>
+        <button
+          v-if="editing"
+          class="chrome-btn tab-icon tab-redo"
+          type="button"
+          :disabled="!canRedo"
+          title="重做"
+          aria-label="重做"
+          @click="onRedo"
+        >
+          <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M9.8 3.4 13 6.6 9.8 9.8" />
+            <path d="M12.8 6.6H6.7a3.3 3.3 0 1 0 0 6.6H8" />
+          </svg>
+        </button>
+        <button
+          v-if="editing"
+          class="chrome-btn tab-save"
+          type="button"
+          :disabled="!activeDirty || saving"
+          title="保存（Cmd/Ctrl+S）"
+          aria-label="保存"
+          @click="onSave"
+        >保存</button>
         <button
           class="chrome-btn tab-source"
           type="button"
@@ -77,44 +122,87 @@
           :aria-label="sourceTitle"
           :aria-pressed="sourceOpen"
           @click="toggleSource"
-        >源码</button>
+        >
+          <svg v-if="sourceOpen" class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M1.6 8s2.2-3.6 6.4-3.6S14.4 8 14.4 8s-2.2 3.6-6.4 3.6S1.6 8 1.6 8z" />
+            <circle cx="8" cy="8" r="1.6" />
+          </svg>
+          <svg v-else class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6 3.5 2.8 8 6 12.5M10 3.5 13.2 8 10 12.5" />
+          </svg>
+          <span>{{ sourceLabel }}</span>
+        </button>
+        <button
+          class="chrome-btn tab-reload"
+          type="button"
+          :disabled="reloadDisabled"
+          :title="reloadTitle"
+          :aria-label="reloadTitle"
+          @click="onReload"
+        >刷新</button>
+        <button
+          class="chrome-btn tab-edit"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: editing }"
+          :title="editTitle"
+          :aria-label="editTitle"
+          :aria-pressed="editing"
+          @click="toggleEdit"
+        >编辑</button>
         <div
           ref="exportSplitRef"
-          class="export-split"
+          class="actions-split"
           @mouseenter="onExportEnter"
           @mouseleave="onExportLeave"
         >
           <button
-            class="chrome-btn tab-export"
+            class="chrome-btn tab-actions"
             type="button"
-            :disabled="exporting || isSettingsTab"
-            :title="exportOpen ? '' : exportTitle"
-            :aria-label="exportTitle"
+            :title="exportOpen ? '' : actionsTitle"
+            aria-label="菜单"
             aria-haspopup="menu"
             :aria-expanded="exportOpen"
-            aria-controls="export-format-menu"
+            aria-controls="actions-menu"
             @click="onExportButtonClick"
           >
-            <span>导出</span>
-            <span class="export-caret" aria-hidden="true">▾</span>
+            <svg class="actions-dots" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="6" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="18" r="2" />
+            </svg>
           </button>
-          <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
-            <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
-              导出 PDF
-            </button>
-            <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
-              导出 HTML
-            </button>
+          <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="菜单">
+            <button
+              type="button"
+              class="action-item"
+              role="menuitem"
+              data-format="pdf"
+              data-action="pdf"
+              :disabled="exporting || isSettingsTab"
+              @click="onPickExport('pdf')"
+            >导出 PDF</button>
+            <button
+              type="button"
+              class="action-item"
+              role="menuitem"
+              data-format="html"
+              data-action="html"
+              :disabled="exporting || isSettingsTab"
+              @click="onPickExport('html')"
+            >导出 HTML</button>
+            <button
+              class="action-item tab-settings"
+              type="button"
+              role="menuitem"
+              data-action="settings"
+              title="设置（Cmd/Ctrl+,）"
+              aria-label="设置"
+              :class="{ active: isSettingsTab }"
+              @click="onOpenSettings"
+            >设置</button>
           </div>
         </div>
-        <button
-          class="chrome-btn tab-settings"
-          type="button"
-          title="设置（Cmd/Ctrl+,）"
-          aria-label="设置"
-          :class="{ active: isSettingsTab }"
-          @click="onOpenSettings"
-        >设置</button>
       </template>
     </TabBar>
     <div
@@ -133,9 +221,10 @@
       @keydown="onFilesResizeKey"
     />
     <FileTree
+      ref="fileTreeRef"
       :collapsed="fileTreeCollapsed"
       :active-path="activeFilePath"
-      @toggle="toggleFileTree"
+      @chrome="onFileTreeChrome"
     />
     <main class="preview-area">
       <p
@@ -151,6 +240,8 @@
         :appearance="appearance"
         :system-fonts="systemFonts"
         :copy-on-select="copyOnSelect"
+        :word-wrap="wordWrap"
+        :max-open-tabs="maxOpenTabs"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
       />
@@ -180,9 +271,22 @@
           </ul>
         </aside>
         <div class="doc-body">
-          <div v-if="sourceOpen" class="source-pane">
+          <div v-if="isBlankDoc && !sourceOpen && !editing" class="blank-page">
+            <h1 class="welcome-title">{{ WELCOME_TITLE }}</h1>
+            <p class="welcome-lead">{{ WELCOME_LEAD }}</p>
+            <p v-for="line in WELCOME_LINES" :key="line" class="welcome-line">{{ line }}</p>
+          </div>
+          <div v-else-if="editing" class="edit-pane">
+            <p v-if="editNote" class="source-note">{{ editNote }}</p>
+            <div ref="editHost" class="edit-host"></div>
+          </div>
+          <div v-else-if="sourceOpen" class="source-pane">
             <p v-if="sourceNote" class="source-note">{{ sourceNote }}</p>
-            <pre class="source-view" :style="{ fontSize: appearance.fontSize + 'px' }">{{ sourceText }}</pre>
+            <pre
+              ref="sourceViewRef"
+              class="source-view"
+              :style="{ fontSize: appearance.fontSize + 'px' }"
+            >{{ sourceText }}</pre>
           </div>
           <template v-else>
             <div v-if="loading" class="status">加载中…</div>
@@ -197,11 +301,31 @@
               @load="onFrameLoad"
             ></iframe>
           </template>
+          <button
+            class="doc-copy tab-copy"
+            :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
+            type="button"
+            :disabled="copying"
+            :title="copyTitle"
+            :aria-label="copyTitle"
+            @click="onCopy"
+          >
+            <span class="action-icon" :key="copiedTick">
+              <svg v-if="copied" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
+              </svg>
+              <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
+                <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+              </svg>
+            </span>
+          </button>
         </div>
       </template>
       </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
+    <ClickBurstLayer />
   </div>
 </template>
 
@@ -214,7 +338,9 @@ import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
 import { structuredKindFromName } from '../electron/documentKind';
-import { formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import { editingOriginalNote, formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
+import { parseSaveResult } from '../electron/saveResult';
+import { mountSourceEditor, type SourceEditorHandle } from './sourceEditor';
 import {
   parseReloadResult,
   RELOAD_MISSING_TIP,
@@ -223,7 +349,18 @@ import {
   RELOAD_UNREADABLE_TIP,
 } from '../electron/reloadResult';
 import { readBoxCopyPayload } from '../electron/jsonView';
-import { readReaderPrefs } from '../electron/readerPrefs';
+import {
+  PLACE_READ,
+  PLACE_RESTORE,
+  captureSourceAnchor,
+  keepPlace,
+  measureSourceBox,
+  readPlaceAnchor,
+  scrollTopForSource,
+  type PlaceAnchor,
+} from '../electron/viewPlace';
+import { DEFAULT_MAX_OPEN_TABS, readReaderPrefs } from '../electron/readerPrefs';
+import { WELCOME_LEAD, WELCOME_LINES, WELCOME_TITLE } from '../electron/tabs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import { parseSystemFontList } from '../electron/appearance';
@@ -248,6 +385,7 @@ import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
 import TabBar from './TabBar.vue';
+import ClickBurstLayer from './ClickBurstLayer.vue';
 
 const { postMessage, onMessage } = useVSCode();
 
@@ -265,6 +403,7 @@ const isSettingsTab = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.kind === 'settings'
 );
 const frameRef = ref<HTMLIFrameElement | null>(null);
+const sourceViewRef = ref<HTMLElement | null>(null);
 const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
@@ -283,15 +422,22 @@ const appChromeStyle = computed(() => {
 });
 let filesResizeMove: ((ev: PointerEvent) => void) | null = null;
 let filesResizeUp: ((ev: PointerEvent) => void) | null = null;
+const treeCanGoUp = ref(false);
+const treeHasRoot = ref(false);
+const fileTreeRef = ref<{ goUp: () => Promise<void>; refresh: () => Promise<void> } | null>(null);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
+/** 还没装上文件的文档标签。设置页不算。 */
+const isBlankDoc = computed(() => !isSettingsTab.value && !activeFilePath.value);
 const copying = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
 /** 每次成功都 +1，让打勾重新画一遍，连点时动画会再播一次。 */
 const copiedTick = ref(0);
 const copyOnSelect = ref(true);
+const wordWrap = ref(true);
+const maxOpenTabs = ref(DEFAULT_MAX_OPEN_TABS);
 const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -311,39 +457,289 @@ const exportHint = ref('');
 let exportCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let exportHintTimer: ReturnType<typeof setTimeout> | null = null;
 
-const exportTitle = computed(() => {
-  if (isSettingsTab.value) return '设置页不能导出';
+const actionsTitle = computed(() => {
   if (exporting.value) return '正在导出…';
   if (exportHint.value) return exportHint.value;
-  return '导出为 PDF 或 HTML';
+  return '菜单';
 });
 
-/** 每个文档标签各自记住要不要看源码。关掉标签就忘掉。 */
-const sourceByTab = new Map<string, boolean>();
+/**
+ * 每个文档标签各自记住：在看源码还是预览，以及视口上方附近的那一句。
+ * 关掉标签就忘掉。高度两边不一样，所以记的是文字，不是一个像素。
+ */
+interface TabReading {
+  source: boolean;
+  editing: boolean;
+  anchor: PlaceAnchor | null;
+}
+
+const readingByTab = new Map<string, TabReading>();
 const sourceOpen = ref(false);
+/** 切标签或切回预览之后，等正文到了再滚回记下的那一句。 */
+let wantRestore = false;
+let placeBusy = false;
+
+const sourceLabel = computed(() => (sourceOpen.value ? '预览' : '源码'));
 
 const sourceTitle = computed(() => {
   if (isSettingsTab.value) return '设置页没有源码';
-  return sourceOpen.value ? '返回预览' : '查看源码';
+  return sourceOpen.value ? '预览' : '查看源码';
 });
 
 const sourceText = computed(() => formatDocumentSource(markdownContent.value, activeFilePath.value));
 const sourceNote = computed(() => sourceFormatNote(markdownContent.value, activeFilePath.value));
+const editNote = computed(() => editingOriginalNote(activeFilePath.value));
+const editing = ref(false);
+const editHost = ref<HTMLElement | null>(null);
+const canUndo = ref(false);
+const canRedo = ref(false);
+const saving = ref(false);
+const editors = new Map<string, SourceEditorHandle>();
+const activeDirty = computed(
+  () => tabs.value.find((tab) => tab.id === activeTabId.value)?.dirty === true
+);
+const editTitle = computed(() => {
+  if (isSettingsTab.value) return '设置页不能编辑';
+  return editing.value ? '结束编辑' : '编辑原文';
+});
+
+function readingOf(id: string): TabReading {
+  return readingByTab.get(id) ?? { source: false, editing: false, anchor: null };
+}
+
+function putReading(id: string, patch: Partial<TabReading>): void {
+  if (!id) return;
+  readingByTab.set(id, { ...readingOf(id), ...patch });
+}
 
 function syncSourceOpen(): void {
   if (isSettingsTab.value || !activeTabId.value) {
     sourceOpen.value = false;
+    editing.value = false;
     return;
   }
-  sourceOpen.value = sourceByTab.get(activeTabId.value) === true;
+  sourceOpen.value = readingOf(activeTabId.value).source;
+  editing.value = readingOf(activeTabId.value).editing && !sourceOpen.value;
 }
 
-function toggleSource(): void {
+function refreshHistory(editor: SourceEditorHandle | undefined): void {
+  const history = editor?.history() ?? { canUndo: false, canRedo: false };
+  canUndo.value = history.canUndo;
+  canRedo.value = history.canRedo;
+}
+
+function onEditorChange(text: string, history: { canUndo: boolean; canRedo: boolean }): void {
+  canUndo.value = history.canUndo;
+  canRedo.value = history.canRedo;
+  if (text === markdownContent.value) return;
+  markdownContent.value = text;
+  postMessage({ type: 'CONTENT_CHANGE', payload: { content: text, version: Date.now() } });
+}
+
+/** 把当前标签的编辑器接到页面上。正文若从磁盘换过，就新建一份，撤销步骤清空。 */
+function syncEditor(focus: boolean): void {
+  const host = editHost.value;
+  const id = activeTabId.value;
+  if (!editing.value || !host || !id) return;
+  for (const [otherId, other] of editors) {
+    if (otherId !== id) other.dom.remove();
+  }
+  let editor = editors.get(id);
+  const same = editor && editor.getContent() === markdownContent.value;
+  if (!editor || !same) {
+    editor?.destroy();
+    editor = mountSourceEditor(
+      host,
+      markdownContent.value,
+      appearance.value.fontSize,
+      onEditorChange,
+      wordWrap.value
+    );
+    editors.set(id, editor);
+    if (focus) editor.focus();
+  } else if (editor.dom.parentElement !== host) {
+    host.appendChild(editor.dom);
+    if (focus) editor.focus();
+  }
+  refreshHistory(editor);
+}
+
+function destroyEditor(id: string): void {
+  editors.get(id)?.destroy();
+  editors.delete(id);
+}
+
+async function leaveEdit(): Promise<boolean> {
+  if (!editing.value || !activeTabId.value) return true;
+  const id = activeTabId.value;
+  const api = electronApp();
+  const settled = api?.settleEdits ? await api.settleEdits() : 'clean';
+  if (settled === 'cancel') return false;
+  editors.get(id)?.dom.remove();
+  putReading(id, { editing: false });
+  if (activeTabId.value === id) editing.value = false;
+  requestPreview();
+  return true;
+}
+
+async function toggleEdit(): Promise<void> {
+  closeExportMenu();
   if (isSettingsTab.value || !activeTabId.value) return;
-  const next = !sourceOpen.value;
-  sourceByTab.set(activeTabId.value, next);
-  sourceOpen.value = next;
-  console.info('[markly] 切换源码', { open: next, file: activeFilePath.value });
+  const id = activeTabId.value;
+  if (editing.value) {
+    await leaveEdit();
+    return;
+  }
+  if (sourceOpen.value) {
+    putReading(id, { source: false, editing: true });
+    sourceOpen.value = false;
+  } else {
+    putReading(id, { editing: true });
+  }
+  editing.value = true;
+  console.info('[markly] 进入编辑', { file: activeFilePath.value });
+  await nextTick();
+  syncEditor(true);
+}
+
+function onUndo(): void {
+  const editor = editors.get(activeTabId.value);
+  if (!editing.value || !editor) return;
+  editor.undo();
+}
+
+function onRedo(): void {
+  const editor = editors.get(activeTabId.value);
+  if (!editing.value || !editor) return;
+  editor.redo();
+}
+
+async function onSave(): Promise<void> {
+  if (!editing.value || saving.value) return;
+  const api = electronApp();
+  if (!api?.saveDocument) {
+    showReloadTip('unreadable', '没能保存，屏幕上的字还在', false);
+    return;
+  }
+  saving.value = true;
+  try {
+    const result = parseSaveResult(await api.saveDocument());
+    console.info('[markly] 保存', { ok: result.ok, file: activeFilePath.value });
+    if (result.ok) showReloadTip('ok', '已保存', true);
+    else if (result.reason === 'failed') showReloadTip('unreadable', result.message || '没能保存，屏幕上的字还在', false);
+    else if (result.reason === 'reloaded') showReloadTip('unreadable', result.message || '已重新打开磁盘上的版本', false);
+  } catch (err) {
+    showReloadTip('unreadable', '没能保存，屏幕上的字还在', false);
+    console.warn('[markly] 保存失败', err);
+  } finally {
+    saving.value = false;
+  }
+}
+
+function captureSourceNow(): PlaceAnchor | null {
+  const pre = sourceViewRef.value;
+  if (!pre) return null;
+  return captureSourceAnchor(sourceText.value, pre.scrollTop, measureSourceBox(pre));
+}
+
+/** 问预览现在看到哪。沙箱读不到正文，等它回一句；没回就当还在文首。 */
+function capturePreviewAnchor(): Promise<PlaceAnchor> {
+  const frame = frameRef.value;
+  const win = frame?.contentWindow ?? null;
+  if (!frame || !win) return Promise.resolve({ snippet: '', ratio: 0 });
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (anchor: PlaceAnchor) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', onMsg);
+      clearTimeout(timer);
+      resolve(anchor);
+    };
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.source !== win) return;
+      const anchor = readPlaceAnchor(ev.data);
+      if (!anchor) return;
+      finish(anchor);
+    };
+    window.addEventListener('message', onMsg);
+    const timer = setTimeout(() => finish({ snippet: '', ratio: 0 }), 100);
+    try {
+      win.postMessage({ type: PLACE_READ }, '*');
+    } catch {
+      finish({ snippet: '', ratio: 0 });
+    }
+  });
+}
+
+async function captureCurrentAnchor(): Promise<PlaceAnchor> {
+  if (sourceOpen.value) return captureSourceNow() ?? { snippet: '', ratio: 0 };
+  return capturePreviewAnchor();
+}
+
+function applySourceScroll(anchor: PlaceAnchor | null): void {
+  const pre = sourceViewRef.value;
+  if (!pre || !anchor) return;
+  const top = scrollTopForSource(sourceText.value, anchor, measureSourceBox(pre));
+  pre.scrollTop = top;
+  console.info('[markly] 源码停在原处', { top, snippet: anchor.snippet });
+}
+
+function postPreviewRestore(anchor: PlaceAnchor | null): boolean {
+  const win = frameRef.value?.contentWindow;
+  if (!win || !anchor) return false;
+  try {
+    win.postMessage({ type: PLACE_RESTORE, snippet: anchor.snippet, ratio: anchor.ratio }, '*');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restoreArmedSource(): void {
+  if (!wantRestore || !sourceOpen.value) return;
+  const id = activeTabId.value;
+  const anchor = readingOf(id).anchor;
+  wantRestore = false;
+  void nextTick(() => {
+    if (activeTabId.value !== id || !sourceOpen.value) return;
+    applySourceScroll(anchor);
+  });
+}
+
+async function rememberActivePlace(): Promise<void> {
+  const id = activeTabId.value;
+  if (!id || isSettingsTab.value) return;
+  const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+  putReading(id, { source: sourceOpen.value, anchor });
+}
+
+async function toggleSource(): Promise<void> {
+  if (placeBusy || isSettingsTab.value || !activeTabId.value) return;
+  if (editing.value) {
+    const stayed = !(await leaveEdit());
+    if (stayed) return;
+  }
+  const id = activeTabId.value;
+  placeBusy = true;
+  try {
+    const anchor = keepPlace(await captureCurrentAnchor(), readingOf(id).anchor);
+    const next = !sourceOpen.value;
+    putReading(id, { source: next, anchor });
+    sourceOpen.value = next;
+    console.info('[markly] 切换源码', { open: next, file: activeFilePath.value, snippet: anchor.snippet });
+    await nextTick();
+    if (activeTabId.value !== id) return;
+    if (next) applySourceScroll(anchor);
+    else {
+      wantRestore = true;
+      if (!postPreviewRestore(anchor)) {
+        /* 预览框还没画出来，等它加载完再滚。 */
+      }
+    }
+  } finally {
+    placeBusy = false;
+  }
 }
 
 const reloading = ref(false);
@@ -360,7 +756,7 @@ const reloadTitle = computed(() => {
 interface ReloadTip {
   tabId: string;
   seq: number;
-  kind: 'ok' | 'missing' | 'unreadable';
+  kind: 'ok' | 'missing' | 'unreadable' | 'warn';
   text: string;
 }
 
@@ -393,6 +789,7 @@ function showReloadTip(kind: ReloadTip['kind'], text: string, autoHide: boolean)
 }
 
 async function onReload(): Promise<void> {
+  closeExportMenu();
   if (reloadDisabled.value || !activeTabId.value) return;
   const api = electronApp();
   const tabId = activeTabId.value;
@@ -406,8 +803,11 @@ async function onReload(): Promise<void> {
     const result = parseReloadResult(await api.reloadDocument());
     if (activeTabId.value !== tabId) return;
     console.info('[markly] 重新加载', { ok: result.ok, reason: result.ok ? '' : result.reason, file: activeFilePath.value });
-    if (result.ok) showReloadTip('ok', RELOAD_OK_TIP, true);
-    else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
+    if (!result.ok && result.reason === 'cancelled') return;
+    if (result.ok) {
+      destroyEditor(tabId);
+      showReloadTip('ok', RELOAD_OK_TIP, true);
+    } else if (result.reason === 'missing') showReloadTip('missing', RELOAD_MISSING_TIP, false);
     else if (result.reason === 'unreadable') showReloadTip('unreadable', RELOAD_UNREADABLE_TIP, false);
   } catch (err) {
     if (activeTabId.value !== tabId) return;
@@ -439,6 +839,11 @@ const hasOutline = computed(
 );
 
 function jumpToHeading(headingId: string): void {
+  if (editing.value) {
+    const item = outline.value.find((heading) => heading.id === headingId);
+    if (item) editors.get(activeTabId.value)?.reveal(item.from);
+    return;
+  }
   frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
 }
 
@@ -452,6 +857,17 @@ const previewCache = new Map<string, { content: string; html: string }>();
 
 function applyTabsView(raw: unknown): void {
   const view = parseTabsView(raw);
+  const leaving = activeTabId.value;
+  const arriving = view.activeId;
+  const switched = Boolean(leaving && leaving !== arriving);
+  if (leaving && leaving !== arriving) {
+    if (!isSettingsTab.value) {
+      const sync = sourceOpen.value ? captureSourceNow() : null;
+      if (sync) putReading(leaving, { source: sourceOpen.value, anchor: sync });
+      else putReading(leaving, { source: sourceOpen.value });
+    }
+    wantRestore = true;
+  }
   tabs.value = view.tabs;
   activeTabId.value = view.activeId;
   // 关掉的标签不再占着缓存
@@ -459,14 +875,20 @@ function applyTabsView(raw: unknown): void {
   for (const id of [...previewCache.keys()]) {
     if (!alive.has(id)) previewCache.delete(id);
   }
-  for (const id of [...sourceByTab.keys()]) {
-    if (!alive.has(id)) sourceByTab.delete(id);
+  for (const id of [...readingByTab.keys()]) {
+    if (!alive.has(id)) readingByTab.delete(id);
+  }
+  for (const id of [...editors.keys()]) {
+    if (!alive.has(id)) destroyEditor(id);
+    else if (switched) editors.get(id)?.dom.remove();
   }
   if (reloadTip.value && !alive.has(reloadTip.value.tabId)) {
     reloadTip.value = null;
     clearReloadTipTimer();
   }
   syncSourceOpen();
+  // 换标签时正文还是上一份，等 CONTENT_UPDATE 到了再接编辑器，避免把撤销步骤清掉。
+  if (editing.value && !switched) void nextTick(() => syncEditor(false));
 }
 
 /** 把所选配色写成根节点上的 CSS 变量，外壳（顶栏/标签条/侧栏/设置页）据此变色。 */
@@ -511,27 +933,54 @@ async function onUpdateAppearance(patch: Partial<AppearanceState>): Promise<void
 
 function refreshReaderPrefs(): void {
   try {
-    copyOnSelect.value = readReaderPrefs(electronApp()?.getReaderPrefs?.() ?? {}).copyOnSelect;
+    const prefs = readReaderPrefs(electronApp()?.getReaderPrefs?.() ?? {});
+    copyOnSelect.value = prefs.copyOnSelect;
+    wordWrap.value = prefs.wordWrap;
+    maxOpenTabs.value = prefs.maxOpenTabs;
   } catch {
     copyOnSelect.value = true;
+    wordWrap.value = true;
+    maxOpenTabs.value = DEFAULT_MAX_OPEN_TABS;
   }
 }
 
-async function onUpdateReader(patch: { copyOnSelect: boolean }): Promise<void> {
+async function onUpdateReader(patch: {
+  copyOnSelect?: boolean;
+  wordWrap?: boolean;
+  maxOpenTabs?: number;
+}): Promise<void> {
   const api = electronApp();
+  const apply = (prefs: { copyOnSelect: boolean; wordWrap: boolean; maxOpenTabs: number }): void => {
+    copyOnSelect.value = prefs.copyOnSelect;
+    wordWrap.value = prefs.wordWrap;
+    maxOpenTabs.value = prefs.maxOpenTabs;
+  };
   if (!api?.updateReaderPrefs) {
-    copyOnSelect.value = patch.copyOnSelect;
-    return;
+    apply({
+      copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
+      wordWrap: patch.wordWrap ?? wordWrap.value,
+      maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+    });
+  } else {
+    try {
+      apply(readReaderPrefs(await api.updateReaderPrefs(patch)));
+    } catch (err) {
+      console.warn('[markly] 保存阅读设置失败', err);
+      apply({
+        copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
+        wordWrap: patch.wordWrap ?? wordWrap.value,
+        maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+      });
+    }
   }
-  try {
-    copyOnSelect.value = readReaderPrefs(await api.updateReaderPrefs(patch)).copyOnSelect;
-  } catch (err) {
-    console.warn('[markly] 保存「选择即复制」失败', err);
-    copyOnSelect.value = patch.copyOnSelect;
+  if (patch.wordWrap !== undefined) {
+    previewCache.clear();
+    requestPreview();
   }
 }
 
 function onOpenSettings(): void {
+  closeExportMenu();
   closeRecent();
   void electronApp()?.openSettingsTab?.();
 }
@@ -544,9 +993,15 @@ function refreshTabs(): void {
   }
 }
 
-function onActivateTab(id: string): void {
+async function onActivateTab(id: string): Promise<void> {
   closeRecent();
-  if (id === activeTabId.value) return;
+  if (id === activeTabId.value || placeBusy) return;
+  placeBusy = true;
+  try {
+    await rememberActivePlace();
+  } finally {
+    placeBusy = false;
+  }
   void electronApp()?.activateTab?.(id);
 }
 
@@ -575,6 +1030,10 @@ function toggleOutline(): void {
 
 function toggleFileTree(): void {
   fileTreeCollapsed.value = !fileTreeCollapsed.value;
+  if (fileTreeCollapsed.value) {
+    closeRecent();
+    stopFilesResize();
+  }
   try {
     electronApp()?.storeSet?.('fileTreeCollapsed', fileTreeCollapsed.value);
   } catch {
@@ -643,6 +1102,19 @@ function onFilesResizeKey(ev: KeyboardEvent): void {
   persistFileTreeWidth();
 }
 
+function onFileTreeChrome(state: { canGoUp: boolean; hasRoot: boolean }): void {
+  treeCanGoUp.value = state.canGoUp;
+  treeHasRoot.value = state.hasRoot;
+}
+
+function onGoUp(): void {
+  void fileTreeRef.value?.goUp();
+}
+
+function onRefreshTree(): void {
+  void fileTreeRef.value?.refresh();
+}
+
 function closeRecent(): void {
   recentOpen.value = false;
 }
@@ -662,7 +1134,6 @@ function closeExportMenu(): void {
 
 /** 悬停就展开；离开后稍等再收起，给鼠标挪进菜单的时间。点击钉住的菜单不随鼠标离开关闭。 */
 function onExportEnter(): void {
-  if (exporting.value || isSettingsTab.value) return;
   clearExportCloseTimer();
   closeRecent();
   exportOpen.value = true;
@@ -679,7 +1150,6 @@ function onExportLeave(): void {
 
 /** 点击同样展开；已经钉住时再点一下收起。 */
 function onExportButtonClick(): void {
-  if (exporting.value || isSettingsTab.value) return;
   clearExportCloseTimer();
   if (exportPinned.value) {
     closeExportMenu();
@@ -710,6 +1180,9 @@ async function onPickExport(format: AppExportFormat): Promise<void> {
     return;
   }
   if (exporting.value || isSettingsTab.value) return;
+  if (activeDirty.value) {
+    showReloadTip('warn', '导出的是还没保存的修改，文件本身还没变。', true);
+  }
   exporting.value = true;
   try {
     const result = parseExportResult(await api.exportDocument(format));
@@ -905,6 +1378,10 @@ async function onCopy(): Promise<void> {
 function onFrameLoad(): void {
   const frame = frameRef.value;
   if (!frame) return;
+  if (wantRestore && !sourceOpen.value) {
+    const anchor = readingOf(activeTabId.value).anchor;
+    if (!anchor || postPreviewRestore(anchor)) wantRestore = false;
+  }
   try {
     const doc = frame.contentDocument;
     if (!doc) return;
@@ -956,6 +1433,8 @@ const off = onMessage((msg: ExtensionMessage) => {
     case 'CONTENT_UPDATE':
       markdownContent.value = msg.payload.content ?? '';
       requestPreview();
+      restoreArmedSource();
+      if (editing.value) void nextTick(() => syncEditor(false));
       break;
     case 'PREVIEW_HTML':
       if (msg.payload.error) {
@@ -987,12 +1466,42 @@ const offCopyRequest = electronApp()?.onCopyRequest?.(() => {
   void onCopy();
 });
 
+const offEditCommand = electronApp()?.onEditCommand?.((command) => {
+  if (command === 'save') {
+    if (editing.value) void onSave();
+    return;
+  }
+  if (command !== 'undo' && command !== 'redo') return;
+  const editor = editors.get(activeTabId.value);
+  if (editing.value && editor) {
+    if (command === 'undo') editor.undo();
+    else editor.redo();
+    return;
+  }
+  document.execCommand(command);
+});
+
 const offTabsChanged = electronApp()?.onTabsChanged?.((view) => {
   applyTabsView(view);
 });
 
 watch(isSettingsTab, (isSettings) => {
   if (isSettings) closeExportMenu();
+});
+
+watch(editing, (on) => {
+  electronApp()?.setEditing?.(on);
+});
+
+watch(
+  () => appearance.value.fontSize,
+  (px) => {
+    editors.get(activeTabId.value)?.setFontSize(px);
+  }
+);
+
+watch(wordWrap, (on) => {
+  for (const editor of editors.values()) editor.setWordWrap(on);
 });
 
 onMounted(() => {
@@ -1032,7 +1541,9 @@ onMounted(() => {
 onUnmounted(() => {
   off();
   offCopyRequest?.();
+  offEditCommand?.();
   offTabsChanged?.();
+  for (const id of [...editors.keys()]) destroyEditor(id);
   window.removeEventListener('message', onSelectionCopyMessage);
   window.removeEventListener('pointerdown', onDocPointerDown, true);
   document.removeEventListener('mousedown', onDocPointerDown);
@@ -1067,32 +1578,35 @@ onUnmounted(() => {
 html, body, #app {
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
   overflow: hidden;
 }
 .markly-app {
-  --files-col: 220px;
+  /* 打开和上一级、刷新目录、收起要排在同一栏，220 会挤出去盖住标签。 */
+  --files-col: 260px;
   --chrome-row: 40px;
   /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   display: grid;
-  grid-template-columns: var(--files-col) 1fr;
-  grid-template-rows: var(--chrome-row) 1fr;
+  /* 1fr 实际是 minmax(auto, 1fr)。内容一宽或文件树一长，整页就会被撑开，
+     横向滚动条从文件树底下一直拉到正文。写成 minmax(0, 1fr)，两边各自滚。 */
+  grid-template-columns: var(--files-col) minmax(0, 1fr);
+  grid-template-rows: var(--chrome-row) minmax(0, 1fr);
+  width: 100%;
   height: 100%;
-  min-height: 0;
   margin: 0;
   overflow: hidden;
 }
-.markly-app.files-collapsed { --files-col: 40px; }
+/* 收起后树和「打开」都拿掉，这一列只留展开箭头，宽度跟着这颗按钮走。 */
+.markly-app.files-collapsed { --files-col: max-content; }
 .markly-app.is-resizing {
   cursor: col-resize;
   user-select: none;
 }
 .markly-app.is-resizing iframe { pointer-events: none; }
-/* 标签栏钉在第一行。正文再长也只在下面滚，窗口本身不出滚动条。 */
 .markly-app > .tab-bar {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 20;
   grid-column: 2;
   grid-row: 1;
@@ -1125,30 +1639,80 @@ html, body, #app {
 .markly-app.is-resizing .files-resize::after {
   background: var(--markly-primary, #0969da);
 }
-/* 打开按钮留在文件树正上方。标签从文件树右缘开始，底边和正文连成一块 */
+/* 打开按钮留在文件树正上方，右边是目录操作。标签从文件树右缘开始。 */
 .open-rail {
   grid-column: 1;
   grid-row: 1;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
   min-height: 40px;
+  overflow: hidden;
   padding: 0 8px;
   box-sizing: border-box;
   background: var(--markly-surface, #f6f8fa);
   border-right: 1px solid var(--markly-border-color, #d0d7de);
   border-bottom: 1px solid var(--markly-border-color, #d0d7de);
 }
-.markly-app.files-collapsed .open-label { display: none; }
-.markly-app.files-collapsed .open-main::before { content: '开'; }
-.markly-app.files-collapsed .open-caret { display: none; }
-.markly-app.files-collapsed .open-main {
+.file-tree-chrome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.file-icon-btn,
+.file-toggle {
+  box-sizing: border-box;
+  border: 1px solid var(--markly-border-color, #d0d7de);
   border-radius: var(--app-radius-sm);
-  min-width: 28px;
-  padding: 0 6px;
+  background: var(--markly-background, #fff);
+  color: var(--markly-text, #24292e);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.3;
+  height: 32px;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+/* 几乎方的小图标。宽的「刷新目录」仍用上面的 12px。高度跟打开按钮对齐。 */
+.file-up,
+.file-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-xxs);
+  width: 32px;
+  padding: 0;
+}
+.file-up-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  overflow: visible;
+}
+.file-up-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.file-icon-btn:hover,
+.file-toggle:hover {
+  background: var(--markly-surface, #f6f8fa);
+}
+.file-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.markly-app.files-collapsed .open-rail {
+  justify-content: center;
+  min-width: 0;
+  gap: 0;
+  padding: 0 4px;
 }
 .chrome-btn {
   font-size: 12px;
@@ -1164,6 +1728,31 @@ html, body, #app {
 }
 .chrome-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .chrome-btn:disabled { opacity: 0.55; cursor: default; }
+/* 按下时略缩一下，表示点到了。水波是画在上面的细圈，不改按钮上的字。 */
+.chrome-btn,
+.file-icon-btn,
+.file-toggle,
+.tab-new,
+.tab-close,
+.doc-outline-toggle {
+  transition: transform 90ms ease-out;
+}
+.chrome-btn:active:not(:disabled),
+.file-icon-btn:active:not(:disabled),
+.file-toggle:active:not(:disabled),
+.tab-new:active,
+.tab-close:active,
+.doc-outline-toggle:active {
+  transform: scale(0.96);
+}
+.doc-copy:active:not(:disabled) {
+  transform: scale(0.96);
+}
+/* 打开是左右拼在一起的，一缩接缝就会裂开。 */
+.chrome-btn.open-main:active,
+.chrome-btn.open-caret:active {
+  transform: none;
+}
 .chrome-btn.active {
   border-color: var(--markly-primary, #0969da);
   color: var(--markly-primary, #0969da);
@@ -1200,39 +1789,44 @@ html, body, #app {
   padding: 6px 10px;
   min-width: 32px;
 }
-/* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
-.tab-reload {
+.tab-source,
+.tab-save,
+.tab-reload,
+.tab-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   align-self: center;
-  flex-shrink: 0;
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
-  margin-right: 4px;
   font-size: 12px;
 }
-.tab-copy {
+.tab-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   align-self: center;
-  flex-shrink: 0;
   width: 28px;
   min-width: 28px;
   height: 26px;
   min-height: 26px;
   padding: 0;
-  margin-right: 4px;
-  font-size: 14px;
-  line-height: 1;
 }
-.tab-source {
-  align-self: center;
-  flex-shrink: 0;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  margin-right: 4px;
-  font-size: 12px;
+.tab-icon:disabled { opacity: 0.4; cursor: default; }
+.chrome-glyph {
+  width: 15px;
+  height: 15px;
+  display: block;
+  overflow: visible;
+}
+.chrome-glyph path,
+.chrome-glyph circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .tab-copy:disabled { opacity: 0.55; }
 .tab-copy.is-copied {
@@ -1284,73 +1878,113 @@ html, body, #app {
     animation: none;
     stroke-dashoffset: 0;
   }
+  .chrome-btn,
+  .file-icon-btn,
+  .file-toggle,
+  .tab-new,
+  .tab-close,
+  .doc-outline-toggle {
+    transition: none;
+  }
+  .chrome-btn:active,
+  .file-icon-btn:active,
+  .file-toggle:active,
+  .tab-new:active,
+  .tab-close:active,
+  .doc-outline-toggle:active,
+  .doc-copy:active {
+    transform: none;
+  }
 }
-/* 导出：紧挨复制，悬停或点击展开 PDF / HTML */
-.export-split {
+/* 最右侧三个竖点。菜单按最长一行自己定宽，右对齐浮在按钮下面。 */
+.actions-split {
   position: relative;
   align-self: center;
-  flex-shrink: 0;
-  display: flex;
-  margin-right: 4px;
+  display: inline-flex;
 }
-.export-split::after {
+.actions-split::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   top: 100%;
-  height: 8px;
+  height: 10px;
 }
-.tab-export {
+.tab-actions {
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-pill);
+  background: transparent;
 }
-.tab-settings {
-  align-self: center;
-  flex-shrink: 0;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  margin-right: 4px;
-  font-size: 12px;
+.tab-actions:hover,
+.actions-split:has(.actions-menu) .tab-actions,
+.actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(31, 35, 40, 0.08);
 }
-.export-caret {
-  font-size: 10px;
-  line-height: 1;
-  opacity: 0.75;
+:global(html[data-theme='dark']) .tab-actions:hover,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
-.export-menu {
+.actions-dots {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+}
+.actions-dots circle { fill: currentColor; }
+.actions-split:has(.actions-menu) {
+  z-index: 40;
+}
+.actions-menu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
+  left: auto;
   z-index: 30;
-  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  width: max-content;
   margin: 0;
-  padding: 6px;
+  padding: 6px 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
   border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
-  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.18);
+  overflow: hidden;
 }
-.export-item {
-  display: block;
-  width: 100%;
+.action-item {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
+  box-sizing: border-box;
   text-align: left;
+  white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
-  line-height: 1.4;
-  padding: 7px 12px;
-  border-radius: var(--app-radius-sm);
+  line-height: 1.35;
+  padding: 8px 16px;
+  border-radius: 0;
   cursor: pointer;
 }
-.export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.action-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.action-item:disabled { opacity: 0.45; cursor: default; }
+.action-item.active { color: var(--markly-primary, #0969da); }
 
 .preview-area {
   grid-column: 2;
@@ -1374,9 +2008,7 @@ html, body, #app {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
-  overflow: auto;
+  height: auto;
 }
 .reload-tip {
   flex: 0 0 auto;
@@ -1393,7 +2025,8 @@ html, body, #app {
   border-bottom-color: #aceebb;
 }
 .reload-tip.is-missing,
-.reload-tip.is-unreadable {
+.reload-tip.is-unreadable,
+.reload-tip.is-warn {
   color: #7d4e00;
   background: #fff8c5;
   border-bottom-color: #eac54f;
@@ -1404,7 +2037,8 @@ html, body, #app {
   border-bottom-color: rgba(63, 185, 80, 0.4);
 }
 :global(html[data-theme='dark']) .reload-tip.is-missing,
-:global(html[data-theme='dark']) .reload-tip.is-unreadable {
+:global(html[data-theme='dark']) .reload-tip.is-unreadable,
+:global(html[data-theme='dark']) .reload-tip.is-warn {
   color: #d29922;
   background: rgba(210, 153, 34, 0.18);
   border-bottom-color: rgba(210, 153, 34, 0.45);
@@ -1499,15 +2133,95 @@ html, body, #app {
   overflow: hidden;
   background: var(--markly-background, #fff);
 }
+.doc-copy {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  transition: transform 90ms ease-out;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm);
+  background: color-mix(in srgb, var(--markly-background, #fff) 92%, transparent);
+  color: var(--markly-textSecondary, #57606a);
+  cursor: pointer;
+}
+.doc-copy:hover { background: var(--markly-surfaceHover, #eaeef2); color: var(--markly-text, #24292e); }
+@media (prefers-reduced-motion: reduce) {
+  .doc-copy { transition: none; }
+  .doc-copy:active { transform: none; }
+}
 .preview-frame {
   position: absolute;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
   border: 0;
   background: var(--markly-background, #fff);
 }
 /* 源码用等宽字体，不套预览正文的思源黑体。字号跟阅读设置走。 */
+.blank-page {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 56px 64px;
+  min-width: 0;
+  min-height: 0;
+}
+.welcome-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--markly-text, #1f2328);
+}
+.welcome-lead,
+.welcome-line {
+  margin: 0;
+  max-width: 36em;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--markly-textSecondary, #57606a);
+}
+.welcome-lead {
+  font-size: 16px;
+  color: var(--markly-text, #1f2328);
+}
+.edit-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--markly-background, #fff);
+}
+.edit-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.edit-host :deep(.source-editor-mount),
+.edit-host :deep(.cm-editor) {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+}
+.edit-host :deep(.cm-scroller) {
+  max-width: 100%;
+  overflow: auto;
+}
 .source-pane {
   position: absolute;
   inset: 0;
@@ -1531,6 +2245,8 @@ html, body, #app {
   margin: 0;
   padding: 16px 20px;
   overflow: auto;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   box-sizing: border-box;
   white-space: pre;
@@ -1539,6 +2255,12 @@ html, body, #app {
   line-height: 1.55;
   color: var(--markly-text, #24292e);
   background: var(--markly-background, #fff);
+}
+.markly-app.word-wrap .source-view {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
 }
 .selection-toast {
   position: absolute;

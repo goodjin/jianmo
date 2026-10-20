@@ -7,9 +7,16 @@
  * 跨桌面时不能带 visibleOnFullScreen。那个选项会让窗口变成「全屏辅助」：
  * 铺满整块屏幕，但没有进入全屏。标题栏钻进菜单栏，底部被程序坞挡住，
  * 关闭和缩小都点不到，程序坞里也可能没有图标。
+ * 同时必须跳过进程类型切换，否则系统会把应用当成菜单栏小工具，图标从程序坞消失。
  */
 
 import { isCoveringSystemChrome, restoredFrame, type DisplayFrame, type Rect } from './windowFrame';
+
+/** 不铺满屏幕，也不把应用改成菜单栏小工具。 */
+const KEEP_IN_DOCK = {
+  visibleOnFullScreen: false,
+  skipTransformProcessType: true,
+} as const;
 
 export interface RevealableWindow {
   isMinimized(): boolean;
@@ -22,12 +29,15 @@ export interface RevealableWindow {
   getBounds?: () => Rect;
   setBounds?: (bounds: Rect) => void;
   /** 把窗口短暂放到所有桌面，再收回当前桌面，否则它会停在别的空间里。 */
-  setVisibleOnAllWorkspaces?(visible: boolean, options?: { visibleOnFullScreen?: boolean }): void;
+  setVisibleOnAllWorkspaces?(
+    visible: boolean,
+    options?: { visibleOnFullScreen?: boolean; skipTransformProcessType?: boolean }
+  ): void;
   moveTop?(): void;
 }
 
 export interface RevealableApp {
-  focus(options?: { steal?: boolean }): void;
+  focus(options?: { steal: boolean }): void;
   /** macOS：保证图标出现在程序坞。跨桌面之后系统有时会把它拿掉。 */
   showDock?: () => void;
 }
@@ -74,10 +84,9 @@ export function revealAppWindow(
   const before = win.getBounds?.() ?? null;
   // 已经在真正全屏里时，不要再改集合行为，否则会把全屏拆掉。
   if (!inRealFullscreen(win) && typeof win.setVisibleOnAllWorkspaces === 'function') {
-    // visibleOnFullScreen 必须是 false。设成 true 会留下全屏辅助状态，窗口被拉成整屏。
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
+    win.setVisibleOnAllWorkspaces(true, KEEP_IN_DOCK);
     win.focus();
-    win.setVisibleOnAllWorkspaces(false, { visibleOnFullScreen: false });
+    win.setVisibleOnAllWorkspaces(false, KEEP_IN_DOCK);
   }
   win.moveTop?.();
   host.showDock?.();
@@ -152,7 +161,7 @@ export interface ExternalFileOpenDeps {
   appReady: boolean;
   hasLiveWindow: boolean;
   queueFile: (filePath: string) => void;
-  loadFile: (filePath: string) => void;
+  loadFile: (filePath: string) => void | Promise<void>;
   createWindow: () => void;
   emitActiveDocument: () => void;
   revealWindow: () => void;
@@ -163,10 +172,22 @@ export function handleExternalFileOpen(filePath: string, deps: ExternalFileOpenD
     deps.queueFile(filePath);
     return 'queued';
   }
-  deps.loadFile(filePath);
-  if (!deps.hasLiveWindow) deps.createWindow();
-  deps.emitActiveDocument();
-  deps.revealWindow();
+  const loaded = deps.loadFile(filePath);
+  const finish = (): void => {
+    if (!deps.hasLiveWindow) deps.createWindow();
+    deps.emitActiveDocument();
+    deps.revealWindow();
+  };
+  // 要先问未保存时，读文件是异步的。等它结束再刷新，避免窗口先画出旧正文。
+  if (loaded && typeof (loaded as Promise<void>).then === 'function') {
+    if (!deps.hasLiveWindow) deps.createWindow();
+    void (loaded as Promise<void>).then(() => {
+      deps.emitActiveDocument();
+      deps.revealWindow();
+    });
+    return 'opened';
+  }
+  finish();
   return 'opened';
 }
 

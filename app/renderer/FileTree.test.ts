@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, type App } from 'vue';
 import FileTree from './FileTree.vue';
-import fileTreeSource from './FileTree.vue?raw';
-import { chromeRadiusStyle } from '../chromeRadius';
 import type { ElectronAppBridge } from './electronBridge';
 import type { FileTreeListResult } from '../electron/fileTreeModel';
 
-let mounted: { app: App; el: HTMLElement } | null = null;
+interface FileTreeApi {
+  goUp: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+let mounted: { app: App; el: HTMLElement; api: FileTreeApi } | null = null;
+let lastChrome = { canGoUp: false, hasRoot: false };
 
 function install(bridge: Partial<ElectronAppBridge>): void {
   (window as unknown as { electron: ElectronAppBridge }).electron = {
@@ -25,9 +29,16 @@ async function flush(): Promise<void> {
 function mount(props: Record<string, unknown> = {}): HTMLElement {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const app = createApp(FileTree, { collapsed: false, activePath: '', ...props });
-  app.mount(el);
-  mounted = { app, el };
+  const app = createApp(FileTree, {
+    collapsed: false,
+    activePath: '',
+    onChrome: (state: { canGoUp: boolean; hasRoot: boolean }) => {
+      lastChrome = state;
+    },
+    ...props,
+  });
+  const api = app.mount(el) as FileTreeApi;
+  mounted = { app, el, api };
   return el;
 }
 
@@ -35,6 +46,7 @@ afterEach(() => {
   mounted?.app.unmount();
   mounted?.el.remove();
   mounted = null;
+  lastChrome = { canGoUp: false, hasRoot: false };
   delete (window as unknown as { electron?: ElectronAppBridge }).electron;
 });
 
@@ -155,7 +167,23 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree).not.toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('me');
     expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/home/me/docs/a.md');
-    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(false);
+    expect(el.querySelector('.file-head')).toBeNull();
+    expect(lastChrome).toEqual({ canGoUp: true, hasRoot: true });
+  });
+
+  it('刷新会重新读取当前目录和已经展开的子目录', async () => {
+    const listFileTree = fakeList();
+    install({ listFileTree });
+    mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+    const before = listFileTree.mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+
+    await mounted!.api.refresh();
+    await flush();
+
+    const again = listFileTree.mock.calls.slice(before).map((call) => call[0]);
+    expect(again).toEqual(expect.arrayContaining(['/', '/docs', '/docs/notes']));
   });
 
   it('向上按钮跳到父目录并记住，到磁盘根后按钮禁用', async () => {
@@ -169,15 +197,14 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     const el = mount({ activePath: '' });
     await flush();
 
-    const up = el.querySelector('.file-up') as HTMLButtonElement;
-    expect(up.disabled).toBe(false);
-    up.click();
+    expect(lastChrome.canGoUp).toBe(true);
+    await mounted!.api.goUp();
     await flush();
 
     expect(setFileTreeRoot).toHaveBeenCalledWith('/');
     expect(listFileTree).toHaveBeenCalledWith('/');
     expect(el.querySelector('.file-root')!.textContent).toBe('/');
-    expect((el.querySelector('.file-up') as HTMLButtonElement).disabled).toBe(true);
+    expect(lastChrome).toEqual({ canGoUp: false, hasRoot: true });
   });
 
   function menuItems(): HTMLButtonElement[] {
@@ -214,6 +241,7 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
       '在 Finder 打开',
       '复制全路径',
       '复制文件名',
+      '删除',
     ]);
 
     menuItems()[3]!.click();
@@ -232,6 +260,99 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     menuItems()[1]!.click();
     await flush();
     expect(revealInFolder).toHaveBeenCalledWith('/docs/notes/b.md');
+  });
+
+  function clickMenu(label: string): void {
+    const btn = menuItems().find((item) => item.textContent === label);
+    expect(btn).toBeTruthy();
+    btn!.click();
+  }
+
+  it('点删除只出现确认，再点移到废纸篓才删掉并刷新目录', async () => {
+    let trashed = false;
+    const listFileTree = vi.fn(async (dir: string) => {
+      if (trashed && dir === '/docs/notes') return { dir, entries: [], error: '' };
+      return TREE[dir] ?? { dir, entries: [], error: '' };
+    });
+    const trashFile = vi.fn(async (filePath: string) => {
+      trashed = true;
+      return { ok: true, path: filePath, error: '' };
+    });
+    install({ listFileTree, trashFile });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    expect(trashFile).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.tree-menu-confirm')?.textContent).toBe('要把「b.md」移到废纸篓吗？');
+
+    clickMenu('取消');
+    await flush();
+    expect(trashFile).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(el.querySelector('[data-path="/docs/notes/b.md"]')).not.toBeNull();
+
+    openFileMenu(el, '/docs/notes/b.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    clickMenu('移到废纸篓');
+    await flush();
+    expect(trashFile).toHaveBeenCalledTimes(1);
+    expect(trashFile).toHaveBeenCalledWith('/docs/notes/b.md');
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(el.querySelector('[data-path="/docs/notes/b.md"]')).toBeNull();
+  });
+
+  it('移到废纸篓失败时留下说明，文件还在', async () => {
+    const trashFile = vi.fn(async (filePath: string) => ({
+      ok: false,
+      path: filePath,
+      error: '文件正在使用',
+    }));
+    install({ listFileTree: fakeList(), trashFile });
+    const el = mount({ activePath: '/docs/a.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    clickMenu('移到废纸篓');
+    await flush();
+
+    expect(trashFile).toHaveBeenCalledWith('/docs/a.md');
+    expect(document.body.querySelector('.tree-menu-error')?.textContent).toBe('文件正在使用');
+    expect(el.querySelector('[data-path="/docs/a.md"]')).not.toBeNull();
+    expect(menuItems().some((btn) => btn.textContent === '移到废纸篓')).toBe(true);
+  });
+
+  it('确认时按 Esc 或点外面会取消，不会删除', async () => {
+    const trashFile = vi.fn(async () => ({ ok: true, path: '/docs/a.md', error: '' }));
+    install({ listFileTree: fakeList(), trashFile });
+    const el = mount({ activePath: '/docs/a.md' });
+    await flush();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(trashFile).not.toHaveBeenCalled();
+
+    openFileMenu(el, '/docs/a.md');
+    await flush();
+    clickMenu('删除');
+    await flush();
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    await flush();
+    expect(document.body.querySelector('.tree-menu')).toBeNull();
+    expect(trashFile).not.toHaveBeenCalled();
   });
 
   it('点菜单外面或按 Esc 会收起；文件夹右键没有这几个菜单', async () => {
@@ -322,42 +443,12 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree.mock.calls.filter((call) => call[0] === '/docs/notes').length).toBeGreaterThan(1);
   });
 
-  it('窄图标按钮用更小的圆角，同一排的文字按钮仍用按钮圆角', async () => {
-    const css = fileTreeSource.match(/<style scoped>([\s\S]*?)<\/style>/);
-    expect(css).not.toBeNull();
-    const style = document.createElement('style');
-    style.textContent = css![1];
-    document.head.appendChild(style);
+  it('收起后不渲染树', async () => {
     install({ listFileTree: fakeList() });
-    const el = mount({ activePath: '' });
-    await flush();
-
-    const radius = (selector: string) =>
-      getComputedStyle(el.querySelector(selector)!).borderRadius;
-    const height = (selector: string) =>
-      getComputedStyle(el.querySelector(selector)!).height;
-
-    try {
-      expect(radius('.file-up')).toBe('var(--app-radius-xxs)');
-      expect(radius('.file-toggle')).toBe('var(--app-radius-xxs)');
-      expect(radius('.file-icon-btn:not(.file-up)')).toBe('var(--app-radius-sm)');
-      expect(chromeRadiusStyle['--app-radius-xxs']).toBe('6px');
-      expect(chromeRadiusStyle['--app-radius-sm']).toBe('12px');
-      expect(height('.file-up')).toBe('28px');
-      expect(height('.file-toggle')).toBe('28px');
-      expect(height('.file-icon-btn:not(.file-up)')).toBe('28px');
-    } finally {
-      style.remove();
-    }
-  });
-
-  it('收起后不渲染树，切换按钮通知外层', async () => {
-    const onToggle = vi.fn();
-    install({ listFileTree: fakeList() });
-    const el = mount({ collapsed: true, activePath: '/docs/notes/b.md', onToggle });
+    const el = mount({ collapsed: true, activePath: '/docs/notes/b.md' });
     await flush();
     expect(el.querySelector('.tree')).toBeNull();
-    (el.querySelector('.file-toggle') as HTMLElement).click();
-    expect(onToggle).toHaveBeenCalled();
+    expect(el.querySelector('.file-root')).toBeNull();
+    expect(el.querySelector('.file-head')).toBeNull();
   });
 });
