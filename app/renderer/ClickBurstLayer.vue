@@ -8,15 +8,23 @@
         :class="{ 'is-rich': burst.rich }"
       >
         <div class="click-ripple-clip" :style="clipStyle(burst)">
-          <div class="click-ripple-origin" :style="originStyle(burst)">
-            <span class="click-wave" :style="rippleStyle(burst)"></span>
-            <span
+          <svg
+            class="click-ripple-svg"
+            :width="burst.rippleDiameter"
+            :height="burst.rippleDiameter"
+            :viewBox="`0 0 ${burst.rippleDiameter} ${burst.rippleDiameter}`"
+            :style="svgStyle(burst)"
+          >
+            <g
               v-for="wave in RIPPLE_WAVES"
               :key="wave.delay"
               class="click-ripple"
-              :style="rippleStyle(burst, wave.portion, wave.delay)"
-            ></span>
-          </div>
+              :style="ringStyle(burst, wave.portion, wave.delay)"
+            >
+              <circle class="click-ripple-halo" :cx="half(burst)" :cy="half(burst)" />
+              <circle class="click-ripple-line" :cx="half(burst)" :cy="half(burst)" />
+            </g>
+          </svg>
         </div>
       </div>
     </div>
@@ -26,8 +34,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
 import {
-  RIPPLE_BASE_PX,
   RIPPLE_WAVES,
+  ringRadius,
   burstFromClick,
   burstFromPointer,
   clearClickBursts,
@@ -45,17 +53,21 @@ function clipStyle(burst: BurstSpec): Record<string, string> {
   };
 }
 
-function originStyle(burst: BurstSpec): Record<string, string> {
+function half(burst: BurstSpec): number {
+  return burst.rippleDiameter / 2;
+}
+
+function svgStyle(burst: BurstSpec): Record<string, string> {
+  const radius = half(burst);
   return {
-    left: `${burst.rippleX - burst.clip.left}px`,
-    top: `${burst.rippleY - burst.clip.top}px`,
+    left: `${burst.rippleX - burst.clip.left - radius}px`,
+    top: `${burst.rippleY - burst.clip.top - radius}px`,
   };
 }
 
-function rippleStyle(burst: BurstSpec, portion = 1, delay = 0): Record<string, string> {
-  const scale = burst.rippleDiameter / RIPPLE_BASE_PX * portion;
+function ringStyle(burst: BurstSpec, portion: number, delay: number): Record<string, string> {
   return {
-    '--ripple-scale': String(scale),
+    '--ring-r': `${ringRadius(burst.rippleDiameter, portion)}px`,
     animationDelay: `${delay}ms`,
   };
 }
@@ -106,48 +118,30 @@ onUnmounted(() => {
   position: fixed;
   overflow: hidden;
 }
-.click-ripple-origin {
+.click-ripple-svg {
   position: absolute;
-  width: 0;
-  height: 0;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
 }
-.click-wave,
-.click-ripple {
-  position: absolute;
-  left: 0;
-  top: 0;
-  box-sizing: border-box;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  border-radius: 50%;
+.click-ripple-halo,
+.click-ripple-line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  animation: click-ring-out 820ms cubic-bezier(0.16, 0.55, 0.22, 1) both;
+  animation-delay: inherit;
 }
-.click-wave {
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.42) 0%, rgba(186, 216, 240, 0.12) 42%, rgba(186, 216, 240, 0) 70%);
-  animation: click-ripple-out 380ms ease-out both;
+.click-ripple-halo {
+  stroke: rgba(168, 204, 228, 0.18);
+  stroke-width: 1.8;
 }
-.click-ripple {
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 255, 0) 62%,
-    rgba(255, 255, 255, 0.55) 73%,
-    rgba(176, 210, 236, 0.2) 79%,
-    rgba(70, 100, 130, 0.1) 85%,
-    rgba(255, 255, 255, 0) 92%
-  );
-  animation: click-ripple-out 760ms cubic-bezier(0.12, 0.55, 0.2, 1) both;
+.click-ripple-line {
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1;
 }
-.markly-ink-defs {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-@keyframes click-ripple-out {
-  0% { transform: scale(0.08); opacity: 0.15; }
-  20% { opacity: 0.9; }
-  100% { transform: scale(var(--ripple-scale, 1)); opacity: 0; }
+@keyframes click-ring-out {
+  0% { r: 0.6px; opacity: 0; }
+  14% { opacity: 0.8; }
+  100% { r: var(--ring-r); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .click-burst-layer { display: none; }

@@ -1332,14 +1332,21 @@ describe('按钮点击的水波', () => {
     const clip = burst!.querySelector('.click-ripple-clip') as HTMLElement;
     expect(clip.style.width).toBe('28px');
     expect(clip.style.height).toBe('28px');
-    expect(burst!.querySelectorAll('.click-wave')).toHaveLength(1);
+    expect(burst!.querySelector('.click-wave')).toBeNull();
+    const svg = burst!.querySelector('.click-ripple-svg') as SVGSVGElement;
+    expect(svg.getAttribute('width')).toBe('28');
+    expect(svg.getAttribute('height')).toBe('28');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 28 28');
     const rings = [...burst!.querySelectorAll('.click-ripple')] as HTMLElement[];
     expect(rings).toHaveLength(3);
-    const scales = rings.map((ring) => Number(ring.style.getPropertyValue('--ripple-scale')) * 12);
-    expect(Math.max(...scales)).toBe(28);
-    expect(scales.filter((scale) => scale < 28)).toHaveLength(2);
+    const radii = rings.map((ring) => Number.parseFloat(ring.style.getPropertyValue('--ring-r')));
+    expect(Math.max(...radii)).toBe(13);
+    expect(radii.filter((radius) => radius < 13)).toHaveLength(2);
+    const line = burst!.querySelector('.click-ripple-line') as SVGCircleElement;
+    expect(line.getAttribute('cx')).toBe('14');
+    expect(line.getAttribute('cy')).toBe('14');
     expect(new Set(rings.map((ring) => ring.style.animationDelay)).size).toBe(3);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(copy.style.filter).toBe('');
   });
 
   it('别的壳层按钮也有水波；标签空白、禁用按钮和松开鼠标不再来一圈', async () => {
@@ -1394,11 +1401,15 @@ describe('按钮点击的水波', () => {
     await flush();
     const burst = document.body.querySelector('.click-burst.is-rich') as HTMLElement;
     const clip = burst.querySelector('.click-ripple-clip') as HTMLElement;
-    const origin = burst.querySelector('.click-ripple-origin') as HTMLElement;
-    expect(Number.parseFloat(clip.style.left) + Number.parseFloat(origin.style.left)).toBe(24);
-    expect(Number.parseFloat(clip.style.top) + Number.parseFloat(origin.style.top)).toBe(33);
+    const svg = burst.querySelector('.click-ripple-svg') as SVGSVGElement;
+    expect(svg.getAttribute('width')).toBe('26');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 26 26');
+    const line = burst.querySelector('.click-ripple-line') as SVGCircleElement;
+    expect(line.getAttribute('cx')).toBe(line.getAttribute('cy'));
+    expect(Number.parseFloat(clip.style.left) + Number.parseFloat(svg.style.left) + 13).toBe(24);
+    expect(Number.parseFloat(clip.style.top) + Number.parseFloat(svg.style.top) + 13).toBe(33);
     const ring = burst.querySelector('.click-ripple') as HTMLElement;
-    expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(26);
+    expect(Number.parseFloat(ring.style.getPropertyValue('--ring-r'))).toBe(12);
   });
 });
 

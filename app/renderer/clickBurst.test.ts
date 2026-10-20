@@ -7,10 +7,10 @@ import {
   burstKind,
   clearClickBursts,
   clickBursts,
-  inkAmplitude,
-  inkPush,
-  paintInkMap,
   placeRipple,
+  RIPPLE_EDGE_PAD,
+  RIPPLE_WAVES,
+  ringRadius,
   spawnClickBurst,
 } from './clickBurst';
 
@@ -71,45 +71,25 @@ describe('点击水波', () => {
     expect(square.y + square.diameter / 2).toBe(36);
   });
 
-  it('水波是一列波峰波谷，从点击处向外走', () => {
-    expect(inkAmplitude(0)).toBe(0);
-    expect(inkAmplitude(1)).toBe(0);
-    expect(inkAmplitude(0.5)).toBe(2.5);
-    expect(inkAmplitude(0.5)).toBeGreaterThan(inkAmplitude(0.04));
-
-    const phase = 0.22;
-    const front = 0.05 + phase * 1.12;
-    expect(inkPush(front + 0.05, 0, phase)).toBeGreaterThan(0);
-    expect(inkPush(front - 0.05, 0, phase)).toBeLessThan(0);
-    expect(Math.abs(inkPush(0.02, 0, 0.12))).toBeGreaterThan(Math.abs(inkPush(0.95, 0, 0.12)));
-    expect(Math.abs(inkPush(0.98, 0, 0.9))).toBeGreaterThan(Math.abs(inkPush(0.05, 0, 0.9)));
-
-    const size = 81;
-    const data = new Uint8ClampedArray(size * size * 4);
-    paintInkMap(data, size, 0.5, 0.5, phase);
-    const mid = (size - 1) / 2;
-    const y = Math.round(mid);
-    let maxRed = -1;
-    let minRed = 999;
-    let maxX = 0;
-    let minX = 0;
-    for (let x = Math.ceil(mid); x < size; x++) {
-      const red = data[(y * size + x) * 4]!;
-      if (red > maxRed) {
-        maxRed = red;
-        maxX = x;
-      }
-      if (red < minRed) {
-        minRed = red;
-        minX = x;
-      }
+  it('三圈都是正圆，外圈贴着按钮较短的一边，描边也收在里面', () => {
+    expect(RIPPLE_WAVES.length).toBeGreaterThanOrEqual(3);
+    const portions = RIPPLE_WAVES.map((wave) => wave.portion);
+    const delays = RIPPLE_WAVES.map((wave) => wave.delay);
+    expect(portions[0]).toBe(1);
+    expect(portions.every((portion) => portion <= 1)).toBe(true);
+    for (let i = 1; i < portions.length; i++) {
+      expect(portions[i]!).toBeLessThan(portions[i - 1]!);
+      expect(delays[i]!).toBeGreaterThan(delays[i - 1]!);
     }
-    expect(maxRed).toBeGreaterThan(200);
-    expect(minRed).toBeLessThan(80);
-    expect(maxX).toBeGreaterThan(minX);
 
-    const corner = data[0]!;
-    expect(Math.abs(corner - 128)).toBeLessThan(55);
+    const outer = ringRadius(28, 1);
+    expect(outer).toBe(14 - RIPPLE_EDGE_PAD);
+    expect(outer + RIPPLE_EDGE_PAD).toBe(14);
+    const radii = RIPPLE_WAVES.map((wave) => ringRadius(28, wave.portion));
+    for (let i = 1; i < radii.length; i++) {
+      expect(radii[i]!).toBeLessThan(radii[i - 1]!);
+    }
+    expect(ringRadius(2, 1)).toBe(0.6);
   });
 
   it('复制是热闹的一档，壳层按钮是轻的一档，文件行和禁用按钮不播', () => {
@@ -147,7 +127,7 @@ describe('点击水波', () => {
     expect(burst!.rippleX + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.left + burst!.clip.width);
     expect(burst!.rippleY + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.top + burst!.clip.height);
     expect(clickBursts.value).toHaveLength(1);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(copy.style.filter).toBe('');
 
     expect(burstFromPointer(pointerOn(copy, 2, 1, 1))).toBeNull();
     expect(burstFromPointer(pointerOn(document.body, 0, 3, 4))).toBeNull();
@@ -193,18 +173,17 @@ describe('点击水波', () => {
     expect(burstFromPointer(pointerOn(copy, 0, 5, 6))).toBeNull();
     expect(spawnClickBurst(1, 2, true, copy)).toBeNull();
     expect(clickBursts.value).toHaveLength(0);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(false);
+    expect(copy.style.filter).toBe('');
   });
 
-  it('水波卸掉之后字上的滤镜也去掉', () => {
+  it('水波不改按钮上的字', () => {
     const copy = button('tab-copy');
     copy.getBoundingClientRect = () => ({
       x: 0, y: 0, left: 0, top: 0, right: 28, bottom: 28, width: 28, height: 28, toJSON() { return {}; },
     });
     spawnClickBurst(14, 14, true, copy);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(copy.style.filter).toBe('');
     clearClickBursts();
-    expect(copy.classList.contains('is-ink-rippling')).toBe(false);
     expect(copy.style.filter).toBe('');
     expect(document.querySelectorAll('.markly-ink-defs')).toHaveLength(0);
   });
