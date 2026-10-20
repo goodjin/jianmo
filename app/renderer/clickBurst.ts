@@ -17,7 +17,7 @@ export const RIPPLE_WAVES = [
 ] as const;
 
 /** 描边画在半径两侧。半径收进这一截，整条细线才落在按钮里面。 */
-export const RIPPLE_EDGE_PAD = 1;
+export const RIPPLE_EDGE_PAD = 1.4;
 
 /** 正圆半径。portion 为 1 时贴着按钮较短的一边，再让出描边。 */
 export function ringRadius(diameter: number, portion: number): number {

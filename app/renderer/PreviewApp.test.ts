@@ -1340,8 +1340,8 @@ describe('按钮点击的水波', () => {
     const rings = [...burst!.querySelectorAll('.click-ripple')] as HTMLElement[];
     expect(rings).toHaveLength(3);
     const radii = rings.map((ring) => Number.parseFloat(ring.style.getPropertyValue('--ring-r')));
-    expect(Math.max(...radii)).toBe(13);
-    expect(radii.filter((radius) => radius < 13)).toHaveLength(2);
+    expect(Math.max(...radii)).toBe(12.6);
+    expect(radii.filter((radius) => radius < 12.6)).toHaveLength(2);
     const line = burst!.querySelector('.click-ripple-line') as SVGCircleElement;
     expect(line.getAttribute('cx')).toBe('14');
     expect(line.getAttribute('cy')).toBe('14');
@@ -1409,7 +1409,7 @@ describe('按钮点击的水波', () => {
     expect(Number.parseFloat(clip.style.left) + Number.parseFloat(svg.style.left) + 13).toBe(24);
     expect(Number.parseFloat(clip.style.top) + Number.parseFloat(svg.style.top) + 13).toBe(33);
     const ring = burst.querySelector('.click-ripple') as HTMLElement;
-    expect(Number.parseFloat(ring.style.getPropertyValue('--ring-r'))).toBe(12);
+    expect(Number.parseFloat(ring.style.getPropertyValue('--ring-r'))).toBe(11.6);
   });
 });
 

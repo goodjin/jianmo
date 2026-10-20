@@ -131,16 +131,17 @@ onUnmounted(() => {
   animation-delay: inherit;
 }
 .click-ripple-halo {
-  stroke: rgba(168, 204, 228, 0.18);
-  stroke-width: 1.8;
+  stroke: rgba(150, 196, 220, 0.45);
+  stroke-width: 2.4;
 }
 .click-ripple-line {
-  stroke: rgba(255, 255, 255, 0.4);
+  stroke: rgba(58, 122, 166, 0.55);
   stroke-width: 1;
 }
 @keyframes click-ring-out {
   0% { r: 0.6px; opacity: 0; }
-  14% { opacity: 0.8; }
+  12% { opacity: 0.92; }
+  58% { opacity: 0.7; }
   100% { r: var(--ring-r); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
