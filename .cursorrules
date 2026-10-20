@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **收起文件树只留箭头**（桌面 0.8.1）：收起后整颗「打开」（含缩短的「开」）都不画，左列只留 ›，宽度跟着这颗按钮。展开后再出现打开、上一级、刷新目录。左侧「刷新」是重读文件夹列表，不是重读正文；右边标签栏那个才是重新加载文档。两个都留着。不改插件。
 - [X] **桌面版原文编辑**（0.8.0）：阅读、源码、编辑三种看法。编辑改的是文件原文，JSON/JSONL 不排版。手动保存。撤销、重做、保存只在编辑时出现。离开、关标签、刷新、退出或删到废纸篓前，有未保存修改先问。磁盘被改过不覆盖。每个标签自己的撤销步骤，换标签还在。不改插件。所见即所得留到下一期。
 - [X] **上一级箭头加粗**（桌面 0.7.6）：系统字体的 ↑ 线条太细，改成 16px 描边箭头，线宽 2.4。只动这一颗按钮。
 - [X] **文件树顶栏三个按钮升到「打开」右边**（桌面 0.7.6）：去掉「文件」文案和整条标题栏。按钮画在打开那一栏里，不 Teleport（Teleport 进同一页的兄弟节点，父组件一更新就会在补丁时崩）。收起后只留「开」和 ›，列宽跟按钮走。展开时左列 260px，才能放下「打开」和这三个按钮。
@@ -166,6 +167,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 - macOS 上 `setVisibleOnAllWorkspaces` 必须同时带 `visibleOnFullScreen: false` 和 `skipTransformProcessType: true`。前者避免全屏辅助挡住程序坞，后者避免进程被改成菜单栏小工具后图标从程序坞和 Cmd+Tab 消失。跨桌面之后 `setActivationPolicy('regular')` 并 `dock.show()`。不要先 `hide` 再 `show`，否则会叠出两个图标。
 - macOS 读用户主目录下的文稿、桌面、下载时，没有 Info.plist 用途说明就会直接杀掉进程，`try/catch` 接不住。桌面版打包必须带 `NSDocumentsFolderUsageDescription`、`NSDesktopFolderUsageDescription`、`NSDownloadsFolderUsageDescription`。
 - 改版本号时不要对 `package-lock.json` 做全文替换。锁文件里别的包也会写成同样的版本号，和实际安装的包对不上。
+- 桌面版文件树收起后，左列只留展开箭头。不要再把「打开」缩成「开」留在旁边，那一个字也会把列撑宽。展开后打开、上一级、刷新目录才回到这一栏。左侧刷新是重读目录，不要跟标签栏「重新加载文档」合成一颗。
 - 文件树本身是 `overflow: hidden`。右键菜单若画在树里面，会被侧栏裁掉。菜单要 `Teleport` 到 `body`，用 `position: fixed`。不要把文件树按钮 Teleport 到同一页里的打开栏：目标在父组件模板里时，父组件一更新，Vue 补丁会碰到空节点并抛 `Cannot set properties of null (setting '__vnode')`。按钮放在打开栏自己的模板里，再调用文件树暴露的方法。
 - 代码块的语言名和复制按钮不要叠在框内同一角。复制按钮默认 `pointer-events: none`，鼠标移到框上再出现在框外，才不会挡住语言名，也不会挡住正文点击。
 - 桌面版删除文件走 `shell.trashItem`，移到系统废纸篓。右键第一次只打开确认，第二次才真正移走。成功后要关掉对应标签、去掉最近打开，并刷新文件树所在目录。

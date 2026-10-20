@@ -271,7 +271,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.file-tree .file-head')).toBeNull();
   });
 
-  it('收起文件后侧栏只留展开按钮，目录操作回到打开旁边', async () => {
+  it('收起文件后左侧只留展开箭头，打开和目录按钮都让开', async () => {
     const storeSet = vi.fn();
     (window as unknown as { electron: ElectronAppBridge }).electron.storeSet = storeSet;
     const el = mount();
@@ -284,9 +284,13 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.file-tree.collapsed')).not.toBeNull();
     expect(el.querySelector('.tree')).toBeNull();
     expect(el.querySelector('.file-head')).toBeNull();
+    expect(el.querySelector('.open-split')).toBeNull();
+    expect(el.querySelector('.open-main')).toBeNull();
     expect(el.querySelector('.file-tree-chrome .file-up')).toBeNull();
     expect(el.querySelector('.file-tree-chrome .file-icon-btn')).toBeNull();
-    const collapsedToggle = el.querySelector('.file-tree-chrome .file-toggle') as HTMLButtonElement;
+    const rail = el.querySelector('.open-rail') as HTMLElement;
+    expect([...rail.querySelectorAll('button')].map((button) => button.className)).toEqual(['file-toggle']);
+    const collapsedToggle = rail.querySelector('.file-toggle') as HTMLButtonElement;
     expect(collapsedToggle.textContent?.trim()).toBe('›');
     expect(collapsedToggle.getAttribute('aria-label')).toBe('展开文件');
     expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', true);
@@ -296,7 +300,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     collapsedToggle.click();
     await flush();
     expect(el.querySelector('.file-tree.collapsed')).toBeNull();
+    expect(el.querySelector('.open-split')).not.toBeNull();
+    expect(el.querySelector('.open-main')!.textContent).toContain('打开');
     expect(el.querySelector('.file-tree-chrome .file-up')).not.toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).not.toBeNull();
     expect(el.querySelector('.file-tree-chrome .file-toggle')!.textContent?.trim()).toBe('‹');
     expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', false);
   });
