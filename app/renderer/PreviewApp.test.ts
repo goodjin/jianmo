@@ -1328,11 +1328,16 @@ describe('按钮点击的水波和小星星', () => {
     expect(clip.style.width).toBe('28px');
     expect(clip.style.height).toBe('28px');
     expect(burst!.querySelectorAll('.click-wave')).toHaveLength(1);
-    expect(burst!.querySelectorAll('.click-ripple')).toHaveLength(1);
-    expect(burst!.querySelector('.click-ripple-late')).toBeNull();
-    expect(burst!.querySelectorAll('.click-star')).toHaveLength(4);
+    expect(burst!.querySelectorAll('.click-ripple')).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-star')).toHaveLength(10);
     const ring = burst!.querySelector('.click-ripple') as HTMLElement;
     expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(28);
+    const inner = burst!.querySelector('.click-ripple-late') as HTMLElement;
+    expect(Number(inner.style.getPropertyValue('--ripple-scale')) * 12).toBeLessThan(28);
+    const star = burst!.querySelector('.click-star') as HTMLElement;
+    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeGreaterThan(0.2);
+    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeLessThan(0.5);
+    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
   });
 
   it('别的壳层按钮也有，星星少一些；标签空白、禁用按钮和松开鼠标不再来一颗', async () => {
@@ -1349,7 +1354,7 @@ describe('按钮点击的水波和小星星', () => {
     const plain = bursts();
     expect(plain).toHaveLength(1);
     expect(plain[0]!.classList.contains('is-rich')).toBe(false);
-    expect(plain[0]!.querySelectorAll('.click-star')).toHaveLength(3);
+    expect(plain[0]!.querySelectorAll('.click-star')).toHaveLength(7);
 
     const tab = el.querySelector('.tab') as HTMLElement;
     tab.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 8, clientY: 8, button: 0 }));

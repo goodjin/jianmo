@@ -1556,7 +1556,7 @@ html, body, #app {
 }
 .chrome-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .chrome-btn:disabled { opacity: 0.55; cursor: default; }
-/* 按下时略缩一下，表示点到了。水波和小星星另外画在页面外面。 */
+/* 按下时略缩一下，表示点到了。字跟着水波走靠滤镜，不靠这个缩放。 */
 .chrome-btn,
 .file-icon-btn,
 .file-toggle,

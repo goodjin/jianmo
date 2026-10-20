@@ -11,6 +11,7 @@
           <div class="click-ripple-origin" :style="originStyle(burst)">
             <span class="click-wave" :style="rippleStyle(burst)"></span>
             <span class="click-ripple" :style="rippleStyle(burst)"></span>
+            <span class="click-ripple click-ripple-late" :style="rippleStyle(burst, 0.68)"></span>
           </div>
         </div>
         <div class="click-star-origin" :style="{ left: burst.x + 'px', top: burst.y + 'px' }">
@@ -72,6 +73,7 @@ function starStyle(star: StarSpec): Record<string, string> {
     color: star.color,
     background: star.shape === 'dot' ? star.color : 'transparent',
     animationDelay: `${star.delay}ms`,
+    '--star-alpha': String(star.alpha),
     '--dx': `${star.dx}px`,
     '--dy': `${star.dy}px`,
     '--spin': `${star.spin}deg`,
@@ -147,14 +149,25 @@ onUnmounted(() => {
   animation: click-ripple-out 480ms ease-out forwards;
 }
 .click-ripple {
-  border: 1px solid rgba(176, 208, 255, 0.42);
-  animation: click-ripple-out 520ms cubic-bezier(0.16, 0.7, 0.22, 1) forwards;
+  border: 1px solid rgba(168, 202, 245, 0.5);
+  animation: click-ripple-out 620ms cubic-bezier(0.16, 0.7, 0.22, 1) forwards;
+}
+.click-ripple-late {
+  animation-delay: 90ms;
+  border-width: 1px;
 }
 .click-burst.is-rich .click-wave {
-  background: radial-gradient(circle, rgba(255, 252, 240, 0.42) 0%, rgba(246, 214, 150, 0.16) 50%, rgba(246, 214, 150, 0) 74%);
+  background: radial-gradient(circle, rgba(255, 252, 240, 0.4) 0%, rgba(246, 214, 150, 0.16) 50%, rgba(246, 214, 150, 0) 74%);
 }
 .click-burst.is-rich .click-ripple {
-  border-color: rgba(230, 198, 120, 0.4);
+  border-color: rgba(226, 190, 110, 0.46);
+}
+.markly-ink-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 .click-star {
   position: absolute;
@@ -162,8 +175,7 @@ onUnmounted(() => {
   top: 0;
   display: block;
   overflow: visible;
-  opacity: 0.72;
-  animation: click-star-fly 560ms cubic-bezier(0.16, 0.72, 0.2, 1) forwards;
+  animation: click-star-fly 680ms cubic-bezier(0.16, 0.72, 0.2, 1) forwards;
 }
 .click-star path {
   fill: currentColor;
@@ -178,15 +190,15 @@ onUnmounted(() => {
 @keyframes click-star-fly {
   0% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx) * 0.62), calc(-50% + var(--dy) * 0.62)) scale(0.75) rotate(0deg);
+    transform: translate(calc(-50% + var(--dx) * 0.16), calc(-50% + var(--dy) * 0.16)) scale(0.55) rotate(0deg);
   }
-  30% {
-    opacity: 0.7;
-    transform: translate(calc(-50% + var(--dx) * 0.78), calc(-50% + var(--dy) * 0.78)) scale(1) rotate(calc(var(--spin) * 0.3));
+  32% {
+    opacity: var(--star-alpha, 0.38);
+    transform: translate(calc(-50% + var(--dx) * 0.5), calc(-50% + var(--dy) * 0.5)) scale(1) rotate(calc(var(--spin) * 0.28));
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.55) rotate(var(--spin));
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.45) rotate(var(--spin));
   }
 }
 @media (prefers-reduced-motion: reduce) {
