@@ -74,51 +74,35 @@
       @close="onCloseTab"
       @new="onNewTab"
     >
-      <template #pre-new>
+      <template #tools>
         <button
-          class="chrome-btn tab-reload"
+          v-if="editing"
+          class="chrome-btn tab-icon tab-undo"
           type="button"
-          :disabled="reloadDisabled"
-          :title="reloadTitle"
-          :aria-label="reloadTitle"
-          @click="onReload"
-        >刷新</button>
-        <button
-          class="chrome-btn tab-copy"
-          :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
-          type="button"
-          :disabled="copying"
-          :title="copyTitle"
-          :aria-label="copyTitle"
-          @click="onCopy"
+          :disabled="!canUndo"
+          title="回退"
+          aria-label="回退"
+          @click="onUndo"
         >
-          <svg v-if="copied" :key="copiedTick" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
-          </svg>
-          <!-- 两个错开的圆角矩形，前一张盖住后一张。线宽和打勾同一套。 -->
-          <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
-            <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+          <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6.2 3.4 3 6.6l3.2 3.2" />
+            <path d="M3.2 6.6h6.1a3.3 3.3 0 1 1 0 6.6H8" />
           </svg>
         </button>
         <button
           v-if="editing"
-          class="chrome-btn tab-undo"
-          type="button"
-          :disabled="!canUndo"
-          title="撤销"
-          aria-label="撤销"
-          @click="onUndo"
-        >撤销</button>
-        <button
-          v-if="editing"
-          class="chrome-btn tab-redo"
+          class="chrome-btn tab-icon tab-redo"
           type="button"
           :disabled="!canRedo"
           title="重做"
           aria-label="重做"
           @click="onRedo"
-        >重做</button>
+        >
+          <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M9.8 3.4 13 6.6 9.8 9.8" />
+            <path d="M12.8 6.6H6.7a3.3 3.3 0 1 0 0 6.6H8" />
+          </svg>
+        </button>
         <button
           v-if="editing"
           class="chrome-btn tab-save"
@@ -129,6 +113,33 @@
           @click="onSave"
         >保存</button>
         <button
+          class="chrome-btn tab-source"
+          type="button"
+          :disabled="isSettingsTab"
+          :class="{ active: sourceOpen }"
+          :title="sourceTitle"
+          :aria-label="sourceTitle"
+          :aria-pressed="sourceOpen"
+          @click="toggleSource"
+        >
+          <svg v-if="sourceOpen" class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M1.6 8s2.2-3.6 6.4-3.6S14.4 8 14.4 8s-2.2 3.6-6.4 3.6S1.6 8 1.6 8z" />
+            <circle cx="8" cy="8" r="1.6" />
+          </svg>
+          <svg v-else class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6 3.5 2.8 8 6 12.5M10 3.5 13.2 8 10 12.5" />
+          </svg>
+          <span>{{ sourceLabel }}</span>
+        </button>
+        <button
+          class="chrome-btn tab-reload"
+          type="button"
+          :disabled="reloadDisabled"
+          :title="reloadTitle"
+          :aria-label="reloadTitle"
+          @click="onReload"
+        >刷新</button>
+        <button
           class="chrome-btn tab-edit"
           type="button"
           :disabled="isSettingsTab"
@@ -138,53 +149,59 @@
           :aria-pressed="editing"
           @click="toggleEdit"
         >编辑</button>
-        <button
-          class="chrome-btn tab-source"
-          type="button"
-          :disabled="isSettingsTab"
-          :class="{ active: sourceOpen }"
-          :title="sourceTitle"
-          :aria-label="sourceTitle"
-          :aria-pressed="sourceOpen"
-          @click="toggleSource"
-        >{{ sourceLabel }}</button>
         <div
           ref="exportSplitRef"
-          class="export-split"
+          class="actions-split"
           @mouseenter="onExportEnter"
           @mouseleave="onExportLeave"
         >
           <button
-            class="chrome-btn tab-export"
+            class="chrome-btn tab-actions"
             type="button"
-            :disabled="exporting || isSettingsTab"
-            :title="exportOpen ? '' : exportTitle"
-            :aria-label="exportTitle"
+            :title="exportOpen ? '' : actionsTitle"
+            aria-label="菜单"
             aria-haspopup="menu"
             :aria-expanded="exportOpen"
-            aria-controls="export-format-menu"
+            aria-controls="actions-menu"
             @click="onExportButtonClick"
           >
-            <span>导出</span>
-            <span class="export-caret" aria-hidden="true">▾</span>
+            <svg class="actions-dots" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="6" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="18" r="2" />
+            </svg>
           </button>
-          <div v-if="exportOpen" id="export-format-menu" class="export-menu" role="menu" aria-label="导出格式">
-            <button type="button" class="export-item" role="menuitem" data-format="pdf" @click="onPickExport('pdf')">
-              PDF
-            </button>
-            <button type="button" class="export-item" role="menuitem" data-format="html" @click="onPickExport('html')">
-              HTML
-            </button>
+          <div v-if="exportOpen" id="actions-menu" class="actions-menu" role="menu" aria-label="菜单">
+            <button
+              type="button"
+              class="action-item"
+              role="menuitem"
+              data-format="pdf"
+              data-action="pdf"
+              :disabled="exporting || isSettingsTab"
+              @click="onPickExport('pdf')"
+            >导出 PDF</button>
+            <button
+              type="button"
+              class="action-item"
+              role="menuitem"
+              data-format="html"
+              data-action="html"
+              :disabled="exporting || isSettingsTab"
+              @click="onPickExport('html')"
+            >导出 HTML</button>
+            <button
+              class="action-item tab-settings"
+              type="button"
+              role="menuitem"
+              data-action="settings"
+              title="设置（Cmd/Ctrl+,）"
+              aria-label="设置"
+              :class="{ active: isSettingsTab }"
+              @click="onOpenSettings"
+            >设置</button>
           </div>
         </div>
-        <button
-          class="chrome-btn tab-settings"
-          type="button"
-          title="设置（Cmd/Ctrl+,）"
-          aria-label="设置"
-          :class="{ active: isSettingsTab }"
-          @click="onOpenSettings"
-        >设置</button>
       </template>
     </TabBar>
     <FileTree
@@ -208,6 +225,7 @@
         :system-fonts="systemFonts"
         :copy-on-select="copyOnSelect"
         :word-wrap="wordWrap"
+        :max-open-tabs="maxOpenTabs"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
       />
@@ -238,8 +256,9 @@
         </aside>
         <div class="doc-body">
           <div v-if="isBlankDoc && !sourceOpen && !editing" class="blank-page">
-            <button class="chrome-btn blank-open" type="button" @click="onOpen">打开</button>
-            <p class="blank-hint">从左侧文件里点开一篇，或在这里选择文件。</p>
+            <h1 class="welcome-title">{{ WELCOME_TITLE }}</h1>
+            <p class="welcome-lead">{{ WELCOME_LEAD }}</p>
+            <p v-for="line in WELCOME_LINES" :key="line" class="welcome-line">{{ line }}</p>
           </div>
           <div v-else-if="editing" class="edit-pane">
             <p v-if="editNote" class="source-note">{{ editNote }}</p>
@@ -266,6 +285,25 @@
               @load="onFrameLoad"
             ></iframe>
           </template>
+          <button
+            class="doc-copy tab-copy"
+            :class="{ 'is-copied': copied, 'is-failed': copyFailed }"
+            type="button"
+            :disabled="copying"
+            :title="copyTitle"
+            :aria-label="copyTitle"
+            @click="onCopy"
+          >
+            <span class="action-icon" :key="copiedTick">
+              <svg v-if="copied" class="tab-copy-mark" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.4 8.2 6.5 11.3 12.7 4.7" />
+              </svg>
+              <svg v-else class="tab-copy-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="5.333" y="5.333" width="9.333" height="9.333" rx="1.333" ry="1.333" />
+                <path d="M2.667 10.667c-.733 0-1.333-.6-1.333-1.333V2.667c0-.733.6-1.333 1.333-1.333h6.667c.733 0 1.333.6 1.333 1.333" />
+              </svg>
+            </span>
+          </button>
         </div>
       </template>
       </div>
@@ -304,7 +342,8 @@ import {
   scrollTopForSource,
   type PlaceAnchor,
 } from '../electron/viewPlace';
-import { readReaderPrefs } from '../electron/readerPrefs';
+import { DEFAULT_MAX_OPEN_TABS, readReaderPrefs } from '../electron/readerPrefs';
+import { WELCOME_LEAD, WELCOME_LINES, WELCOME_TITLE } from '../electron/tabs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import { parseSystemFontList } from '../electron/appearance';
@@ -361,6 +400,7 @@ const copyFailed = ref(false);
 const copiedTick = ref(0);
 const copyOnSelect = ref(true);
 const wordWrap = ref(true);
+const maxOpenTabs = ref(DEFAULT_MAX_OPEN_TABS);
 const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -380,11 +420,10 @@ const exportHint = ref('');
 let exportCloseTimer: ReturnType<typeof setTimeout> | null = null;
 let exportHintTimer: ReturnType<typeof setTimeout> | null = null;
 
-const exportTitle = computed(() => {
-  if (isSettingsTab.value) return '设置页不能导出';
+const actionsTitle = computed(() => {
   if (exporting.value) return '正在导出…';
   if (exportHint.value) return exportHint.value;
-  return '导出为 PDF 或 HTML';
+  return '菜单';
 });
 
 /**
@@ -507,6 +546,7 @@ async function leaveEdit(): Promise<boolean> {
 }
 
 async function toggleEdit(): Promise<void> {
+  closeExportMenu();
   if (isSettingsTab.value || !activeTabId.value) return;
   const id = activeTabId.value;
   if (editing.value) {
@@ -712,6 +752,7 @@ function showReloadTip(kind: ReloadTip['kind'], text: string, autoHide: boolean)
 }
 
 async function onReload(): Promise<void> {
+  closeExportMenu();
   if (reloadDisabled.value || !activeTabId.value) return;
   const api = electronApp();
   const tabId = activeTabId.value;
@@ -858,22 +899,30 @@ function refreshReaderPrefs(): void {
     const prefs = readReaderPrefs(electronApp()?.getReaderPrefs?.() ?? {});
     copyOnSelect.value = prefs.copyOnSelect;
     wordWrap.value = prefs.wordWrap;
+    maxOpenTabs.value = prefs.maxOpenTabs;
   } catch {
     copyOnSelect.value = true;
     wordWrap.value = true;
+    maxOpenTabs.value = DEFAULT_MAX_OPEN_TABS;
   }
 }
 
-async function onUpdateReader(patch: { copyOnSelect?: boolean; wordWrap?: boolean }): Promise<void> {
+async function onUpdateReader(patch: {
+  copyOnSelect?: boolean;
+  wordWrap?: boolean;
+  maxOpenTabs?: number;
+}): Promise<void> {
   const api = electronApp();
-  const apply = (prefs: { copyOnSelect: boolean; wordWrap: boolean }): void => {
+  const apply = (prefs: { copyOnSelect: boolean; wordWrap: boolean; maxOpenTabs: number }): void => {
     copyOnSelect.value = prefs.copyOnSelect;
     wordWrap.value = prefs.wordWrap;
+    maxOpenTabs.value = prefs.maxOpenTabs;
   };
   if (!api?.updateReaderPrefs) {
     apply({
       copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
       wordWrap: patch.wordWrap ?? wordWrap.value,
+      maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
     });
   } else {
     try {
@@ -883,6 +932,7 @@ async function onUpdateReader(patch: { copyOnSelect?: boolean; wordWrap?: boolea
       apply({
         copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
         wordWrap: patch.wordWrap ?? wordWrap.value,
+        maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
       });
     }
   }
@@ -893,6 +943,7 @@ async function onUpdateReader(patch: { copyOnSelect?: boolean; wordWrap?: boolea
 }
 
 function onOpenSettings(): void {
+  closeExportMenu();
   closeRecent();
   void electronApp()?.openSettingsTab?.();
 }
@@ -981,7 +1032,6 @@ function closeExportMenu(): void {
 
 /** 悬停就展开；离开后稍等再收起，给鼠标挪进菜单的时间。点击钉住的菜单不随鼠标离开关闭。 */
 function onExportEnter(): void {
-  if (exporting.value || isSettingsTab.value) return;
   clearExportCloseTimer();
   closeRecent();
   exportOpen.value = true;
@@ -998,7 +1048,6 @@ function onExportLeave(): void {
 
 /** 点击同样展开；已经钉住时再点一下收起。 */
 function onExportButtonClick(): void {
-  if (exporting.value || isSettingsTab.value) return;
   clearExportCloseTimer();
   if (exportPinned.value) {
     closeExportMenu();
@@ -1580,16 +1629,20 @@ html, body, #app {
   padding: 6px 10px;
   min-width: 32px;
 }
-/* 复制：新建标签页左侧的小图标按钮。成功后换成绿色打勾，约 1.6 秒后恢复。 */
-.tab-reload {
+.tab-source,
+.tab-save,
+.tab-reload,
+.tab-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   align-self: center;
   height: 26px;
   min-height: 26px;
   padding: 0 8px;
-  margin-right: 4px;
   font-size: 12px;
 }
-.tab-copy {
+.tab-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1599,21 +1652,21 @@ html, body, #app {
   height: 26px;
   min-height: 26px;
   padding: 0;
-  margin-right: 4px;
-  font-size: 14px;
-  line-height: 1;
 }
-.tab-source,
-.tab-edit,
-.tab-undo,
-.tab-redo,
-.tab-save {
-  align-self: center;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  margin-right: 4px;
-  font-size: 12px;
+.tab-icon:disabled { opacity: 0.4; cursor: default; }
+.chrome-glyph {
+  width: 15px;
+  height: 15px;
+  display: block;
+  overflow: visible;
+}
+.chrome-glyph path,
+.chrome-glyph circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .tab-copy:disabled { opacity: 0.55; }
 .tab-copy.is-copied {
@@ -1666,90 +1719,95 @@ html, body, #app {
     stroke-dashoffset: 0;
   }
 }
-/* 导出：紧挨复制，悬停或点击展开 PDF / HTML */
-.export-split {
+/* 最右侧三个竖点。菜单按最长一行自己定宽，右对齐浮在按钮下面。 */
+.actions-split {
   position: relative;
   align-self: center;
-  display: flex;
-  margin-right: 4px;
+  display: inline-flex;
 }
-.export-split::after {
+.actions-split::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   top: 100%;
-  height: 8px;
+  height: 10px;
 }
-.tab-export {
+.tab-actions {
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 26px;
-  min-height: 26px;
-  min-width: 76px;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
   box-sizing: border-box;
-  padding: 0 8px;
-  font-size: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-pill);
+  background: transparent;
 }
-.tab-settings {
-  align-self: center;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 8px;
-  margin-right: 4px;
-  font-size: 12px;
+.tab-actions:hover,
+.actions-split:has(.actions-menu) .tab-actions,
+.actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(31, 35, 40, 0.08);
 }
-.export-caret {
-  font-size: 10px;
-  line-height: 1;
-  opacity: 0.75;
+:global(html[data-theme='dark']) .tab-actions:hover,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions,
+:global(html[data-theme='dark']) .actions-split:has(.actions-menu) .tab-actions:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
-/* 打开时和按钮合成一块：同宽、左右对齐，相接的一边不留缝、不留横框。圆角只在外轮廓。 */
-.export-split:has(.export-menu) {
+.actions-dots {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+}
+.actions-dots circle { fill: currentColor; }
+.actions-split:has(.actions-menu) {
   z-index: 40;
 }
-.export-split:has(.export-menu) .tab-export,
-.export-split:has(.export-menu) .tab-export:hover {
-  border-radius: var(--app-radius-sm) var(--app-radius-sm) 0 0;
-  border-bottom-color: var(--markly-background, #fff);
-  background: var(--markly-background, #fff);
-}
-.export-menu {
+.actions-menu {
   position: absolute;
-  top: calc(100% - 1px);
-  left: 0;
+  top: calc(100% + 4px);
   right: 0;
+  left: auto;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   box-sizing: border-box;
-  width: auto;
-  min-width: 0;
+  width: max-content;
   margin: 0;
-  padding: 0;
+  padding: 6px 0;
   border: 1px solid var(--markly-border-color, #d0d7de);
-  border-top: 0;
-  border-radius: 0 0 var(--app-radius-sm) var(--app-radius-sm);
+  border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
-  box-shadow: none;
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.18);
   overflow: hidden;
 }
-.export-item {
-  display: block;
-  width: 100%;
+.action-item {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 8px;
   box-sizing: border-box;
-  text-align: center;
+  text-align: left;
   white-space: nowrap;
   border: 0;
   background: transparent;
   color: var(--markly-text, #24292e);
   font-size: 12px;
   line-height: 1.35;
-  padding: 6px 4px;
+  padding: 8px 16px;
   border-radius: 0;
   cursor: pointer;
 }
-.export-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.action-item:hover { background: var(--markly-surfaceHover, #eaeef2); }
+.action-item:disabled { opacity: 0.45; cursor: default; }
+.action-item.active { color: var(--markly-primary, #0969da); }
 
 .preview-area {
   grid-column: 2;
@@ -1897,6 +1955,24 @@ html, body, #app {
   overflow: hidden;
   background: var(--markly-background, #fff);
 }
+.doc-copy {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm);
+  background: color-mix(in srgb, var(--markly-background, #fff) 92%, transparent);
+  color: var(--markly-textSecondary, #57606a);
+  cursor: pointer;
+}
+.doc-copy:hover { background: var(--markly-surfaceHover, #eaeef2); color: var(--markly-text, #24292e); }
 .preview-frame {
   display: block;
   width: 100%;
@@ -1911,22 +1987,31 @@ html, body, #app {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 24px 40px 32px;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 56px 64px;
   min-width: 0;
   min-height: 0;
 }
-.blank-open {
-  min-width: 72px;
-  font-size: 13px;
-}
-.blank-hint {
+.welcome-title {
   margin: 0;
-  max-width: 28em;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--markly-text, #1f2328);
+}
+.welcome-lead,
+.welcome-line {
+  margin: 0;
+  max-width: 36em;
+  font-size: 15px;
+  line-height: 1.7;
   color: var(--markly-textSecondary, #57606a);
+}
+.welcome-lead {
+  font-size: 16px;
+  color: var(--markly-text, #1f2328);
 }
 .edit-pane {
   position: absolute;

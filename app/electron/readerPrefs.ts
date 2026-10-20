@@ -8,10 +8,21 @@ export interface ReaderPrefs {
   copyOnSelect: boolean;
   /** 预览、源码、编辑里的长行折到下一行。关掉后长行留在一行，只在正文里横向滚动。 */
   wordWrap: boolean;
+  /** 同时打开的标签上限。超过后关掉最久没有查看的那一张。 */
+  maxOpenTabs: number;
 }
 
 export const DEFAULT_COPY_ON_SELECT = true;
 export const DEFAULT_WORD_WRAP = true;
+export const DEFAULT_MAX_OPEN_TABS = 20;
+export const MIN_MAX_OPEN_TABS = 1;
+export const MAX_MAX_OPEN_TABS = 40;
+
+export function clampMaxOpenTabs(value: unknown): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return DEFAULT_MAX_OPEN_TABS;
+  return Math.min(MAX_MAX_OPEN_TABS, Math.max(MIN_MAX_OPEN_TABS, Math.round(n)));
+}
 
 export function readReaderPrefs(config: unknown): ReaderPrefs {
   const root = config && typeof config === 'object' ? (config as Record<string, unknown>) : {};
@@ -20,15 +31,23 @@ export function readReaderPrefs(config: unknown): ReaderPrefs {
   return {
     copyOnSelect: typeof nested.copyOnSelect === 'boolean' ? nested.copyOnSelect : DEFAULT_COPY_ON_SELECT,
     wordWrap: typeof nested.wordWrap === 'boolean' ? nested.wordWrap : DEFAULT_WORD_WRAP,
+    maxOpenTabs: 'maxOpenTabs' in nested ? clampMaxOpenTabs(nested.maxOpenTabs) : DEFAULT_MAX_OPEN_TABS,
   };
 }
 
-/** 只认 copyOnSelect / wordWrap。没有有效改动时返回 null。 */
+/** 只认 copyOnSelect、wordWrap 和 maxOpenTabs。没有有效改动时返回 null。 */
 export function normalizeReaderPatch(raw: unknown): Partial<ReaderPrefs> | null {
   if (!raw || typeof raw !== 'object') return null;
   const src = raw as Record<string, unknown>;
   const patch: Partial<ReaderPrefs> = {};
-  if (typeof src.copyOnSelect === 'boolean') patch.copyOnSelect = src.copyOnSelect;
-  if (typeof src.wordWrap === 'boolean') patch.wordWrap = src.wordWrap;
+  if ('copyOnSelect' in src && typeof src.copyOnSelect === 'boolean') {
+    patch.copyOnSelect = src.copyOnSelect;
+  }
+  if ('wordWrap' in src && typeof src.wordWrap === 'boolean') {
+    patch.wordWrap = src.wordWrap;
+  }
+  if ('maxOpenTabs' in src && typeof src.maxOpenTabs === 'number' && Number.isFinite(src.maxOpenTabs)) {
+    patch.maxOpenTabs = clampMaxOpenTabs(src.maxOpenTabs);
+  }
   return Object.keys(patch).length > 0 ? patch : null;
 }

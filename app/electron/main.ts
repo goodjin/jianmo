@@ -22,7 +22,12 @@ import {
   type ExportIpcResult,
 } from './exportDocument';
 import { printHtmlToPdfFile } from './printPdf';
-import { normalizeReaderPatch, readReaderPrefs, type ReaderPrefs } from './readerPrefs';
+import {
+  DEFAULT_MAX_OPEN_TABS,
+  normalizeReaderPatch,
+  readReaderPrefs,
+  type ReaderPrefs,
+} from './readerPrefs';
 import { toSelectionClipboardText } from './selectionCopy';
 import { listMarkdownFilesPage } from './dirMarkdown';
 import { listFileTree } from './fileTree';
@@ -62,6 +67,8 @@ import {
   openSettingsTab,
   closeTabsForPath,
   renameFileInTabs,
+  leastRecentlyViewedId,
+  noteTabViewed,
   revertTabContent,
   savedBaseline,
   setActiveContent,
@@ -86,8 +93,17 @@ let pendingFiles: string[] = [];
 let store: Store;
 /** hostBridge 持有同一个对象引用，改这里的字段即刻影响下一次预览渲染。 */
 let appConfig: ExtensionConfig;
-/** 阅读偏好：选择即复制。和 appConfig 一起从 ~/.markly/config.json 读出。 */
-let readerPrefs: ReaderPrefs = { copyOnSelect: true, wordWrap: true };
+/** 阅读偏好：选择即复制、自动换行、同时打开的标签上限。和 appConfig 一起从 ~/.markly/config.json 读出。 */
+let readerPrefs: ReaderPrefs = {
+  copyOnSelect: true,
+  wordWrap: true,
+  maxOpenTabs: DEFAULT_MAX_OPEN_TABS,
+};
+/** 查看时间。同一毫秒里连续打开也要分出先后。 */
+let viewClock = 0;
+/** 关掉未保存标签时用户选了取消，先别反复追问，等下次再开新标签。 */
+let tabLimitHold = false;
+let tabLimitQueued = false;
 
 function activeFilePath(): string | null {
   const p = getActiveTab(tabs)?.filePath ?? '';
@@ -127,6 +143,53 @@ function emitActiveDocument(): void {
   updateWindowTitle();
   pushTabs();
   send({ type: 'CONTENT_UPDATE', payload: { content: activeContent(), version: Date.now() } });
+}
+
+function viewedNow(): number {
+  const next = Date.now();
+  viewClock = next > viewClock ? next : viewClock + 1;
+  return viewClock;
+}
+
+function stampActiveTab(): void {
+  tabs = noteTabViewed(tabs, tabs.activeId, viewedNow());
+}
+
+/**
+ * 打开的标签超过设置里的上限时，关掉最久没有查看的那一张。
+ * 那张若还有没保存的修改，沿用关标签的询问。用户取消就停住，避免一直弹窗。
+ */
+function scheduleTabLimit(): void {
+  if (tabLimitQueued || tabLimitHold) return;
+  if (tabs.tabs.length <= readerPrefs.maxOpenTabs) return;
+  tabLimitQueued = true;
+  setTimeout(() => {
+    void enforceTabLimit();
+  }, 0);
+}
+
+async function enforceTabLimit(): Promise<void> {
+  try {
+    let guard = 0;
+    while (tabs.tabs.length > readerPrefs.maxOpenTabs && guard < 40) {
+      guard += 1;
+      const id = leastRecentlyViewedId(tabs);
+      if (!id) break;
+      const before = tabs.tabs.length;
+      console.info('[markly] 标签超过上限，关掉最久没查看的', {
+        id,
+        open: before,
+        max: readerPrefs.maxOpenTabs,
+      });
+      await dropTab(id);
+      if (tabs.tabs.length >= before) {
+        tabLimitHold = true;
+        break;
+      }
+    }
+  } finally {
+    tabLimitQueued = false;
+  }
 }
 
 async function pickAndLoadFile(): Promise<string | null> {
@@ -239,7 +302,11 @@ function loadFile(p: string): void {
   } catch (e) {
     content = `# 打开失败\n\n无法读取：\`${p}\`\n\n> ${readFailureDetail(p, e)}`;
   }
+  const beforeCount = tabs.tabs.length;
   tabs = openFileTab(tabs, nextTabId(), p, content, mtimeMs);
+  stampActiveTab();
+  if (tabs.tabs.length > beforeCount) tabLimitHold = false;
+  scheduleTabLimit();
   try {
     if (fs.existsSync(p) && fs.statSync(p).isFile()) rememberRecent(p);
   } catch {
@@ -492,13 +559,21 @@ async function openExistingPath(p: string): Promise<string | null> {
 }
 
 function newBlankTab(): void {
+  const beforeCount = tabs.tabs.length;
   tabs = openBlankTab(tabs, nextTabId());
+  stampActiveTab();
+  if (tabs.tabs.length > beforeCount) tabLimitHold = false;
   emitActiveDocument();
+  scheduleTabLimit();
 }
 
 function openSettings(): void {
+  const beforeCount = tabs.tabs.length;
   tabs = openSettingsTab(tabs, nextTabId());
+  stampActiveTab();
+  if (tabs.tabs.length > beforeCount) tabLimitHold = false;
   emitActiveDocument();
+  scheduleTabLimit();
 }
 
 function prefersDark(): boolean {
@@ -543,9 +618,17 @@ function updateReaderPrefs(raw: unknown): ReaderPrefs {
   if (patch) {
     readerPrefs = { ...readerPrefs, ...patch };
     saveAppConfigPatch({
-      reader: { copyOnSelect: readerPrefs.copyOnSelect, wordWrap: readerPrefs.wordWrap },
+      reader: {
+        copyOnSelect: readerPrefs.copyOnSelect,
+        wordWrap: readerPrefs.wordWrap,
+        maxOpenTabs: readerPrefs.maxOpenTabs,
+      },
     });
     installAppMenu();
+    if (patch.maxOpenTabs !== undefined) {
+      tabLimitHold = false;
+      scheduleTabLimit();
+    }
   }
   return { ...readerPrefs };
 }
@@ -558,9 +641,10 @@ function writeSelectionClipboard(payload: unknown): boolean {
 }
 
 function selectTab(id: string): void {
-  const before = tabs;
-  tabs = activateTab(tabs, String(id ?? ''));
-  if (tabs !== before) emitActiveDocument();
+  const next = activateTab(tabs, String(id ?? ''));
+  if (next === tabs) return;
+  tabs = noteTabViewed(next, next.activeId, viewedNow());
+  emitActiveDocument();
 }
 
 async function dropTab(id: string): Promise<void> {
