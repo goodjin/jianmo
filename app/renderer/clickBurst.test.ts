@@ -7,11 +7,10 @@ import {
   burstKind,
   clearClickBursts,
   clickBursts,
-  inkAmplitude,
-  inkPush,
-  makeStars,
-  paintInkMap,
   placeRipple,
+  RIPPLE_EDGE_PAD,
+  RIPPLE_WAVES,
+  ringRadius,
   spawnClickBurst,
 } from './clickBurst';
 
@@ -55,7 +54,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('点击水波和小星星', () => {
+describe('点击水波', () => {
   it('水波圈不超过按钮较短的一边，点在边上也会收进按钮里', () => {
     const wide = placeRipple({ left: 0, top: 10, width: 80, height: 26 }, 2, 12);
     expect(wide.diameter).toBe(26);
@@ -72,69 +71,25 @@ describe('点击水波和小星星', () => {
     expect(square.y + square.diameter / 2).toBe(36);
   });
 
-  it('复制散开十颗，别的按钮七颗，都透，方向各不相同', () => {
-    const rich = makeStars(true, () => 0.5);
-    const plain = makeStars(false, () => 0.5);
-    expect(rich).toHaveLength(10);
-    expect(plain).toHaveLength(7);
-    expect(rich.filter((star) => star.shape === 'star').length).toBeGreaterThan(0);
-    expect(rich.filter((star) => star.shape === 'dot').length).toBeGreaterThan(1);
-
-    const angles = rich.map((star) => Math.atan2(star.dy, star.dx).toFixed(3));
-    expect(new Set(angles).size).toBe(rich.length);
-    for (const star of rich) {
-      const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(16);
-      expect(dist).toBeLessThan(32);
-      expect(star.size).toBeLessThan(9);
-      expect(star.alpha).toBeGreaterThan(0.2);
-      expect(star.alpha).toBeLessThan(0.5);
-      expect(star.color.startsWith('#f') || star.color.startsWith('#c')).toBe(true);
-      expect(star.spin).not.toBe(0);
+  it('三圈都是正圆，外圈贴着按钮较短的一边，描边也收在里面', () => {
+    expect(RIPPLE_WAVES.length).toBeGreaterThanOrEqual(3);
+    const portions = RIPPLE_WAVES.map((wave) => wave.portion);
+    const delays = RIPPLE_WAVES.map((wave) => wave.delay);
+    expect(portions[0]).toBe(1);
+    expect(portions.every((portion) => portion <= 1)).toBe(true);
+    for (let i = 1; i < portions.length; i++) {
+      expect(portions[i]!).toBeLessThan(portions[i - 1]!);
+      expect(delays[i]!).toBeGreaterThan(delays[i - 1]!);
     }
-    for (const star of plain) {
-      const dist = Math.hypot(star.dx, star.dy);
-      expect(dist).toBeGreaterThan(12);
-      expect(dist).toBeLessThan(26);
-      expect(star.size).toBeLessThan(8);
-      expect(star.alpha).toBeLessThan(rich[0]!.alpha);
+
+    const outer = ringRadius(28, 1);
+    expect(outer).toBe(14 - RIPPLE_EDGE_PAD);
+    expect(outer + RIPPLE_EDGE_PAD).toBe(14);
+    const radii = RIPPLE_WAVES.map((wave) => ringRadius(28, wave.portion));
+    for (let i = 1; i < radii.length; i++) {
+      expect(radii[i]!).toBeLessThan(radii[i - 1]!);
     }
-    expect(Math.hypot(rich[0]!.dx, rich[0]!.dy)).toBeGreaterThan(Math.hypot(plain[0]!.dx, plain[0]!.dy));
-  });
-
-  it('水波从点击处向外推，贴图让字跟着这一圈走', () => {
-    expect(inkAmplitude(0)).toBe(0);
-    expect(inkAmplitude(1)).toBe(0);
-    expect(inkAmplitude(0.5)).toBeGreaterThan(inkAmplitude(0.2));
-    expect(inkPush(0.08, 0, 0.1)).toBeGreaterThan(inkPush(0.9, 0, 0.1));
-    expect(inkPush(0.95, 0, 0.85)).toBeGreaterThan(inkPush(0.05, 0, 0.85));
-
-    const size = 41;
-    const data = new Uint8ClampedArray(size * size * 4);
-    paintInkMap(data, size, 0.5, 0.5, 0.25);
-    let maxRed = -1;
-    let minRed = 999;
-    let maxX = 0;
-    let minX = 0;
-    const mid = (size - 1) / 2;
-    for (let i = 0; i < size * size; i++) {
-      const red = data[i * 4]!;
-      if (red > maxRed) {
-        maxRed = red;
-        maxX = i % size;
-      }
-      if (red < minRed) {
-        minRed = red;
-        minX = i % size;
-      }
-    }
-    expect(maxX).toBeGreaterThan(mid);
-    expect(minX).toBeLessThan(mid);
-    expect(maxRed).toBeGreaterThan(200);
-    expect(minRed).toBeLessThan(60);
-
-    const corner = data[0]!;
-    expect(Math.abs(corner - 128)).toBeLessThan(30);
+    expect(ringRadius(2, 1)).toBe(0.6);
   });
 
   it('复制是热闹的一档，壳层按钮是轻的一档，文件行和禁用按钮不播', () => {
@@ -172,7 +127,7 @@ describe('点击水波和小星星', () => {
     expect(burst!.rippleX + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.left + burst!.clip.width);
     expect(burst!.rippleY + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.top + burst!.clip.height);
     expect(clickBursts.value).toHaveLength(1);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(copy.style.filter).toBe('');
 
     expect(burstFromPointer(pointerOn(copy, 2, 1, 1))).toBeNull();
     expect(burstFromPointer(pointerOn(document.body, 0, 3, 4))).toBeNull();
@@ -218,18 +173,17 @@ describe('点击水波和小星星', () => {
     expect(burstFromPointer(pointerOn(copy, 0, 5, 6))).toBeNull();
     expect(spawnClickBurst(1, 2, true, copy)).toBeNull();
     expect(clickBursts.value).toHaveLength(0);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(false);
+    expect(copy.style.filter).toBe('');
   });
 
-  it('水波卸掉之后字上的滤镜也去掉', () => {
+  it('水波不改按钮上的字', () => {
     const copy = button('tab-copy');
     copy.getBoundingClientRect = () => ({
       x: 0, y: 0, left: 0, top: 0, right: 28, bottom: 28, width: 28, height: 28, toJSON() { return {}; },
     });
     spawnClickBurst(14, 14, true, copy);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(copy.style.filter).toBe('');
     clearClickBursts();
-    expect(copy.classList.contains('is-ink-rippling')).toBe(false);
     expect(copy.style.filter).toBe('');
     expect(document.querySelectorAll('.markly-ink-defs')).toHaveLength(0);
   });

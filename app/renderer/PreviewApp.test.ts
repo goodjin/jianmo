@@ -1346,12 +1346,12 @@ describe('滚动条和自动换行', () => {
   });
 });
 
-describe('按钮点击的水波和小星星', () => {
+describe('按钮点击的水波', () => {
   function bursts(): HTMLElement[] {
     return [...document.body.querySelectorAll('.click-burst')] as HTMLElement[];
   }
 
-  it('点复制会从指尖冒出小星星，水波收在按钮里面', async () => {
+  it('点复制会从指尖荡开几圈水波，都收在按钮里面', async () => {
     const el = mount();
     await flush();
     const copy = el.querySelector('.doc-copy.tab-copy') as HTMLButtonElement;
@@ -1370,26 +1370,28 @@ describe('按钮点击的水波和小星星', () => {
     const burst = document.body.querySelector('.click-burst.is-rich') as HTMLElement | null;
     expect(burst).not.toBeNull();
     expect(copy.querySelector('.click-burst')).toBeNull();
-    const stars = burst!.querySelector('.click-star-origin') as HTMLElement;
-    expect(stars.style.left).toBe('120px');
-    expect(stars.style.top).toBe('16px');
+    expect(burst!.querySelector('.click-star')).toBeNull();
     const clip = burst!.querySelector('.click-ripple-clip') as HTMLElement;
     expect(clip.style.width).toBe('28px');
     expect(clip.style.height).toBe('28px');
-    expect(burst!.querySelectorAll('.click-wave')).toHaveLength(1);
-    expect(burst!.querySelectorAll('.click-ripple')).toHaveLength(2);
-    expect(burst!.querySelectorAll('.click-star')).toHaveLength(10);
-    const ring = burst!.querySelector('.click-ripple') as HTMLElement;
-    expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(28);
-    const inner = burst!.querySelector('.click-ripple-late') as HTMLElement;
-    expect(Number(inner.style.getPropertyValue('--ripple-scale')) * 12).toBeLessThan(28);
-    const star = burst!.querySelector('.click-star') as HTMLElement;
-    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeGreaterThan(0.2);
-    expect(Number(star.style.getPropertyValue('--star-alpha'))).toBeLessThan(0.5);
-    expect(copy.classList.contains('is-ink-rippling')).toBe(true);
+    expect(burst!.querySelector('.click-wave')).toBeNull();
+    const svg = burst!.querySelector('.click-ripple-svg') as SVGSVGElement;
+    expect(svg.getAttribute('width')).toBe('28');
+    expect(svg.getAttribute('height')).toBe('28');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 28 28');
+    const rings = [...burst!.querySelectorAll('.click-ripple')] as HTMLElement[];
+    expect(rings).toHaveLength(3);
+    const radii = rings.map((ring) => Number.parseFloat(ring.style.getPropertyValue('--ring-r')));
+    expect(Math.max(...radii)).toBe(12.6);
+    expect(radii.filter((radius) => radius < 12.6)).toHaveLength(2);
+    const line = burst!.querySelector('.click-ripple-line') as SVGCircleElement;
+    expect(line.getAttribute('cx')).toBe('14');
+    expect(line.getAttribute('cy')).toBe('14');
+    expect(new Set(rings.map((ring) => ring.style.animationDelay)).size).toBe(3);
+    expect(copy.style.filter).toBe('');
   });
 
-  it('别的壳层按钮也有，星星少一些；标签空白、禁用按钮和松开鼠标不再来一颗', async () => {
+  it('别的壳层按钮也有水波；标签空白、禁用按钮和松开鼠标不再来一圈', async () => {
     const el = mount();
     await flush();
     const reload = el.querySelector('.tab-reload') as HTMLButtonElement;
@@ -1403,7 +1405,8 @@ describe('按钮点击的水波和小星星', () => {
     const plain = bursts();
     expect(plain).toHaveLength(1);
     expect(plain[0]!.classList.contains('is-rich')).toBe(false);
-    expect(plain[0]!.querySelectorAll('.click-star')).toHaveLength(7);
+    expect(plain[0]!.querySelectorAll('.click-ripple')).toHaveLength(3);
+    expect(plain[0]!.querySelector('.click-star')).toBeNull();
 
     const tab = el.querySelector('.tab') as HTMLElement;
     tab.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 8, clientY: 8, button: 0 }));
@@ -1439,11 +1442,16 @@ describe('按钮点击的水波和小星星', () => {
     copy.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
     await flush();
     const burst = document.body.querySelector('.click-burst.is-rich') as HTMLElement;
-    const stars = burst.querySelector('.click-star-origin') as HTMLElement;
-    expect(stars.style.left).toBe('24px');
-    expect(stars.style.top).toBe('33px');
+    const clip = burst.querySelector('.click-ripple-clip') as HTMLElement;
+    const svg = burst.querySelector('.click-ripple-svg') as SVGSVGElement;
+    expect(svg.getAttribute('width')).toBe('26');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 26 26');
+    const line = burst.querySelector('.click-ripple-line') as SVGCircleElement;
+    expect(line.getAttribute('cx')).toBe(line.getAttribute('cy'));
+    expect(Number.parseFloat(clip.style.left) + Number.parseFloat(svg.style.left) + 13).toBe(24);
+    expect(Number.parseFloat(clip.style.top) + Number.parseFloat(svg.style.top) + 13).toBe(33);
     const ring = burst.querySelector('.click-ripple') as HTMLElement;
-    expect(Number(ring.style.getPropertyValue('--ripple-scale')) * 12).toBe(26);
+    expect(Number.parseFloat(ring.style.getPropertyValue('--ring-r'))).toBe(11.6);
   });
 });
 
