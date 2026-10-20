@@ -25,8 +25,8 @@ export const PLAIN_BURST_CLASSES = [
   'recent-more',
 ] as const;
 
-const RICH_COLORS = ['#f6c445', '#fff6c8', '#ffe08a', '#ffd0ea', '#ffffff'];
-const PLAIN_COLORS = ['#7eb6ff', '#d7e8ff', '#f6c445', '#ffffff', '#b9d4ff'];
+const RICH_COLORS = ['#e8a317', '#f5c542', '#ff7eb3', '#5b9dff', '#f08a24'];
+const PLAIN_COLORS = ['#3d8bfd', '#e8a317', '#ff7eb3', '#6aa7ff', '#f5c542'];
 
 export type StarShape = 'star' | 'dot';
 
@@ -63,20 +63,21 @@ export function prefersReducedMotion(): boolean {
 export function makeStars(rich: boolean, rand: () => number = Math.random): StarSpec[] {
   const count = rich ? 8 : 5;
   const colors = rich ? RICH_COLORS : PLAIN_COLORS;
-  const base = rich ? 22 : 14;
-  const spread = rich ? 20 : 12;
+  const base = rich ? 26 : 16;
+  const spread = rich ? 18 : 10;
   const stars: StarSpec[] = [];
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count + (rand() - 0.5) * 0.7;
     const dist = base + rand() * spread;
+    const shape: StarShape = i % 3 === 2 ? 'dot' : 'star';
     stars.push({
       dx: Math.cos(angle) * dist,
       dy: Math.sin(angle) * dist,
       delay: rand() * 50,
-      size: (rich ? 8 : 6) + rand() * (rich ? 4 : 2.5),
+      size: shape === 'dot' ? 3.5 + rand() * 2 : (rich ? 11 : 8) + rand() * (rich ? 3 : 2),
       spin: (i % 2 === 0 ? 1 : -1) * (28 + rand() * 40),
       color: colors[i % colors.length]!,
-      shape: i % 3 === 2 ? 'dot' : 'star',
+      shape,
     });
   }
   return stars;

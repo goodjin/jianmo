@@ -136,6 +136,7 @@ onUnmounted(() => {
   top: 0;
   display: block;
   overflow: visible;
+  filter: drop-shadow(0 0 1px rgba(36, 41, 46, 0.28));
   animation: click-star-fly 640ms cubic-bezier(0.16, 0.72, 0.2, 1) forwards;
 }
 .click-star path {
@@ -162,13 +163,17 @@ onUnmounted(() => {
     transform: translate(-50%, -50%) scale(0.15) rotate(0deg);
     opacity: 0;
   }
-  24% {
+  16% {
     opacity: 1;
-    transform: translate(calc(-50% + var(--dx) * 0.42), calc(-50% + var(--dy) * 0.42)) scale(1) rotate(calc(var(--spin) * 0.35));
+    transform: translate(calc(-50% + var(--dx) * 0.22), calc(-50% + var(--dy) * 0.22)) scale(1.08) rotate(calc(var(--spin) * 0.2));
+  }
+  68% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--dx) * 0.78), calc(-50% + var(--dy) * 0.78)) scale(0.92) rotate(calc(var(--spin) * 0.65));
   }
   100% {
     opacity: 0;
-    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.2) rotate(var(--spin));
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.4) rotate(var(--spin));
   }
 }
 @media (prefers-reduced-motion: reduce) {
