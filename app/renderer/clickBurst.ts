@@ -7,14 +7,18 @@
 
 import { ref } from 'vue';
 
-export const CLICK_BURST_MS = 980;
+/** 一圈从指尖走到按钮边要这么久，看起来像慢动作。 */
+export const RIPPLE_MS = 2200;
 
 /** 连续三圈细线。后面的更小、更晚，直径都不超过按钮较短的一边。 */
 export const RIPPLE_WAVES = [
   { portion: 1, delay: 0 },
-  { portion: 0.68, delay: 160 },
-  { portion: 0.4, delay: 320 },
+  { portion: 0.68, delay: 520 },
+  { portion: 0.4, delay: 1040 },
 ] as const;
+
+/** 最后一圈走完才卸掉，避免慢动作播到一半被清掉。 */
+export const CLICK_BURST_MS = RIPPLE_WAVES[RIPPLE_WAVES.length - 1].delay + RIPPLE_MS;
 
 /** 描边画在半径两侧。半径收进这一截，整条细线才落在按钮里面。 */
 export const RIPPLE_EDGE_PAD = 1.4;

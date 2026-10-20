@@ -34,6 +34,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
 import {
+  RIPPLE_MS,
   RIPPLE_WAVES,
   ringRadius,
   burstFromClick,
@@ -68,6 +69,7 @@ function svgStyle(burst: BurstSpec): Record<string, string> {
 function ringStyle(burst: BurstSpec, portion: number, delay: number): Record<string, string> {
   return {
     '--ring-r': `${ringRadius(burst.rippleDiameter, portion)}px`,
+    '--ripple-ms': `${RIPPLE_MS}ms`,
     animationDelay: `${delay}ms`,
   };
 }
@@ -127,7 +129,7 @@ onUnmounted(() => {
 .click-ripple-line {
   fill: none;
   vector-effect: non-scaling-stroke;
-  animation: click-ring-out 820ms cubic-bezier(0.16, 0.55, 0.22, 1) both;
+  animation: click-ring-out var(--ripple-ms, 2200ms) cubic-bezier(0.32, 0.14, 0.22, 1) both;
   animation-delay: inherit;
 }
 .click-ripple-halo {
@@ -140,8 +142,8 @@ onUnmounted(() => {
 }
 @keyframes click-ring-out {
   0% { r: 0.6px; opacity: 0; }
-  12% { opacity: 0.92; }
-  58% { opacity: 0.7; }
+  10% { opacity: 0.9; }
+  72% { opacity: 0.55; }
   100% { r: var(--ring-r); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
