@@ -8,7 +8,7 @@
     }"
   >
     <div ref="openSplitRef" class="open-rail">
-      <div class="open-split">
+      <div v-if="!fileTreeCollapsed" class="open-split">
         <!--
           预览在沙箱 iframe 里，父页面收不到里面的空白点击。
           菜单打开时铺一层全屏透明层，点到菜单和打开按钮以外就收起。
@@ -309,6 +309,7 @@
       </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
     </main>
+    <ClickBurstLayer />
   </div>
 </template>
 
@@ -361,6 +362,7 @@ import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
 import SettingsPage from './SettingsPage.vue';
 import TabBar from './TabBar.vue';
+import ClickBurstLayer from './ClickBurstLayer.vue';
 
 const { postMessage, onMessage } = useVSCode();
 
@@ -993,6 +995,7 @@ function toggleOutline(): void {
 
 function toggleFileTree(): void {
   fileTreeCollapsed.value = !fileTreeCollapsed.value;
+  if (fileTreeCollapsed.value) closeRecent();
   try {
     electronApp()?.storeSet?.('fileTreeCollapsed', fileTreeCollapsed.value);
   } catch {
@@ -1487,7 +1490,7 @@ html, body, #app {
   margin: 0;
   overflow: hidden;
 }
-/* 收起后树没了，这一列只留「开」和展开按钮，宽度跟着按钮走。 */
+/* 收起后树和「打开」都拿掉，这一列只留展开箭头，宽度跟着这颗按钮走。 */
 .markly-app.files-collapsed { --files-col: max-content; }
 .markly-app > .tab-bar {
   position: relative;
@@ -1533,17 +1536,15 @@ html, body, #app {
   padding: 0 8px;
   flex-shrink: 0;
 }
-/* 几乎方的小图标。宽的「刷新」仍用上面的 12px。高度跟打开按钮对齐。 */
+/* 几乎方的小图标。宽的「刷新目录」仍用上面的 12px。高度跟打开按钮对齐。 */
 .file-up,
 .file-toggle {
-  border-radius: var(--app-radius-xxs);
-  width: 32px;
-  padding: 0;
-}
-.file-up {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--app-radius-xxs);
+  width: 32px;
+  padding: 0;
 }
 .file-up-icon {
   width: 16px;
@@ -1567,17 +1568,10 @@ html, body, #app {
   cursor: default;
 }
 .markly-app.files-collapsed .open-rail {
-  min-width: max-content;
-  gap: 4px;
-  padding: 0 6px;
-}
-.markly-app.files-collapsed .open-label { display: none; }
-.markly-app.files-collapsed .open-main::before { content: '开'; }
-.markly-app.files-collapsed .open-caret { display: none; }
-.markly-app.files-collapsed .open-main {
-  border-radius: var(--app-radius-sm);
-  min-width: 28px;
-  padding: 0 6px;
+  justify-content: center;
+  min-width: 0;
+  gap: 0;
+  padding: 0 4px;
 }
 .chrome-btn {
   font-size: 12px;
@@ -1593,6 +1587,31 @@ html, body, #app {
 }
 .chrome-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .chrome-btn:disabled { opacity: 0.55; cursor: default; }
+/* 按下时略缩一下，表示点到了。字跟着水波走靠滤镜，不靠这个缩放。 */
+.chrome-btn,
+.file-icon-btn,
+.file-toggle,
+.tab-new,
+.tab-close,
+.doc-outline-toggle {
+  transition: transform 90ms ease-out;
+}
+.chrome-btn:active:not(:disabled),
+.file-icon-btn:active:not(:disabled),
+.file-toggle:active:not(:disabled),
+.tab-new:active,
+.tab-close:active,
+.doc-outline-toggle:active {
+  transform: scale(0.96);
+}
+.doc-copy:active:not(:disabled) {
+  transform: scale(0.96);
+}
+/* 打开是左右拼在一起的，一缩接缝就会裂开。 */
+.chrome-btn.open-main:active,
+.chrome-btn.open-caret:active {
+  transform: none;
+}
 .chrome-btn.active {
   border-color: var(--markly-primary, #0969da);
   color: var(--markly-primary, #0969da);
@@ -1717,6 +1736,23 @@ html, body, #app {
   .tab-copy-mark path {
     animation: none;
     stroke-dashoffset: 0;
+  }
+  .chrome-btn,
+  .file-icon-btn,
+  .file-toggle,
+  .tab-new,
+  .tab-close,
+  .doc-outline-toggle {
+    transition: none;
+  }
+  .chrome-btn:active,
+  .file-icon-btn:active,
+  .file-toggle:active,
+  .tab-new:active,
+  .tab-close:active,
+  .doc-outline-toggle:active,
+  .doc-copy:active {
+    transform: none;
   }
 }
 /* 最右侧三个竖点。菜单按最长一行自己定宽，右对齐浮在按钮下面。 */
@@ -1959,6 +1995,7 @@ html, body, #app {
   position: absolute;
   top: 12px;
   right: 12px;
+  transition: transform 90ms ease-out;
   z-index: 4;
   display: inline-flex;
   align-items: center;
@@ -1973,6 +2010,10 @@ html, body, #app {
   cursor: pointer;
 }
 .doc-copy:hover { background: var(--markly-surfaceHover, #eaeef2); color: var(--markly-text, #24292e); }
+@media (prefers-reduced-motion: reduce) {
+  .doc-copy { transition: none; }
+  .doc-copy:active { transform: none; }
+}
 .preview-frame {
   display: block;
   width: 100%;
