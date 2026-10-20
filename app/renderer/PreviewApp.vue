@@ -277,11 +277,11 @@
             <p v-for="line in WELCOME_LINES" :key="line" class="welcome-line">{{ line }}</p>
             <div class="welcome-meta">
               <p class="welcome-meta-row">
-                <span class="welcome-meta-label">仓库</span>
+                <span class="welcome-meta-label">{{ WELCOME_REPO_LABEL }}</span>
                 <button type="button" class="welcome-link" @click="openWelcomeRepo">{{ WELCOME_REPO }}</button>
               </p>
               <p class="welcome-meta-row">
-                <span class="welcome-meta-label">邮箱</span>
+                <span class="welcome-meta-label">{{ WELCOME_EMAIL_LABEL }}</span>
                 <span class="welcome-email">{{ WELCOME_EMAIL }}</span>
               </p>
             </div>
@@ -370,7 +370,15 @@ import {
   type PlaceAnchor,
 } from '../electron/viewPlace';
 import { DEFAULT_MAX_OPEN_TABS, readReaderPrefs } from '../electron/readerPrefs';
-import { WELCOME_EMAIL, WELCOME_LEAD, WELCOME_LINES, WELCOME_REPO, WELCOME_TITLE } from '../electron/tabs';
+import {
+  WELCOME_EMAIL,
+  WELCOME_EMAIL_LABEL,
+  WELCOME_LEAD,
+  WELCOME_LINES,
+  WELCOME_REPO,
+  WELCOME_REPO_LABEL,
+  WELCOME_TITLE,
+} from '../electron/tabs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
 import { parseSystemFontList } from '../electron/appearance';
@@ -2228,7 +2236,8 @@ html, body, #app {
   color: var(--markly-textSecondary, #57606a);
 }
 .welcome-meta-label {
-  flex: 0 0 2.5em;
+  flex: 0 0 4em;
+  white-space: nowrap;
 }
 .welcome-link {
   border: 0;

@@ -3,7 +3,9 @@ import {
   BLANK_TAB_CONTENT,
   BLANK_TAB_TITLE,
   WELCOME_EMAIL,
+  WELCOME_EMAIL_LABEL,
   WELCOME_REPO,
+  WELCOME_REPO_LABEL,
   SETTINGS_TAB_TITLE,
   activateTab,
   closeTab,
@@ -68,8 +70,10 @@ describe('createBlankTab / createInitialState / isBlankTab', () => {
   it('空白页记下仓库地址和邮箱', () => {
     expect(WELCOME_REPO).toBe('https://github.com/goodjin/jianmo');
     expect(WELCOME_EMAIL).toBe('goodjin2@gmail.com');
-    expect(BLANK_TAB_CONTENT).toContain(`仓库：${WELCOME_REPO}`);
-    expect(BLANK_TAB_CONTENT).toContain(`邮箱：${WELCOME_EMAIL}`);
+    expect(WELCOME_REPO_LABEL).toBe('仓库地址');
+    expect(WELCOME_EMAIL_LABEL).toBe('联系邮箱');
+    expect(BLANK_TAB_CONTENT).toContain(`${WELCOME_REPO_LABEL}：${WELCOME_REPO}`);
+    expect(BLANK_TAB_CONTENT).toContain(`${WELCOME_EMAIL_LABEL}：${WELCOME_EMAIL}`);
   });
 
   it('空白标签无路径且带占位正文', () => {

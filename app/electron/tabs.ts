@@ -20,6 +20,8 @@ export const WELCOME_LINES = [
 
 export const WELCOME_REPO = 'https://github.com/goodjin/jianmo';
 export const WELCOME_EMAIL = 'goodjin2@gmail.com';
+export const WELCOME_REPO_LABEL = '仓库地址';
+export const WELCOME_EMAIL_LABEL = '联系邮箱';
 
 export const BLANK_TAB_CONTENT = [
   `**${WELCOME_TITLE}**`,
@@ -30,9 +32,9 @@ export const BLANK_TAB_CONTENT = [
   '',
   WELCOME_LINES[1],
   '',
-  `仓库：${WELCOME_REPO}`,
+  `${WELCOME_REPO_LABEL}：${WELCOME_REPO}`,
   '',
-  `邮箱：${WELCOME_EMAIL}`,
+  `${WELCOME_EMAIL_LABEL}：${WELCOME_EMAIL}`,
 ].join('\n');
 
 /** doc 承载打开的文档；settings 是应用内设置页，全局至多一个。 */
