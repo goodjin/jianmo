@@ -6,11 +6,15 @@
         :key="burst.id"
         class="click-burst"
         :class="{ 'is-rich': burst.rich }"
-        :style="{ left: burst.x + 'px', top: burst.y + 'px' }"
       >
-        <span class="click-wave"></span>
-        <span class="click-ripple"></span>
-        <span class="click-ripple click-ripple-late"></span>
+        <div class="click-ripple-clip" :style="clipStyle(burst)">
+          <div class="click-ripple-origin" :style="originStyle(burst)">
+            <span class="click-wave" :style="rippleStyle(burst)"></span>
+            <span class="click-ripple" :style="rippleStyle(burst)"></span>
+            <span class="click-ripple click-ripple-late" :style="rippleStyle(burst, 0.72)"></span>
+          </div>
+        </div>
+        <div class="click-star-origin" :style="{ left: burst.x + 'px', top: burst.y + 'px' }">
         <template v-for="(star, index) in burst.stars" :key="index">
           <svg
             v-if="star.shape === 'star'"
@@ -22,6 +26,7 @@
           </svg>
           <span v-else class="click-star click-dot" :style="starStyle(star)"></span>
         </template>
+        </div>
       </div>
     </div>
   </Teleport>
@@ -30,12 +35,36 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
 import {
+  RIPPLE_BASE_PX,
   burstFromClick,
   burstFromPointer,
   clearClickBursts,
   clickBursts,
+  type BurstSpec,
   type StarSpec,
 } from './clickBurst';
+
+function clipStyle(burst: BurstSpec): Record<string, string> {
+  return {
+    left: `${burst.clip.left}px`,
+    top: `${burst.clip.top}px`,
+    width: `${burst.clip.width}px`,
+    height: `${burst.clip.height}px`,
+    borderRadius: burst.clip.radius,
+  };
+}
+
+function originStyle(burst: BurstSpec): Record<string, string> {
+  return {
+    left: `${burst.rippleX - burst.clip.left}px`,
+    top: `${burst.rippleY - burst.clip.top}px`,
+  };
+}
+
+function rippleStyle(burst: BurstSpec, portion = 1): Record<string, string> {
+  const scale = burst.rippleDiameter / RIPPLE_BASE_PX * portion;
+  return { '--ripple-scale': String(scale) };
+}
 
 function starStyle(star: StarSpec): Record<string, string> {
   return {
@@ -86,49 +115,51 @@ onUnmounted(() => {
 }
 .click-burst {
   position: fixed;
+  left: 0;
+  top: 0;
   width: 0;
   height: 0;
   overflow: visible;
 }
+.click-ripple-clip {
+  position: fixed;
+  overflow: hidden;
+}
+.click-ripple-origin,
+.click-star-origin {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+.click-star-origin { position: fixed; }
 .click-wave,
 .click-ripple {
   position: absolute;
   left: 0;
   top: 0;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
   border-radius: 50%;
 }
 .click-wave {
-  width: 18px;
-  height: 18px;
-  margin: -9px 0 0 -9px;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0%, rgba(126, 182, 255, 0.42) 46%, rgba(126, 182, 255, 0) 72%);
-  animation: click-wave-out 500ms ease-out forwards;
+  animation: click-ripple-out 500ms ease-out forwards;
 }
 .click-ripple {
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
-  border: 1.6px solid rgba(126, 182, 255, 0.9);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75);
+  border: 1.5px solid rgba(126, 182, 255, 0.9);
   animation: click-ripple-out 540ms cubic-bezier(0.16, 0.7, 0.22, 1) forwards;
 }
 .click-ripple-late {
   animation-delay: 110ms;
   border-width: 1.15px;
-  opacity: 0.85;
 }
 .click-burst.is-rich .click-wave {
   background: radial-gradient(circle, rgba(255, 248, 214, 0.96) 0%, rgba(246, 196, 69, 0.5) 42%, rgba(246, 196, 69, 0) 72%);
-  animation-duration: 600ms;
 }
 .click-burst.is-rich .click-ripple {
   border-color: rgba(246, 196, 69, 0.95);
-  box-shadow: 0 0 0 1px rgba(255, 248, 214, 0.9), 0 0 8px rgba(246, 196, 69, 0.35);
-  animation-name: click-ripple-rich;
-  animation-duration: 640ms;
-}
-.click-burst.is-rich .click-ripple-late {
-  animation-delay: 120ms;
 }
 .click-star {
   position: absolute;
@@ -146,17 +177,9 @@ onUnmounted(() => {
   border-radius: 50%;
   box-shadow: 0 0 4px currentColor;
 }
-@keyframes click-wave-out {
-  0% { transform: scale(0.15); opacity: 0.95; }
-  100% { transform: scale(3.6); opacity: 0; }
-}
 @keyframes click-ripple-out {
   0% { transform: scale(0.25); opacity: 0.9; }
-  100% { transform: scale(4.4); opacity: 0; }
-}
-@keyframes click-ripple-rich {
-  0% { transform: scale(0.2); opacity: 0.95; }
-  100% { transform: scale(5.8); opacity: 0; }
+  100% { transform: scale(var(--ripple-scale, 1)); opacity: 0; }
 }
 @keyframes click-star-fly {
   0% {

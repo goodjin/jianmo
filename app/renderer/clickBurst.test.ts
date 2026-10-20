@@ -8,6 +8,7 @@ import {
   clearClickBursts,
   clickBursts,
   makeStars,
+  placeRipple,
   spawnClickBurst,
 } from './clickBurst';
 
@@ -52,6 +53,22 @@ afterEach(() => {
 });
 
 describe('点击水波和小星星', () => {
+  it('水波圈不超过按钮较短的一边，点在边上也会收进按钮里', () => {
+    const wide = placeRipple({ left: 0, top: 10, width: 80, height: 26 }, 2, 12);
+    expect(wide.diameter).toBe(26);
+    expect(wide.x - wide.diameter / 2).toBeGreaterThanOrEqual(0);
+    expect(wide.x + wide.diameter / 2).toBeLessThanOrEqual(80);
+    expect(wide.y - wide.diameter / 2).toBeGreaterThanOrEqual(10);
+    expect(wide.y + wide.diameter / 2).toBeLessThanOrEqual(36);
+
+    const square = placeRipple({ left: 100, top: 8, width: 28, height: 28 }, 120, 16);
+    expect(square.diameter).toBe(28);
+    expect(square.x).toBe(114);
+    expect(square.y).toBe(22);
+    expect(square.x - square.diameter / 2).toBe(100);
+    expect(square.y + square.diameter / 2).toBe(36);
+  });
+
   it('复制散开八颗，别的按钮五颗，方向各不相同', () => {
     const rich = makeStars(true, () => 0.5);
     const plain = makeStars(false, () => 0.5);
@@ -98,10 +115,18 @@ describe('点击水波和小星星', () => {
     const icon = document.createElement('svg');
     copy.appendChild(icon);
 
+    copy.getBoundingClientRect = () => ({
+      x: 30, y: 10, left: 30, top: 10, right: 58, bottom: 38, width: 28, height: 28, toJSON() { return {}; },
+    });
     const burst = burstFromPointer(pointerOn(icon, 0, 40, 18));
     expect(burst?.rich).toBe(true);
     expect(burst?.x).toBe(40);
     expect(burst?.y).toBe(18);
+    expect(burst?.rippleDiameter).toBe(28);
+    expect(burst!.rippleX - burst!.rippleDiameter / 2).toBeGreaterThanOrEqual(burst!.clip.left);
+    expect(burst!.rippleY - burst!.rippleDiameter / 2).toBeGreaterThanOrEqual(burst!.clip.top);
+    expect(burst!.rippleX + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.left + burst!.clip.width);
+    expect(burst!.rippleY + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.top + burst!.clip.height);
     expect(clickBursts.value).toHaveLength(1);
 
     expect(burstFromPointer(pointerOn(copy, 2, 1, 1))).toBeNull();
@@ -120,9 +145,12 @@ describe('点击水波和小星星', () => {
     expect(first?.x).toBe(20);
     expect(first?.y).toBe(30);
     expect(first?.rich).toBe(true);
+    expect(first?.rippleDiameter).toBe(20);
+    expect(first!.rippleX - first!.rippleDiameter / 2).toBeGreaterThanOrEqual(10);
+    expect(first!.rippleY + first!.rippleDiameter / 2).toBeLessThanOrEqual(40);
 
     vi.advanceTimersByTime(400);
-    const second = spawnClickBurst(8, 9, false);
+    const second = spawnClickBurst(8, 9, false, copy);
     expect(second?.rich).toBe(false);
     expect(clickBursts.value.map((item) => item.id)).toEqual([first!.id, second!.id]);
 
@@ -143,7 +171,7 @@ describe('点击水波和小星星', () => {
     }));
     const copy = button('tab-copy');
     expect(burstFromPointer(pointerOn(copy, 0, 5, 6))).toBeNull();
-    expect(spawnClickBurst(1, 2, true)).toBeNull();
+    expect(spawnClickBurst(1, 2, true, copy)).toBeNull();
     expect(clickBursts.value).toHaveLength(0);
   });
 });

@@ -8,6 +8,9 @@ import { ref } from 'vue';
 
 export const CLICK_BURST_MS = 780;
 
+/** 水波从这么大的圆放大到按钮较短的一边，不再超出按钮。 */
+export const RIPPLE_BASE_PX = 12;
+
 /** 这些是壳层上的操作按钮。文件行、最近打开里的文件名不算。 */
 export const PLAIN_BURST_CLASSES = [
   'chrome-btn',
@@ -16,7 +19,7 @@ export const PLAIN_BURST_CLASSES = [
   'tab-new',
   'tab-close',
   'doc-outline-toggle',
-  'export-item',
+  'action-item',
   'theme-card',
   'font-picker-button',
   'font-option',
@@ -40,12 +43,27 @@ export type StarSpec = {
   shape: StarShape;
 };
 
+export type ButtonBox = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type RippleClip = ButtonBox & {
+  radius: string;
+};
+
 export type BurstSpec = {
   id: number;
   x: number;
   y: number;
   rich: boolean;
   stars: StarSpec[];
+  rippleX: number;
+  rippleY: number;
+  rippleDiameter: number;
+  clip: RippleClip;
 };
 
 export type BurstKind = 'rich' | 'plain';
@@ -83,6 +101,41 @@ export function makeStars(rich: boolean, rand: () => number = Math.random): Star
   return stars;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  if (max < min) return (min + max) / 2;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 水波是正圆，直径用按钮较短的一边。
+ * 点在边上时，圆心往里收，整圈都落在按钮里。
+ */
+export function placeRipple(box: ButtonBox, x: number, y: number): { x: number; y: number; diameter: number } {
+  const diameter = Math.max(0, Math.min(box.width, box.height));
+  const radius = diameter / 2;
+  return {
+    x: clamp(x, box.left + radius, box.left + box.width - radius),
+    y: clamp(y, box.top + radius, box.top + box.height - radius),
+    diameter,
+  };
+}
+
+function clipOf(button: HTMLButtonElement): RippleClip {
+  const rect = button.getBoundingClientRect();
+  let radius = '0px';
+  if (typeof getComputedStyle === 'function') {
+    const read = getComputedStyle(button).borderRadius;
+    if (read) radius = read;
+  }
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    radius,
+  };
+}
+
 export function burstKind(button: HTMLButtonElement): BurstKind | null {
   if (button.disabled) return null;
   if (button.classList.contains('tab-copy')) return 'rich';
@@ -102,14 +155,20 @@ export function clearClickBursts(): void {
   clickBursts.value = [];
 }
 
-export function spawnClickBurst(x: number, y: number, rich: boolean): BurstSpec | null {
+export function spawnClickBurst(x: number, y: number, rich: boolean, button: HTMLButtonElement): BurstSpec | null {
   if (prefersReducedMotion()) return null;
+  const clip = clipOf(button);
+  const ripple = placeRipple(clip, x, y);
   const burst: BurstSpec = {
     id: nextId++,
     x,
     y,
     rich,
     stars: makeStars(rich),
+    rippleX: ripple.x,
+    rippleY: ripple.y,
+    rippleDiameter: ripple.diameter,
+    clip,
   };
   clickBursts.value = [...clickBursts.value, burst];
   const timer = window.setTimeout(() => {
@@ -126,7 +185,7 @@ export function burstFromPointer(event: PointerEvent): BurstSpec | null {
   const button = buttonFromTarget(event.target);
   const kind = button ? burstKind(button) : null;
   if (!kind) return null;
-  return spawnClickBurst(event.clientX, event.clientY, kind === 'rich');
+  return spawnClickBurst(event.clientX, event.clientY, kind === 'rich', button);
 }
 
 /**
@@ -139,5 +198,5 @@ export function burstFromClick(event: MouseEvent): BurstSpec | null {
   const kind = button ? burstKind(button) : null;
   if (!kind) return null;
   const rect = button.getBoundingClientRect();
-  return spawnClickBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, kind === 'rich');
+  return spawnClickBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, kind === 'rich', button);
 }
