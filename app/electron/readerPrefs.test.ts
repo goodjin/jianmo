@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeReaderPatch, readReaderPrefs } from './readerPrefs';
+import { DEFAULT_MAX_OPEN_TABS, MAX_MAX_OPEN_TABS, normalizeReaderPatch, readReaderPrefs } from './readerPrefs';
 
 describe('readReaderPrefs', () => {
   it('没写过时默认开启选择即复制', () => {
@@ -20,6 +20,18 @@ describe('readReaderPrefs', () => {
     expect(readReaderPrefs({ reader: { copyOnSelect: 'yes' } }).copyOnSelect).toBe(true);
     expect(readReaderPrefs({ reader: { copyOnSelect: 0 } }).copyOnSelect).toBe(true);
   });
+
+  it('没写过标签上限时用默认值', () => {
+    expect(readReaderPrefs(undefined).maxOpenTabs).toBe(DEFAULT_MAX_OPEN_TABS);
+    expect(readReaderPrefs({ reader: { copyOnSelect: false } }).maxOpenTabs).toBe(DEFAULT_MAX_OPEN_TABS);
+  });
+
+  it('标签上限会收进允许的范围', () => {
+    expect(readReaderPrefs({ reader: { maxOpenTabs: 8 } }).maxOpenTabs).toBe(8);
+    expect(readReaderPrefs({ maxOpenTabs: 0 }).maxOpenTabs).toBe(1);
+    expect(readReaderPrefs({ maxOpenTabs: 99 }).maxOpenTabs).toBe(MAX_MAX_OPEN_TABS);
+    expect(readReaderPrefs({ maxOpenTabs: 7.6 }).maxOpenTabs).toBe(8);
+  });
 });
 
 describe('normalizeReaderPatch', () => {
@@ -33,5 +45,16 @@ describe('normalizeReaderPatch', () => {
     expect(normalizeReaderPatch({})).toBeNull();
     expect(normalizeReaderPatch({ copyOnSelect: 'false' })).toBeNull();
     expect(normalizeReaderPatch({ theme: 'nord' })).toBeNull();
+    expect(normalizeReaderPatch({ maxOpenTabs: '12' })).toBeNull();
+  });
+
+  it('标签上限单独也能改，过大过小会收进范围', () => {
+    expect(normalizeReaderPatch({ maxOpenTabs: 12 })).toEqual({ maxOpenTabs: 12 });
+    expect(normalizeReaderPatch({ maxOpenTabs: 0 })).toEqual({ maxOpenTabs: 1 });
+    expect(normalizeReaderPatch({ maxOpenTabs: 80 })).toEqual({ maxOpenTabs: MAX_MAX_OPEN_TABS });
+    expect(normalizeReaderPatch({ copyOnSelect: false, maxOpenTabs: 6 })).toEqual({
+      copyOnSelect: false,
+      maxOpenTabs: 6,
+    });
   });
 });
