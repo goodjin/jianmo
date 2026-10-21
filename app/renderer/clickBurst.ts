@@ -1,24 +1,36 @@
 /**
- * 桌面壳层按钮被点下时，从指尖荡开几圈细的正圆水波。
- * 圈是矢量描边，不把小色块放大，也不扭曲按钮。
- * 画在 body 上，按按钮圆角裁住，不超出按钮边。
- * 文件列表和右键菜单不跟。系统开了「减少动效」就不播。
+ * 桌面壳层按钮被点下时，从按钮中心荡开两圈水波。
+ * 圈先快后慢，外圈贴着按钮较短的一边。
+ * 同一圈波会把按钮上的字轻轻推一下，再拉回来。
+ * 画在 body 上，按按钮圆角裁住。文件列表和右键菜单不跟。
+ * 系统开了「减少动效」就不播。
  */
 
 import { ref } from 'vue';
 
-/** 一圈从指尖走到按钮边要这么久，看起来像慢动作。 */
-export const RIPPLE_MS = 2200;
+/** 一圈从中心走到按钮边的时间。开头快，结尾慢，不再拖成慢动作。 */
+export const RIPPLE_MS = 720;
 
-/** 连续三圈细线。后面的更小、更晚，直径都不超过按钮较短的一边。 */
+/**
+ * 跟圆的 CSS 缓动同一条。前半段已经走出大半，后半段才慢慢贴到边上。
+ * 水波推字也用这条，字才和看得见的圈一起走。
+ */
+export const RIPPLE_EASE = { x1: 0.22, y1: 0.68, x2: 0.2, y2: 1 } as const;
+
+/** 两圈。后面的更小、稍晚，直径都不超过按钮较短的一边。 */
 export const RIPPLE_WAVES = [
   { portion: 1, delay: 0 },
-  { portion: 0.68, delay: 520 },
-  { portion: 0.4, delay: 1040 },
+  { portion: 0.62, delay: 130 },
 ] as const;
 
-/** 最后一圈走完才卸掉，避免慢动作播到一半被清掉。 */
+/** 最后一圈走完才卸掉。 */
 export const CLICK_BURST_MS = RIPPLE_WAVES[RIPPLE_WAVES.length - 1].delay + RIPPLE_MS;
+
+/** 波峰把字推开的像素。再大笔画会裂成两层，再小看不出在晃。 */
+export const INK_CREST_PX = 4;
+
+/** 波有多宽，按按钮较短一边的半径来量。太窄的话，相邻像素被拉开，字会裂开。 */
+export const INK_WAVE_WIDTH = 1.35;
 
 /** 描边画在半径两侧。半径收进这一截，整条细线才落在按钮里面。 */
 export const RIPPLE_EDGE_PAD = 1.4;
@@ -73,7 +85,9 @@ export type BurstKind = 'rich' | 'plain';
 export const clickBursts = ref<BurstSpec[]>([]);
 
 const timers = new Set<number>();
+const inkJobs = new Map<HTMLButtonElement, { stop: () => void }>();
 let nextId = 1;
+let inkSeq = 1;
 
 export function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -86,17 +100,119 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * 水波是正圆，直径用按钮较短的一边。
- * 点在边上时，圆心往里收，整圈都落在按钮里。
+ * 水波是正圆，圆心用按钮中心，直径用较短的一边。
+ * 点在边上也不会把圆心带过去。
  */
-export function placeRipple(box: ButtonBox, x: number, y: number): { x: number; y: number; diameter: number } {
+export function placeRipple(box: ButtonBox, _x = 0, _y = 0): { x: number; y: number; diameter: number } {
   const diameter = Math.max(0, Math.min(box.width, box.height));
-  const radius = diameter / 2;
   return {
-    x: clamp(x, box.left + radius, box.left + box.width - radius),
-    y: clamp(y, box.top + radius, box.top + box.height - radius),
+    x: box.left + box.width / 2,
+    y: box.top + box.height / 2,
     diameter,
   };
+}
+
+/** 整段里波有多强。开头和结尾是 0，字不会停在歪的位置。 */
+export function inkAmplitude(phase: number): number {
+  if (phase <= 0 || phase >= 1) return 0;
+  return Math.sin(Math.PI * phase);
+}
+
+function unitBezier(u: number, p1: number, p2: number): number {
+  const c = 3 * p1;
+  const b = 3 * (p2 - p1) - c;
+  const a = 1 - c - b;
+  return ((a * u + b) * u + c) * u;
+}
+
+function unitBezierSlope(u: number, p1: number, p2: number): number {
+  const c = 3 * p1;
+  const b = 3 * (p2 - p1) - c;
+  const a = 1 - c - b;
+  return (3 * a * u + 2 * b) * u + c;
+}
+
+/** 时间 0 到 1，换成水波走出的比例。开头走得快，临到边上慢下来。 */
+export function rippleEase(time: number): number {
+  if (time <= 0) return 0;
+  if (time >= 1) return 1;
+  let u = time;
+  for (let i = 0; i < 8; i++) {
+    const slope = unitBezierSlope(u, RIPPLE_EASE.x1, RIPPLE_EASE.x2);
+    if (Math.abs(slope) < 1e-6) break;
+    u = clamp(u - (unitBezier(u, RIPPLE_EASE.x1, RIPPLE_EASE.x2) - time) / slope, 0, 1);
+  }
+  return unitBezier(u, RIPPLE_EASE.y1, RIPPLE_EASE.y2);
+}
+
+/**
+ * 距离按按钮较短一边的半径来量，1 是按钮边。
+ * 正数把这一点往外推，负数往里拉。波峰在环的外侧，波谷在内侧。
+ */
+export function inkWave(dist: number, phase: number): number {
+  const ring = 0.12 + clamp(phase, 0, 1) * 0.98;
+  const delta = dist - ring;
+  const width = INK_WAVE_WIDTH;
+  const envelope = Math.exp(-(delta * delta) / (2 * width * width));
+  return envelope * Math.sin((delta / width) * Math.PI);
+}
+
+/**
+ * bx、by 是按钮自己的坐标，0 到 1。
+ * 返回这一刻该点被推开的比例，大约 -1 到 1。
+ */
+export function inkShift(
+  bx: number,
+  by: number,
+  phase: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const dx = (bx - 0.5) * width;
+  const dy = (by - 0.5) * height;
+  const distPx = Math.hypot(dx, dy);
+  if (distPx < 0.5 || width < 2 || height < 2) return { x: 0, y: 0 };
+  const radius = Math.min(width, height) / 2;
+  const push = inkWave(distPx / radius, phase) * inkAmplitude(phase);
+  return { x: (dx / distPx) * push, y: (dy / distPx) * push };
+}
+
+/** 滤镜区域比按钮大一圈，贴图要按同一块铺，圆心才在按钮中心。 */
+const FILTER_X = -0.25;
+const FILTER_Y = -0.4;
+const FILTER_W = 1.5;
+const FILTER_H = 1.8;
+const INK_MAP_SIZE = 128;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
+
+function clampByte(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+/** 红是左右，绿是上下，128 表示不动。 */
+export function paintInkMap(
+  data: Uint8ClampedArray,
+  size: number,
+  phase: number,
+  width: number,
+  height: number,
+): void {
+  if (size < 2 || data.length < size * size * 4) return;
+  for (let y = 0; y < size; y++) {
+    const v = y / (size - 1);
+    const by = FILTER_Y + v * FILTER_H;
+    for (let x = 0; x < size; x++) {
+      const u = x / (size - 1);
+      const bx = FILTER_X + u * FILTER_W;
+      const shift = inkShift(bx, by, phase, width, height);
+      const i = (y * size + x) * 4;
+      data[i] = clampByte(128 + shift.x * 127);
+      data[i + 1] = clampByte(128 + shift.y * 127);
+      data[i + 2] = 128;
+      data[i + 3] = 255;
+    }
+  }
 }
 
 function clipOf(button: HTMLButtonElement): RippleClip {
@@ -131,7 +247,112 @@ function buttonFromTarget(target: EventTarget | null): HTMLButtonElement | null 
 export function clearClickBursts(): void {
   for (const timer of timers) window.clearTimeout(timer);
   timers.clear();
+  const jobs = [...inkJobs.values()];
+  inkJobs.clear();
+  for (const job of jobs) job.stop();
   clickBursts.value = [];
+}
+
+/**
+ * 在按钮自己身上贴一层水波，字会被波峰往外推、波谷拉回来。
+ * 圆心是按钮中心。画布不可用时不加滤镜。播完一定卸掉。
+ */
+export function beginInkRipple(button: HTMLButtonElement): void {
+  if (prefersReducedMotion() || !button.isConnected) return;
+  const previous = inkJobs.get(button);
+  if (previous) previous.stop();
+
+  const rect = button.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;
+
+  const jsdom = typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
+  const canvas = document.createElement('canvas');
+  canvas.width = INK_MAP_SIZE;
+  canvas.height = INK_MAP_SIZE;
+  let ctx: CanvasRenderingContext2D | null = null;
+  if (!jsdom) {
+    try {
+      ctx = canvas.getContext('2d');
+    } catch {
+      ctx = null;
+    }
+  }
+  if (!ctx) return;
+
+  let image: ImageData;
+  try {
+    image = ctx.createImageData(INK_MAP_SIZE, INK_MAP_SIZE);
+  } catch {
+    return;
+  }
+
+  const id = `markly-ink-${inkSeq++}`;
+  const previousFilter = button.style.filter;
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'markly-ink-defs');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.position = 'absolute';
+  svg.style.width = '0';
+  svg.style.height = '0';
+  svg.style.pointerEvents = 'none';
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.setAttribute('id', id);
+  filter.setAttribute('x', '-25%');
+  filter.setAttribute('y', '-40%');
+  filter.setAttribute('width', '150%');
+  filter.setAttribute('height', '180%');
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+  const feImage = document.createElementNS(SVG_NS, 'feImage');
+  feImage.setAttribute('result', 'map');
+  feImage.setAttribute('preserveAspectRatio', 'none');
+  feImage.setAttribute('x', '0');
+  feImage.setAttribute('y', '0');
+  feImage.setAttribute('width', '100%');
+  feImage.setAttribute('height', '100%');
+  const feDisp = document.createElementNS(SVG_NS, 'feDisplacementMap');
+  feDisp.setAttribute('in', 'SourceGraphic');
+  feDisp.setAttribute('in2', 'map');
+  feDisp.setAttribute('xChannelSelector', 'R');
+  feDisp.setAttribute('yChannelSelector', 'G');
+  feDisp.setAttribute('scale', String(INK_CREST_PX));
+  filter.append(feImage, feDisp);
+  svg.append(filter);
+  document.body.append(svg);
+
+  button.style.filter = previousFilter ? `${previousFilter} url(#${id})` : `url(#${id})`;
+  let frame = 0;
+  let stopped = false;
+  const finish = () => {
+    if (stopped) return;
+    stopped = true;
+    if (frame) window.cancelAnimationFrame(frame);
+    inkJobs.delete(button);
+    if (button.style.filter.includes(id)) button.style.filter = previousFilter;
+    svg.remove();
+  };
+  inkJobs.set(button, { stop: finish });
+
+  const start = performance.now();
+  const tick = (now: number) => {
+    if (stopped) return;
+    const phase = rippleEase((now - start) / RIPPLE_MS);
+    if (phase >= 1) {
+      finish();
+      return;
+    }
+    try {
+      paintInkMap(image.data, INK_MAP_SIZE, phase, rect.width, rect.height);
+      ctx.putImageData(image, 0, 0);
+      const url = canvas.toDataURL();
+      feImage.setAttribute('href', url);
+      feImage.setAttributeNS(XLINK_NS, 'href', url);
+    } catch {
+      finish();
+      return;
+    }
+    frame = window.requestAnimationFrame(tick);
+  };
+  frame = window.requestAnimationFrame(tick);
 }
 
 export function spawnClickBurst(x: number, y: number, rich: boolean, button: HTMLButtonElement): BurstSpec | null {
@@ -154,6 +375,7 @@ export function spawnClickBurst(x: number, y: number, rich: boolean, button: HTM
     clickBursts.value = clickBursts.value.filter((item) => item.id !== burst.id);
   }, CLICK_BURST_MS);
   timers.add(timer);
+  beginInkRipple(button);
   return burst;
 }
 

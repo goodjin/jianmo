@@ -1360,18 +1360,18 @@ describe('按钮点击的水波', () => {
     return [...document.body.querySelectorAll('.click-burst')] as HTMLElement[];
   }
 
-  it('点复制会从指尖荡开几圈水波，都收在按钮里面', async () => {
+  it('点在边上也会从按钮中心荡开两圈水波，都收在按钮里面', async () => {
     const el = mount();
     await flush();
     const copy = el.querySelector('.doc-copy.tab-copy') as HTMLButtonElement;
     expect(copy).not.toBeNull();
     copy.getBoundingClientRect = () => ({
-      x: 100, y: 8, left: 100, top: 8, right: 128, bottom: 36, width: 28, height: 28, toJSON() { return {}; },
+      x: 100, y: 8, left: 100, top: 8, right: 180, bottom: 36, width: 80, height: 28, toJSON() { return {}; },
     });
     copy.dispatchEvent(new MouseEvent('pointerdown', {
       bubbles: true,
-      clientX: 120,
-      clientY: 16,
+      clientX: 110,
+      clientY: 12,
       button: 0,
     }));
     await flush();
@@ -1381,22 +1381,37 @@ describe('按钮点击的水波', () => {
     expect(copy.querySelector('.click-burst')).toBeNull();
     expect(burst!.querySelector('.click-star')).toBeNull();
     const clip = burst!.querySelector('.click-ripple-clip') as HTMLElement;
-    expect(clip.style.width).toBe('28px');
+    expect(clip.style.width).toBe('80px');
     expect(clip.style.height).toBe('28px');
     expect(burst!.querySelector('.click-wave')).toBeNull();
     const svg = burst!.querySelector('.click-ripple-svg') as SVGSVGElement;
     expect(svg.getAttribute('width')).toBe('28');
     expect(svg.getAttribute('height')).toBe('28');
     expect(svg.getAttribute('viewBox')).toBe('0 0 28 28');
+    expect(Number.parseFloat(clip.style.left) + Number.parseFloat(svg.style.left) + 14).toBe(140);
+    expect(Number.parseFloat(clip.style.top) + Number.parseFloat(svg.style.top) + 14).toBe(22);
     const rings = [...burst!.querySelectorAll('.click-ripple')] as HTMLElement[];
-    expect(rings).toHaveLength(3);
-    const radii = rings.map((ring) => Number.parseFloat(ring.style.getPropertyValue('--ring-r')));
-    expect(Math.max(...radii)).toBe(12.6);
-    expect(radii.filter((radius) => radius < 12.6)).toHaveLength(2);
+    expect(rings).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-ripple-shade')).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-ripple-face')).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-ripple-line')).toHaveLength(2);
+    expect(burst!.querySelectorAll('.click-ripple-trough')).toHaveLength(2);
+    const radii = rings.map((ring) => Number.parseFloat(ring.style.getPropertyValue('--ring-r') || '0'));
+    const lineRadii = [...burst!.querySelectorAll('.click-ripple-line')].map((ring) =>
+      Number.parseFloat((ring as HTMLElement).style.getPropertyValue('--ring-r')),
+    );
+    const shadeRadii = [...burst!.querySelectorAll('.click-ripple-shade')].map((ring) =>
+      Number.parseFloat((ring as HTMLElement).style.getPropertyValue('--ring-r')),
+    );
+    expect(Math.max(...shadeRadii)).toBeCloseTo(12.6, 5);
+    expect(Math.max(...lineRadii)).toBeCloseTo(12.6 - 2.8, 5);
+    expect(Math.max(...lineRadii)).toBeLessThan(Math.max(...shadeRadii) - 2);
+    expect(lineRadii.filter((radius) => radius < 12.6 - 2.8)).toHaveLength(1);
+    expect(radii).toHaveLength(2);
     const line = burst!.querySelector('.click-ripple-line') as SVGCircleElement;
     expect(line.getAttribute('cx')).toBe('14');
     expect(line.getAttribute('cy')).toBe('14');
-    expect(new Set(rings.map((ring) => ring.style.animationDelay)).size).toBe(3);
+    expect(new Set(rings.map((ring) => ring.style.getPropertyValue('--ripple-delay'))).size).toBe(2);
     expect(copy.style.filter).toBe('');
   });
 
@@ -1414,7 +1429,7 @@ describe('按钮点击的水波', () => {
     const plain = bursts();
     expect(plain).toHaveLength(1);
     expect(plain[0]!.classList.contains('is-rich')).toBe(false);
-    expect(plain[0]!.querySelectorAll('.click-ripple')).toHaveLength(3);
+    expect(plain[0]!.querySelectorAll('.click-ripple')).toHaveLength(2);
     expect(plain[0]!.querySelector('.click-star')).toBeNull();
 
     const tab = el.querySelector('.tab') as HTMLElement;
@@ -1459,8 +1474,8 @@ describe('按钮点击的水波', () => {
     expect(line.getAttribute('cx')).toBe(line.getAttribute('cy'));
     expect(Number.parseFloat(clip.style.left) + Number.parseFloat(svg.style.left) + 13).toBe(24);
     expect(Number.parseFloat(clip.style.top) + Number.parseFloat(svg.style.top) + 13).toBe(33);
-    const ring = burst.querySelector('.click-ripple') as HTMLElement;
-    expect(Number.parseFloat(ring.style.getPropertyValue('--ring-r'))).toBe(11.6);
+    const shade = burst.querySelector('.click-ripple-shade') as SVGCircleElement;
+    expect(Number.parseFloat(shade.style.getPropertyValue('--ring-r'))).toBe(11.6);
   });
 });
 
