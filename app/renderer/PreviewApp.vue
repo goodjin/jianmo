@@ -50,15 +50,6 @@
           </svg>
         </button>
         <button
-          v-if="!fileTreeCollapsed"
-          type="button"
-          class="file-icon-btn"
-          title="刷新目录树"
-          aria-label="刷新目录树"
-          :disabled="!treeHasRoot"
-          @click="onRefreshTree"
-        >刷新</button>
-        <button
           class="file-toggle"
           type="button"
           :title="fileTreeCollapsed ? '展开文件' : '收起文件'"
@@ -441,8 +432,7 @@ const appChromeStyle = computed(() => {
 let filesResizeMove: ((ev: PointerEvent) => void) | null = null;
 let filesResizeUp: ((ev: PointerEvent) => void) | null = null;
 const treeCanGoUp = ref(false);
-const treeHasRoot = ref(false);
-const fileTreeRef = ref<{ goUp: () => Promise<void>; refresh: () => Promise<void> } | null>(null);
+const fileTreeRef = ref<{ goUp: () => Promise<void> } | null>(null);
 const activeFilePath = computed(
   () => tabs.value.find((t) => t.id === activeTabId.value)?.filePath ?? ''
 );
@@ -1122,15 +1112,10 @@ function onFilesResizeKey(ev: KeyboardEvent): void {
 
 function onFileTreeChrome(state: { canGoUp: boolean; hasRoot: boolean }): void {
   treeCanGoUp.value = state.canGoUp;
-  treeHasRoot.value = state.hasRoot;
 }
 
 function onGoUp(): void {
   void fileTreeRef.value?.goUp();
-}
-
-function onRefreshTree(): void {
-  void fileTreeRef.value?.refresh();
 }
 
 function closeRecent(): void {
@@ -1605,7 +1590,7 @@ html, body, #app {
   overflow: hidden;
 }
 .markly-app {
-  /* 打开和上一级、刷新目录、收起要排在同一栏，220 会挤出去盖住标签。 */
+  /* 打开、上一级和收起要排在同一栏。刷新目录不再放在这里。 */
   --files-col: 260px;
   --chrome-row: 40px;
   /* 按钮、菜单、文件树用系统字体。正文字体只加在预览和设置里的示例上。 */
@@ -1699,7 +1684,7 @@ html, body, #app {
   padding: 0 8px;
   flex-shrink: 0;
 }
-/* 几乎方的小图标。宽的「刷新目录」仍用上面的 12px。高度跟打开按钮对齐。 */
+/* 上一级和收起是小方块。高度跟打开按钮对齐。 */
 .file-up,
 .file-toggle {
   display: inline-flex;

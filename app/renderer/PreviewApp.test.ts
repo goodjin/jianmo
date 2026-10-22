@@ -269,13 +269,12 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.file-head')).toBeNull();
     expect(el.querySelector('.file-head-title')).toBeNull();
     const up = chrome.querySelector('.file-up') as HTMLButtonElement;
-    const treeRefresh = chrome.querySelector('.file-icon-btn:not(.file-up)') as HTMLButtonElement;
     const toggle = chrome.querySelector('.file-toggle') as HTMLButtonElement;
     expect(up.querySelector('.file-up-icon path')).not.toBeNull();
     expect(up.textContent).not.toContain('↑');
     expect(up.getAttribute('aria-label')).toBe('上一级目录');
-    expect(treeRefresh.textContent?.trim()).toBe('刷新');
-    expect(treeRefresh.getAttribute('aria-label')).toBe('刷新目录树');
+    expect(chrome.querySelector('.file-icon-btn:not(.file-up)')).toBeNull();
+    expect(chrome.textContent).not.toContain('刷新');
     expect(toggle.textContent?.trim()).toBe('‹');
     expect(toggle.getAttribute('aria-label')).toBe('收起文件');
     expect(el.querySelector('.file-tree .file-head')).toBeNull();
@@ -313,12 +312,12 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.open-split')).not.toBeNull();
     expect(el.querySelector('.open-main')!.textContent).toContain('打开');
     expect(el.querySelector('.file-tree-chrome .file-up')).not.toBeNull();
-    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).not.toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).toBeNull();
     expect(el.querySelector('.file-tree-chrome .file-toggle')!.textContent?.trim()).toBe('‹');
     expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', false);
   });
 
-  it('打开旁边的上一级和刷新目录会作用到文件树', async () => {
+  it('打开旁边的上一级会作用到文件树，这里不再放刷新', async () => {
     const listFileTree = vi.fn(async (dir: string) => ({ dir, entries: [], error: '' }));
     const setFileTreeRoot = vi.fn(async (dir: string) => dir);
     const electron = (window as unknown as { electron: ElectronAppBridge }).electron;
@@ -333,15 +332,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     await flush();
 
     const up = el.querySelector('.file-tree-chrome .file-up') as HTMLButtonElement;
-    const refresh = el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)') as HTMLButtonElement;
     expect(up.disabled).toBe(false);
-    expect(refresh.disabled).toBe(false);
-
-    const before = listFileTree.mock.calls.length;
-    refresh.click();
-    await flush();
-    expect(listFileTree.mock.calls.length).toBeGreaterThan(before);
-    expect(listFileTree).toHaveBeenCalledWith('/home/me');
+    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).toBeNull();
+    expect(el.querySelector('[aria-label="刷新目录树"]')).toBeNull();
+    expect(el.querySelector('.tab-reload')).not.toBeNull();
 
     up.click();
     await flush();
@@ -366,12 +360,12 @@ describe('PreviewApp 顶栏与大纲', () => {
     try {
       expect(radius('.file-up')).toBe('var(--app-radius-xxs)');
       expect(radius('.file-toggle')).toBe('var(--app-radius-xxs)');
-      expect(radius('.file-icon-btn:not(.file-up)')).toBe('var(--app-radius-sm)');
+      expect(radius('.tab-reload')).toBe('var(--app-radius-sm)');
       expect(chromeRadiusStyle['--app-radius-xxs']).toBe('6px');
       expect(chromeRadiusStyle['--app-radius-sm']).toBe('12px');
       expect(height('.file-up')).toBe('32px');
       expect(height('.file-toggle')).toBe('32px');
-      expect(height('.file-icon-btn:not(.file-up)')).toBe('32px');
+      expect(height('.tab-reload')).toBe('26px');
       const shaft = el.querySelector('.file-up-icon path') as SVGPathElement;
       expect(Number.parseFloat(getComputedStyle(shaft).strokeWidth)).toBeGreaterThan(2);
     } finally {
