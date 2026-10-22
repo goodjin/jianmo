@@ -51,12 +51,12 @@ import {
   type BurstSpec,
 } from './clickBurst';
 
-/** 从外到里：外缘暗、水色、亮边、内侧暗。叠成一道有厚度的波，不是一根线。 */
+/** 从外到里叠成一道细水纹。四层靠得很近，整条大约两像素，透出底下的字。 */
 const RIPPLE_BANDS = [
   { name: 'click-ripple-shade', inset: 0 },
-  { name: 'click-ripple-face', inset: 1.6 },
-  { name: 'click-ripple-line', inset: 2.8 },
-  { name: 'click-ripple-trough', inset: 4.2 },
+  { name: 'click-ripple-face', inset: 0.45 },
+  { name: 'click-ripple-line', inset: 0.9 },
+  { name: 'click-ripple-trough', inset: 1.35 },
 ] as const;
 
 function clipStyle(burst: BurstSpec): Record<string, string> {
@@ -152,20 +152,20 @@ onUnmounted(() => {
   animation-delay: var(--ripple-delay, 0ms), var(--ripple-delay, 0ms);
 }
 .click-ripple-shade {
-  stroke: rgba(16, 64, 110, 0.62);
-  stroke-width: 2.6;
+  stroke: rgba(36, 104, 150, 0.34);
+  stroke-width: 1.25;
 }
 .click-ripple-face {
-  stroke: rgba(116, 194, 226, 0.82);
-  stroke-width: 1.9;
+  stroke: rgba(176, 220, 238, 0.42);
+  stroke-width: 0.9;
 }
 .click-ripple-line {
-  stroke: rgba(255, 255, 255, 0.98);
-  stroke-width: 1.05;
+  stroke: rgba(255, 255, 255, 0.62);
+  stroke-width: 0.5;
 }
 .click-ripple-trough {
-  stroke: rgba(12, 48, 84, 0.5);
-  stroke-width: 1.35;
+  stroke: rgba(28, 78, 118, 0.28);
+  stroke-width: 0.65;
 }
 @keyframes click-ring-out {
   0% { r: 0.6px; }
@@ -174,8 +174,8 @@ onUnmounted(() => {
 @keyframes click-ring-fade {
   0% { opacity: 0; }
   14% { opacity: 0; }
-  24% { opacity: 0.95; }
-  70% { opacity: 0.82; }
+  24% { opacity: 0.7; }
+  70% { opacity: 0.5; }
   100% { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

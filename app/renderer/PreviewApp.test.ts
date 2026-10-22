@@ -1404,9 +1404,9 @@ describe('按钮点击的水波', () => {
       Number.parseFloat((ring as HTMLElement).style.getPropertyValue('--ring-r')),
     );
     expect(Math.max(...shadeRadii)).toBeCloseTo(12.6, 5);
-    expect(Math.max(...lineRadii)).toBeCloseTo(12.6 - 2.8, 5);
-    expect(Math.max(...lineRadii)).toBeLessThan(Math.max(...shadeRadii) - 2);
-    expect(lineRadii.filter((radius) => radius < 12.6 - 2.8)).toHaveLength(1);
+    expect(Math.max(...lineRadii)).toBeCloseTo(12.6 - 0.9, 5);
+    expect(Math.max(...shadeRadii) - Math.max(...lineRadii)).toBeLessThan(1.6);
+    expect(lineRadii.filter((radius) => radius < 12.6 - 0.9)).toHaveLength(1);
     expect(radii).toHaveLength(2);
     const line = burst!.querySelector('.click-ripple-line') as SVGCircleElement;
     expect(line.getAttribute('cx')).toBe('14');
