@@ -22,7 +22,7 @@ import {
   burstFromPointer,
   clearClickBursts,
   clickBursts,
-  paintWaterRidge,
+  paintRidgeImage,
   type BurstSpec,
 } from './clickBurst';
 
@@ -74,8 +74,9 @@ function paintAll(now: number): void {
       canvas.width = backing;
       canvas.height = backing;
     }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paintWaterRidge(ctx, burst.rippleDiameter, now - burst.bornAt);
+    const image = ctx.getImageData(0, 0, backing, backing);
+    paintRidgeImage(image.data, backing, now - burst.bornAt, burst.rippleDiameter);
+    ctx.putImageData(image, 0, 0);
   });
   raf = requestAnimationFrame(paintAll);
 }

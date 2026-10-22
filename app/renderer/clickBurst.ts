@@ -9,8 +9,8 @@
 
 import { ref } from 'vue';
 
-/** 一圈从中心走到按钮边的时间。开头快，结尾慢，不再拖成慢动作。 */
-export const RIPPLE_MS = 720;
+/** 一圈从中心走到按钮边的时间。开头快，结尾慢。速度是 0.72 秒那一版的一半。 */
+export const RIPPLE_MS = 1440;
 
 /**
  * 跟圆的 CSS 缓动同一条。前半段已经走出大半，后半段才慢慢贴到边上。
@@ -21,7 +21,7 @@ export const RIPPLE_EASE = { x1: 0.22, y1: 0.68, x2: 0.2, y2: 1 } as const;
 /** 两圈。后面的更小、稍晚，直径都不超过按钮较短的一边。 */
 export const RIPPLE_WAVES = [
   { portion: 1, delay: 0 },
-  { portion: 0.62, delay: 130 },
+  { portion: 0.62, delay: 260 },
 ] as const;
 
 /** 最后一圈走完才卸掉。 */
@@ -148,15 +148,20 @@ export function rippleEase(time: number): number {
   return unitBezier(u, RIPPLE_EASE.y1, RIPPLE_EASE.y2);
 }
 
+/** 整圈最多三成看得见。再实会盖住字。 */
+export const RIDGE_VISIBLE = 0.3;
+
 /**
  * 透明度按匀速走。跟半径共用先快后慢的话，圈还没到边上就淡没了。
  * 刚离开中心时先别露出来，免得描边比半径还宽，糊成一块。
+ * 最高只有三成，不要再涂到九成。
  */
 export function rippleFade(linear: number): number {
   if (linear <= 0.14 || linear >= 1) return 0;
-  if (linear < 0.24) return (0.9 * (linear - 0.14)) / 0.1;
-  if (linear < 0.7) return 0.9 + ((0.66 - 0.9) * (linear - 0.24)) / 0.46;
-  return (0.66 * (1 - linear)) / 0.3;
+  const late = RIDGE_VISIBLE * 0.73;
+  if (linear < 0.24) return (RIDGE_VISIBLE * (linear - 0.14)) / 0.1;
+  if (linear < 0.7) return RIDGE_VISIBLE + ((late - RIDGE_VISIBLE) * (linear - 0.24)) / 0.46;
+  return (late * (1 - linear)) / 0.3;
 }
 
 /** 水脊有多宽。圈还小的时候收窄，避免把按钮中间涂实。 */
@@ -197,40 +202,76 @@ export function ridgeInk(t: number): RidgeInk {
   return dst;
 }
 
-export type RidgeCanvas = {
-  clearRect(x: number, y: number, w: number, h: number): void;
-  beginPath(): void;
-  arc(x: number, y: number, r: number, start: number, end: number): void;
-  stroke(): void;
-  strokeStyle: string | CanvasGradient | CanvasPattern;
-  lineWidth: number;
-};
+let ridgeInkPeak = 0;
 
-/** 把两圈水脊画进按钮中心的正圆里。elapsedMs 从这一次按下算起。 */
-export function paintWaterRidge(ctx: RidgeCanvas, diameter: number, elapsedMs: number): void {
-  ctx.clearRect(0, 0, diameter, diameter);
-  if (diameter < 2) return;
-  const cx = diameter / 2;
-  const cy = diameter / 2;
-  const steps = 48;
+function inkPeak(): number {
+  if (ridgeInkPeak > 0) return ridgeInkPeak;
+  for (let i = 0; i <= 64; i++) ridgeInkPeak = Math.max(ridgeInkPeak, ridgeInk(i / 64).a);
+  return ridgeInkPeak || 1;
+}
+
+function overPixel(
+  dst: RidgeInk,
+  src: RidgeInk,
+  srcA: number,
+): void {
+  const outA = srcA + dst.a * (1 - srcA);
+  if (outA <= 0.0001) {
+    dst.a = 0;
+    return;
+  }
+  dst.r = (src.r * srcA + dst.r * dst.a * (1 - srcA)) / outA;
+  dst.g = (src.g * srcA + dst.g * dst.a * (1 - srcA)) / outA;
+  dst.b = (src.b * srcA + dst.b * dst.a * (1 - srcA)) / outA;
+  dst.a = outA;
+}
+
+/**
+ * 把两圈水脊画进正圆里。每个像素只取样一次，透明度封在三成。
+ * bitmap 是画布像素，cssDiameter 是按钮上的尺寸，放大后水脊不会变细。
+ */
+export function paintRidgeImage(
+  data: Uint8ClampedArray,
+  bitmap: number,
+  elapsedMs: number,
+  cssDiameter = bitmap,
+): void {
+  if (bitmap < 1 || data.length < bitmap * bitmap * 4) return;
+  data.fill(0);
+  if (bitmap < 2 || cssDiameter < 2) return;
+  const scale = bitmap / cssDiameter;
+  const cx = (bitmap - 1) / 2;
+  const cy = cx;
+  const peak = inkPeak();
+  const waves: Array<{ radius: number; width: number; fade: number }> = [];
   for (const wave of RIPPLE_WAVES) {
     const linear = (elapsedMs - wave.delay) / RIPPLE_MS;
     if (linear <= 0 || linear >= 1) continue;
     const fade = rippleFade(linear);
     if (fade <= 0.01) continue;
-    const target = ringRadius(diameter, wave.portion);
+    const target = ringRadius(cssDiameter, wave.portion);
     const radius = 0.6 + (target - 0.6) * rippleEase(linear);
-    const width = ridgeWidth(radius);
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const r = radius + width / 2 - t * width;
-      if (r <= 0.3) continue;
-      const ink = ridgeInk(t);
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${ink.r | 0},${ink.g | 0},${ink.b | 0},${(ink.a * fade).toFixed(3)})`;
-      ctx.lineWidth = width / steps + 0.85;
-      ctx.stroke();
+    waves.push({ radius, width: ridgeWidth(radius), fade });
+  }
+  if (waves.length === 0) return;
+  for (let y = 0; y < bitmap; y++) {
+    for (let x = 0; x < bitmap; x++) {
+      const dist = Math.hypot(x - cx, y - cy) / scale;
+      const dst: RidgeInk = { r: 0, g: 0, b: 0, a: 0 };
+      for (const wave of waves) {
+        const t = (wave.radius + wave.width / 2 - dist) / wave.width;
+        if (t <= 0 || t >= 1) continue;
+        const ink = ridgeInk(t);
+        const srcA = (ink.a / peak) * wave.fade;
+        if (srcA <= 0.001) continue;
+        overPixel(dst, ink, srcA);
+      }
+      if (dst.a <= 0) continue;
+      const i = (y * bitmap + x) * 4;
+      data[i] = Math.round(dst.r);
+      data[i + 1] = Math.round(dst.g);
+      data[i + 2] = Math.round(dst.b);
+      data[i + 3] = Math.round(Math.min(dst.a, RIDGE_VISIBLE) * 255);
     }
   }
 }

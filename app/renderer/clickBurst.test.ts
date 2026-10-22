@@ -12,8 +12,9 @@ import {
   inkShift,
   inkWave,
   paintInkMap,
-  paintWaterRidge,
+  paintRidgeImage,
   placeRipple,
+  RIDGE_VISIBLE,
   ridgeInk,
   rippleEase,
   rippleFade,
@@ -104,12 +105,13 @@ describe('点击水波', () => {
     expect(ringRadius(2, 1)).toBe(0.6);
   });
 
-  it('水波比慢动作短，开头快、临到边上慢，最后一圈走完才消失', () => {
-    expect(RIPPLE_MS).toBeGreaterThan(600);
-    expect(RIPPLE_MS).toBeLessThan(1200);
+  it('散开速度降到一半，开头仍快、临到边上仍慢，最后一圈走完才消失', () => {
+    expect(RIPPLE_MS).toBeGreaterThanOrEqual(1400);
+    expect(RIPPLE_MS).toBeLessThanOrEqual(1500);
     const lastDelay = RIPPLE_WAVES[RIPPLE_WAVES.length - 1]!.delay;
-    expect(lastDelay).toBeGreaterThan(0);
-    expect(lastDelay).toBeLessThan(400);
+    expect(lastDelay).toBeGreaterThanOrEqual(240);
+    expect(lastDelay).toBeLessThanOrEqual(280);
+    expect(CLICK_BURST_MS).toBeLessThan(2000);
     expect(CLICK_BURST_MS).toBe(lastDelay + RIPPLE_MS);
     expect(rippleEase(0)).toBe(0);
     expect(rippleEase(1)).toBe(1);
@@ -137,46 +139,41 @@ describe('点击水波', () => {
 
     expect(rippleFade(0)).toBe(0);
     expect(rippleFade(0.14)).toBe(0);
-    expect(rippleFade(0.24)).toBeCloseTo(0.9, 5);
-    expect(rippleFade(0.7)).toBeCloseTo(0.66, 5);
+    expect(rippleFade(0.24)).toBeCloseTo(RIDGE_VISIBLE, 5);
+    expect(rippleFade(0.5)).toBeLessThanOrEqual(RIDGE_VISIBLE);
+    expect(rippleFade(0.5)).toBeGreaterThan(0.2);
     expect(rippleFade(1)).toBe(0);
 
-    const strokes: Array<{ r: number; color: string }> = [];
-    const ctx = {
-      clearRect() {},
-      beginPath() {},
-      arc(_x: number, _y: number, r: number) {
-        this.radius = r;
-      },
-      stroke() {
-        strokes.push({ r: this.radius, color: String(this.strokeStyle) });
-      },
-      strokeStyle: '' as string | CanvasGradient | CanvasPattern,
-      lineWidth: 0,
-      radius: 0,
-    };
-    paintWaterRidge(ctx, 26, 0);
-    expect(strokes).toHaveLength(0);
+    const size = 52;
+    const data = new Uint8ClampedArray(size * size * 4);
+    paintRidgeImage(data, size, 0, 26);
+    expect(data[3]).toBe(0);
+    expect(data[(26 * size + 26) * 4 + 3]).toBe(0);
 
-    paintWaterRidge(ctx, 26, RIPPLE_MS * 0.32);
-    expect(strokes.length).toBeGreaterThan(30);
-    const visible = strokes.flatMap((stroke) => {
-      const match = stroke.color.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/);
-      expect(match).not.toBeNull();
-      const sample = {
-        r: stroke.r,
-        sum: Number(match![1]) + Number(match![2]) + Number(match![3]),
-        a: Number(match![4]),
-      };
-      return sample.a > 0.15 ? [sample] : [];
-    });
-    const outerMost = visible.reduce((best, sample) => (sample.r > best.r ? sample : best));
-    const brightest = visible.reduce((best, sample) => (sample.sum > best.sum ? sample : best));
-    expect(brightest.r).toBeLessThan(outerMost.r);
+    paintRidgeImage(data, size, RIPPLE_MS * 0.32, 26);
+    let maxA = 0;
+    const left: Array<{ x: number; sum: number; a: number }> = [];
+    const row = (size - 1) / 2;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        const alpha = data[i + 3]!;
+        maxA = Math.max(maxA, alpha);
+        if (y === Math.round(row) && x < row && alpha > 12) {
+          left.push({ x, sum: data[i]! + data[i + 1]! + data[i + 2]!, a: alpha });
+        }
+      }
+    }
+    expect(maxA).toBeGreaterThan(60);
+    expect(maxA).toBeLessThanOrEqual(Math.round(255 * RIDGE_VISIBLE) + 1);
+    const center = data[(Math.round(row) * size + Math.round(row)) * 4 + 3]!;
+    expect(center).toBeLessThan(12);
+    expect(left.length).toBeGreaterThan(4);
+    const outerMost = left.reduce((best, sample) => (sample.x < best.x ? sample : best));
+    const brightest = left.reduce((best, sample) => (sample.sum > best.sum ? sample : best));
+    expect(brightest.x).toBeGreaterThan(outerMost.x);
     expect(brightest.sum).toBeGreaterThan(outerMost.sum + 40);
-    const radii = visible.map((sample) => sample.r);
-    expect(Math.max(...radii) - Math.min(...radii)).toBeGreaterThan(2);
-    expect(Math.min(...radii)).toBeGreaterThan(1);
+    expect(left[left.length - 1]!.x - left[0]!.x).toBeGreaterThan(4);
   });
 
   it('水纹有波峰和波谷，从按钮中心向外走', () => {
