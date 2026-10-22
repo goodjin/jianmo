@@ -8,23 +8,7 @@
         :class="{ 'is-rich': burst.rich }"
       >
         <div class="click-ripple-clip" :style="clipStyle(burst)">
-          <svg
-            class="click-ripple-svg"
-            :width="burst.rippleDiameter"
-            :height="burst.rippleDiameter"
-            :viewBox="`0 0 ${burst.rippleDiameter} ${burst.rippleDiameter}`"
-            :style="svgStyle(burst)"
-          >
-            <g
-              v-for="wave in RIPPLE_WAVES"
-              :key="wave.delay"
-              class="click-ripple"
-              :style="ringStyle(burst, wave.portion, wave.delay)"
-            >
-              <circle class="click-ripple-halo" :cx="half(burst)" :cy="half(burst)" />
-              <circle class="click-ripple-line" :cx="half(burst)" :cy="half(burst)" />
-            </g>
-          </svg>
+          <canvas class="click-ripple-canvas" :data-id="burst.id" :style="canvasStyle(burst)" />
         </div>
       </div>
     </div>
@@ -32,15 +16,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted, watch } from 'vue';
 import {
-  RIPPLE_MS,
-  RIPPLE_WAVES,
-  ringRadius,
   burstFromClick,
   burstFromPointer,
   clearClickBursts,
   clickBursts,
+  paintRidgeImage,
   type BurstSpec,
 } from './clickBurst';
 
@@ -54,25 +36,57 @@ function clipStyle(burst: BurstSpec): Record<string, string> {
   };
 }
 
-function half(burst: BurstSpec): number {
-  return burst.rippleDiameter / 2;
-}
-
-function svgStyle(burst: BurstSpec): Record<string, string> {
-  const radius = half(burst);
+function canvasStyle(burst: BurstSpec): Record<string, string> {
+  const radius = burst.rippleDiameter / 2;
   return {
     left: `${burst.rippleX - burst.clip.left - radius}px`,
     top: `${burst.rippleY - burst.clip.top - radius}px`,
+    width: `${burst.rippleDiameter}px`,
+    height: `${burst.rippleDiameter}px`,
   };
 }
 
-function ringStyle(burst: BurstSpec, portion: number, delay: number): Record<string, string> {
-  return {
-    '--ring-r': `${ringRadius(burst.rippleDiameter, portion)}px`,
-    '--ripple-ms': `${RIPPLE_MS}ms`,
-    animationDelay: `${delay}ms`,
-  };
+function contextOf(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
+  try {
+    return canvas.getContext('2d');
+  } catch {
+    return null;
+  }
 }
+
+let raf = 0;
+
+function paintAll(now: number): void {
+  const nodes = document.querySelectorAll<HTMLCanvasElement>('.click-ripple-canvas');
+  if (nodes.length === 0) {
+    raf = 0;
+    return;
+  }
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  nodes.forEach((canvas) => {
+    const burst = clickBursts.value.find((item) => item.id === Number(canvas.dataset.id));
+    if (!burst) return;
+    if (burst.bornAt == null) burst.bornAt = now;
+    const ctx = contextOf(canvas);
+    if (!ctx) return;
+    const backing = Math.max(1, Math.round(burst.rippleDiameter * dpr));
+    if (canvas.width !== backing) {
+      canvas.width = backing;
+      canvas.height = backing;
+    }
+    const image = ctx.getImageData(0, 0, backing, backing);
+    paintRidgeImage(image.data, backing, now - burst.bornAt, burst.rippleDiameter);
+    ctx.putImageData(image, 0, 0);
+  });
+  raf = requestAnimationFrame(paintAll);
+}
+
+function arm(): void {
+  if (raf !== 0 || clickBursts.value.length === 0) return;
+  raf = requestAnimationFrame(paintAll);
+}
+
+watch(clickBursts, arm, { flush: 'post' });
 
 function onPointerDown(event: PointerEvent): void {
   burstFromPointer(event);
@@ -85,11 +99,14 @@ function onClick(event: MouseEvent): void {
 onMounted(() => {
   window.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('click', onClick, true);
+  arm();
 });
 
 onUnmounted(() => {
   window.removeEventListener('pointerdown', onPointerDown, true);
   document.removeEventListener('click', onClick, true);
+  if (raf !== 0) cancelAnimationFrame(raf);
+  raf = 0;
   clearClickBursts();
 });
 </script>
@@ -120,31 +137,8 @@ onUnmounted(() => {
   position: fixed;
   overflow: hidden;
 }
-.click-ripple-svg {
+.click-ripple-canvas {
   position: absolute;
-  overflow: visible;
-  shape-rendering: geometricPrecision;
-}
-.click-ripple-halo,
-.click-ripple-line {
-  fill: none;
-  vector-effect: non-scaling-stroke;
-  animation: click-ring-out var(--ripple-ms, 2200ms) cubic-bezier(0.32, 0.14, 0.22, 1) both;
-  animation-delay: inherit;
-}
-.click-ripple-halo {
-  stroke: rgba(150, 196, 220, 0.45);
-  stroke-width: 2.4;
-}
-.click-ripple-line {
-  stroke: rgba(58, 122, 166, 0.55);
-  stroke-width: 1;
-}
-@keyframes click-ring-out {
-  0% { r: 0.6px; opacity: 0; }
-  10% { opacity: 0.9; }
-  72% { opacity: 0.55; }
-  100% { r: var(--ring-r); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .click-burst-layer { display: none; }

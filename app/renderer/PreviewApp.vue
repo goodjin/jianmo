@@ -1750,7 +1750,7 @@ html, body, #app {
 }
 .chrome-btn:hover { background: var(--markly-surface, #f6f8fa); }
 .chrome-btn:disabled { opacity: 0.55; cursor: default; }
-/* 按下时略缩一下，表示点到了。水波是画在上面的细圈，不改按钮上的字。 */
+/* 按下时略缩一下，表示点到了。字跟着水波晃靠滤镜，不靠这个缩放。 */
 .chrome-btn,
 .file-icon-btn,
 .file-toggle,

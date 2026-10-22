@@ -7,7 +7,17 @@ import {
   burstKind,
   clearClickBursts,
   clickBursts,
+  INK_WAVE_WIDTH,
+  inkAmplitude,
+  inkShift,
+  inkWave,
+  paintInkMap,
+  paintRidgeImage,
   placeRipple,
+  RIDGE_VISIBLE,
+  ridgeInk,
+  rippleEase,
+  rippleFade,
   RIPPLE_EDGE_PAD,
   RIPPLE_MS,
   RIPPLE_WAVES,
@@ -56,9 +66,11 @@ afterEach(() => {
 });
 
 describe('点击水波', () => {
-  it('水波圈不超过按钮较短的一边，点在边上也会收进按钮里', () => {
+  it('水波以按钮中心为圆心，直径用较短的一边，点在边上也不带偏', () => {
     const wide = placeRipple({ left: 0, top: 10, width: 80, height: 26 }, 2, 12);
     expect(wide.diameter).toBe(26);
+    expect(wide.x).toBe(40);
+    expect(wide.y).toBe(23);
     expect(wide.x - wide.diameter / 2).toBeGreaterThanOrEqual(0);
     expect(wide.x + wide.diameter / 2).toBeLessThanOrEqual(80);
     expect(wide.y - wide.diameter / 2).toBeGreaterThanOrEqual(10);
@@ -72,8 +84,8 @@ describe('点击水波', () => {
     expect(square.y + square.diameter / 2).toBe(36);
   });
 
-  it('三圈都是正圆，外圈贴着按钮较短的一边，描边也收在里面', () => {
-    expect(RIPPLE_WAVES.length).toBeGreaterThanOrEqual(3);
+  it('两圈都是正圆，先快后慢，外圈贴着按钮较短的一边', () => {
+    expect(RIPPLE_WAVES).toHaveLength(2);
     const portions = RIPPLE_WAVES.map((wave) => wave.portion);
     const delays = RIPPLE_WAVES.map((wave) => wave.delay);
     expect(portions[0]).toBe(1);
@@ -93,11 +105,124 @@ describe('点击水波', () => {
     expect(ringRadius(2, 1)).toBe(0.6);
   });
 
-  it('水波像慢动作散开，最后一圈走完才消失', () => {
-    expect(RIPPLE_MS).toBeGreaterThanOrEqual(2000);
+  it('散开速度降到一半，开头仍快、临到边上仍慢，最后一圈走完才消失', () => {
+    expect(RIPPLE_MS).toBeGreaterThanOrEqual(1400);
+    expect(RIPPLE_MS).toBeLessThanOrEqual(1500);
     const lastDelay = RIPPLE_WAVES[RIPPLE_WAVES.length - 1]!.delay;
-    expect(lastDelay).toBeGreaterThanOrEqual(800);
+    expect(lastDelay).toBeGreaterThanOrEqual(240);
+    expect(lastDelay).toBeLessThanOrEqual(280);
+    expect(CLICK_BURST_MS).toBeLessThan(2000);
     expect(CLICK_BURST_MS).toBe(lastDelay + RIPPLE_MS);
+    expect(rippleEase(0)).toBe(0);
+    expect(rippleEase(1)).toBe(1);
+    const early = rippleEase(0.2);
+    const late = 1 - rippleEase(0.8);
+    expect(early).toBeGreaterThan(0.45);
+    expect(late).toBeLessThan(0.12);
+    expect(early).toBeGreaterThan(late);
+  });
+
+  it('水脊外暗内亮，中间连成一道，不是几根线', () => {
+    const edge = ridgeInk(0);
+    const outer = ridgeInk(0.18);
+    const mid = ridgeInk(0.3);
+    const crest = ridgeInk(0.42);
+    const inner = ridgeInk(1);
+    expect(edge.a).toBe(0);
+    expect(inner.a).toBe(0);
+    expect(outer.a).toBeGreaterThan(0.25);
+    expect(mid.a).toBeGreaterThan(0.2);
+    expect(crest.a).toBeGreaterThan(0.25);
+    const lum = (ink: { r: number; g: number; b: number }) => ink.r + ink.g + ink.b;
+    expect(lum(crest)).toBeGreaterThan(lum(outer) + 80);
+    expect(crest.r).toBeGreaterThan(outer.r + 40);
+
+    expect(rippleFade(0)).toBe(0);
+    expect(rippleFade(0.14)).toBe(0);
+    expect(rippleFade(0.24)).toBeCloseTo(RIDGE_VISIBLE, 5);
+    expect(rippleFade(0.5)).toBeLessThanOrEqual(RIDGE_VISIBLE);
+    expect(rippleFade(0.5)).toBeGreaterThan(0.2);
+    expect(rippleFade(1)).toBe(0);
+
+    const size = 52;
+    const data = new Uint8ClampedArray(size * size * 4);
+    paintRidgeImage(data, size, 0, 26);
+    expect(data[3]).toBe(0);
+    expect(data[(26 * size + 26) * 4 + 3]).toBe(0);
+
+    paintRidgeImage(data, size, RIPPLE_MS * 0.32, 26);
+    let maxA = 0;
+    const left: Array<{ x: number; sum: number; a: number }> = [];
+    const row = (size - 1) / 2;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        const alpha = data[i + 3]!;
+        maxA = Math.max(maxA, alpha);
+        if (y === Math.round(row) && x < row && alpha > 12) {
+          left.push({ x, sum: data[i]! + data[i + 1]! + data[i + 2]!, a: alpha });
+        }
+      }
+    }
+    expect(maxA).toBeGreaterThan(60);
+    expect(maxA).toBeLessThanOrEqual(Math.round(255 * RIDGE_VISIBLE) + 1);
+    const center = data[(Math.round(row) * size + Math.round(row)) * 4 + 3]!;
+    expect(center).toBeLessThan(12);
+    expect(left.length).toBeGreaterThan(4);
+    const outerMost = left.reduce((best, sample) => (sample.x < best.x ? sample : best));
+    const brightest = left.reduce((best, sample) => (sample.sum > best.sum ? sample : best));
+    expect(brightest.x).toBeGreaterThan(outerMost.x);
+    expect(brightest.sum).toBeGreaterThan(outerMost.sum + 40);
+    expect(left[left.length - 1]!.x - left[0]!.x).toBeGreaterThan(4);
+  });
+
+  it('水纹有波峰和波谷，从按钮中心向外走', () => {
+    expect(inkAmplitude(0)).toBe(0);
+    expect(inkAmplitude(1)).toBe(0);
+    expect(inkAmplitude(0.5)).toBeCloseTo(1);
+
+    const phase = 0.5;
+    const ring = 0.12 + phase * 0.98;
+    const half = INK_WAVE_WIDTH / 2;
+    expect(inkWave(ring + half, phase)).toBeGreaterThan(0.7);
+    expect(inkWave(ring - half, phase)).toBeLessThan(-0.7);
+    expect(Math.abs(inkWave(4.5, phase))).toBeLessThan(0.05);
+
+    const later = 0.72;
+    const laterRing = 0.12 + later * 0.98;
+    expect(laterRing).toBeGreaterThan(half);
+    const crest = inkShift(0.5 + ((laterRing + half) * 50) / 100, 0.5, later, 100, 100);
+    const trough = inkShift(0.5 + ((laterRing - half) * 50) / 100, 0.5, later, 100, 100);
+    expect(crest.x).toBeGreaterThan(0.6);
+    expect(trough.x).toBeLessThan(-0.6);
+    expect(inkShift(0.5, 0.5, phase, 100, 100)).toEqual({ x: 0, y: 0 });
+
+    const size = 81;
+    const data = new Uint8ClampedArray(size * size * 4);
+    paintInkMap(data, size, 0, 100, 100);
+    expect(data[0]).toBe(128);
+    expect(data[(40 * size + 40) * 4]).toBe(128);
+
+    paintInkMap(data, size, phase, 100, 100);
+    const mid = 40;
+    let maxRed = -1;
+    let minRed = 999;
+    let maxX = 0;
+    let minX = 0;
+    for (let x = mid; x < size; x++) {
+      const red = data[(mid * size + x) * 4]!;
+      if (red > maxRed) {
+        maxRed = red;
+        maxX = x;
+      }
+      if (red < minRed) {
+        minRed = red;
+        minX = x;
+      }
+    }
+    expect(maxRed).toBeGreaterThan(180);
+    expect(minRed).toBeLessThan(80);
+    expect(maxX).toBeGreaterThan(minX);
   });
 
   it('复制是热闹的一档，壳层按钮是轻的一档，文件行和禁用按钮不播', () => {
@@ -123,13 +248,15 @@ describe('点击水波', () => {
     copy.appendChild(icon);
 
     copy.getBoundingClientRect = () => ({
-      x: 30, y: 10, left: 30, top: 10, right: 58, bottom: 38, width: 28, height: 28, toJSON() { return {}; },
+      x: 0, y: 10, left: 0, top: 10, right: 80, bottom: 36, width: 80, height: 26, toJSON() { return {}; },
     });
-    const burst = burstFromPointer(pointerOn(icon, 0, 40, 18));
+    const burst = burstFromPointer(pointerOn(icon, 0, 8, 14));
     expect(burst?.rich).toBe(true);
-    expect(burst?.x).toBe(40);
-    expect(burst?.y).toBe(18);
-    expect(burst?.rippleDiameter).toBe(28);
+    expect(burst?.x).toBe(8);
+    expect(burst?.y).toBe(14);
+    expect(burst?.rippleX).toBe(40);
+    expect(burst?.rippleY).toBe(23);
+    expect(burst?.rippleDiameter).toBe(26);
     expect(burst!.rippleX - burst!.rippleDiameter / 2).toBeGreaterThanOrEqual(burst!.clip.left);
     expect(burst!.rippleY - burst!.rippleDiameter / 2).toBeGreaterThanOrEqual(burst!.clip.top);
     expect(burst!.rippleX + burst!.rippleDiameter / 2).toBeLessThanOrEqual(burst!.clip.left + burst!.clip.width);
@@ -184,7 +311,7 @@ describe('点击水波', () => {
     expect(copy.style.filter).toBe('');
   });
 
-  it('水波不改按钮上的字', () => {
+  it('画布不可用时不给按钮加滤镜，卸掉时也不留定义', () => {
     const copy = button('tab-copy');
     copy.getBoundingClientRect = () => ({
       x: 0, y: 0, left: 0, top: 0, right: 28, bottom: 28, width: 28, height: 28, toJSON() { return {}; },
