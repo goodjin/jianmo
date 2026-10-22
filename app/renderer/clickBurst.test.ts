@@ -12,8 +12,11 @@ import {
   inkShift,
   inkWave,
   paintInkMap,
+  paintWaterRidge,
   placeRipple,
+  ridgeInk,
   rippleEase,
+  rippleFade,
   RIPPLE_EDGE_PAD,
   RIPPLE_MS,
   RIPPLE_WAVES,
@@ -115,6 +118,65 @@ describe('点击水波', () => {
     expect(early).toBeGreaterThan(0.45);
     expect(late).toBeLessThan(0.12);
     expect(early).toBeGreaterThan(late);
+  });
+
+  it('水脊外暗内亮，中间连成一道，不是几根线', () => {
+    const edge = ridgeInk(0);
+    const outer = ridgeInk(0.18);
+    const mid = ridgeInk(0.3);
+    const crest = ridgeInk(0.42);
+    const inner = ridgeInk(1);
+    expect(edge.a).toBe(0);
+    expect(inner.a).toBe(0);
+    expect(outer.a).toBeGreaterThan(0.25);
+    expect(mid.a).toBeGreaterThan(0.2);
+    expect(crest.a).toBeGreaterThan(0.25);
+    const lum = (ink: { r: number; g: number; b: number }) => ink.r + ink.g + ink.b;
+    expect(lum(crest)).toBeGreaterThan(lum(outer) + 80);
+    expect(crest.r).toBeGreaterThan(outer.r + 40);
+
+    expect(rippleFade(0)).toBe(0);
+    expect(rippleFade(0.14)).toBe(0);
+    expect(rippleFade(0.24)).toBeCloseTo(0.9, 5);
+    expect(rippleFade(0.7)).toBeCloseTo(0.66, 5);
+    expect(rippleFade(1)).toBe(0);
+
+    const strokes: Array<{ r: number; color: string }> = [];
+    const ctx = {
+      clearRect() {},
+      beginPath() {},
+      arc(_x: number, _y: number, r: number) {
+        this.radius = r;
+      },
+      stroke() {
+        strokes.push({ r: this.radius, color: String(this.strokeStyle) });
+      },
+      strokeStyle: '' as string | CanvasGradient | CanvasPattern,
+      lineWidth: 0,
+      radius: 0,
+    };
+    paintWaterRidge(ctx, 26, 0);
+    expect(strokes).toHaveLength(0);
+
+    paintWaterRidge(ctx, 26, RIPPLE_MS * 0.32);
+    expect(strokes.length).toBeGreaterThan(30);
+    const visible = strokes.flatMap((stroke) => {
+      const match = stroke.color.match(/rgba\((\d+),(\d+),(\d+),([\d.]+)\)/);
+      expect(match).not.toBeNull();
+      const sample = {
+        r: stroke.r,
+        sum: Number(match![1]) + Number(match![2]) + Number(match![3]),
+        a: Number(match![4]),
+      };
+      return sample.a > 0.15 ? [sample] : [];
+    });
+    const outerMost = visible.reduce((best, sample) => (sample.r > best.r ? sample : best));
+    const brightest = visible.reduce((best, sample) => (sample.sum > best.sum ? sample : best));
+    expect(brightest.r).toBeLessThan(outerMost.r);
+    expect(brightest.sum).toBeGreaterThan(outerMost.sum + 40);
+    const radii = visible.map((sample) => sample.r);
+    expect(Math.max(...radii) - Math.min(...radii)).toBeGreaterThan(2);
+    expect(Math.min(...radii)).toBeGreaterThan(1);
   });
 
   it('水纹有波峰和波谷，从按钮中心向外走', () => {

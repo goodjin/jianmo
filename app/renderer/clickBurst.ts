@@ -1,6 +1,7 @@
 /**
  * 桌面壳层按钮被点下时，从按钮中心荡开两圈水波。
  * 圈先快后慢，外圈贴着按钮较短的一边。
+ * 看得见的是一道水脊：外缘暗，往里是水色，脊上一条窄亮，内侧再暗一点。
  * 同一圈波会把按钮上的字轻轻推一下，再拉回来。
  * 画在 body 上，按按钮圆角裁住。文件列表和右键菜单不跟。
  * 系统开了「减少动效」就不播。
@@ -78,6 +79,8 @@ export type BurstSpec = {
   rippleY: number;
   rippleDiameter: number;
   clip: RippleClip;
+  /** 第一帧画出来的时刻。半径和透明度都从这里算。 */
+  bornAt?: number;
 };
 
 export type BurstKind = 'rich' | 'plain';
@@ -143,6 +146,93 @@ export function rippleEase(time: number): number {
     u = clamp(u - (unitBezier(u, RIPPLE_EASE.x1, RIPPLE_EASE.x2) - time) / slope, 0, 1);
   }
   return unitBezier(u, RIPPLE_EASE.y1, RIPPLE_EASE.y2);
+}
+
+/**
+ * 透明度按匀速走。跟半径共用先快后慢的话，圈还没到边上就淡没了。
+ * 刚离开中心时先别露出来，免得描边比半径还宽，糊成一块。
+ */
+export function rippleFade(linear: number): number {
+  if (linear <= 0.14 || linear >= 1) return 0;
+  if (linear < 0.24) return (0.9 * (linear - 0.14)) / 0.1;
+  if (linear < 0.7) return 0.9 + ((0.66 - 0.9) * (linear - 0.24)) / 0.46;
+  return (0.66 * (1 - linear)) / 0.3;
+}
+
+/** 水脊有多宽。圈还小的时候收窄，避免把按钮中间涂实。 */
+export function ridgeWidth(radius: number): number {
+  return Math.min(5.4, Math.max(1.6, radius * 0.55));
+}
+
+export type RidgeInk = { r: number; g: number; b: number; a: number };
+
+function overInk(dst: RidgeInk, r: number, g: number, b: number, a: number): void {
+  const outA = a + dst.a * (1 - a);
+  if (outA <= 0.0001) {
+    dst.a = 0;
+    return;
+  }
+  dst.r = (r * a + dst.r * dst.a * (1 - a)) / outA;
+  dst.g = (g * a + dst.g * dst.a * (1 - a)) / outA;
+  dst.b = (b * a + dst.b * dst.a * (1 - a)) / outA;
+  dst.a = outA;
+}
+
+/**
+ * t 从 0（外缘）到 1（内缘）。
+ * 外缘是暗的，脊上偏外一条窄亮，内侧再暗下去。两端都淡掉。
+ */
+export function ridgeInk(t: number): RidgeInk {
+  const clamped = clamp(t, 0, 1);
+  const win = Math.sin(Math.PI * clamped);
+  const crest = Math.exp(-((clamped - 0.42) ** 2) / (2 * 0.045 ** 2));
+  const body = Math.exp(-((clamped - 0.58) ** 2) / (2 * 0.22 ** 2));
+  const shadow = Math.exp(-((clamped - 0.18) ** 2) / (2 * 0.11 ** 2));
+  const trough = Math.exp(-((clamped - 0.84) ** 2) / (2 * 0.1 ** 2));
+  const dst: RidgeInk = { r: 0, g: 0, b: 0, a: 0 };
+  overInk(dst, 14, 52, 92, shadow * win * 0.72);
+  overInk(dst, 10, 36, 70, trough * win * 0.55);
+  overInk(dst, 126, 198, 222, body * win * 0.62);
+  overInk(dst, 255, 255, 255, crest * Math.pow(win, 0.65) * 0.92);
+  return dst;
+}
+
+export type RidgeCanvas = {
+  clearRect(x: number, y: number, w: number, h: number): void;
+  beginPath(): void;
+  arc(x: number, y: number, r: number, start: number, end: number): void;
+  stroke(): void;
+  strokeStyle: string | CanvasGradient | CanvasPattern;
+  lineWidth: number;
+};
+
+/** 把两圈水脊画进按钮中心的正圆里。elapsedMs 从这一次按下算起。 */
+export function paintWaterRidge(ctx: RidgeCanvas, diameter: number, elapsedMs: number): void {
+  ctx.clearRect(0, 0, diameter, diameter);
+  if (diameter < 2) return;
+  const cx = diameter / 2;
+  const cy = diameter / 2;
+  const steps = 48;
+  for (const wave of RIPPLE_WAVES) {
+    const linear = (elapsedMs - wave.delay) / RIPPLE_MS;
+    if (linear <= 0 || linear >= 1) continue;
+    const fade = rippleFade(linear);
+    if (fade <= 0.01) continue;
+    const target = ringRadius(diameter, wave.portion);
+    const radius = 0.6 + (target - 0.6) * rippleEase(linear);
+    const width = ridgeWidth(radius);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const r = radius + width / 2 - t * width;
+      if (r <= 0.3) continue;
+      const ink = ridgeInk(t);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${ink.r | 0},${ink.g | 0},${ink.b | 0},${(ink.a * fade).toFixed(3)})`;
+      ctx.lineWidth = width / steps + 0.85;
+      ctx.stroke();
+    }
+  }
 }
 
 /**
