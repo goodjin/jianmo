@@ -1,8 +1,9 @@
 /**
- * 拖拽落点的纯逻辑：从 drop 事件里挑出可打开的文档路径（Markdown / JSON / JSONL）。
+ * 拖拽落点的纯逻辑：从 drop 事件里挑出要交给主进程的路径。
+ * 文本都留下，图片和压缩包按扩展名略过。是不是真文本由主进程再看文件头。
  * 不碰 DOM 事件对象本体（只认 `{ path?, name? }` 形状），renderer 单测可直接喂假文件。
  */
-import { isOpenableDocumentName } from '../electron/documentKind';
+import { isKnownBinaryName } from '../electron/textSniff';
 
 export interface DroppedFileLike {
   path?: string;
@@ -17,7 +18,7 @@ export function collectDroppedDocumentPaths(files: ArrayLike<DroppedFileLike | n
     const p = typeof f?.path === 'string' ? f.path.trim() : '';
     if (!p) continue;
     const name = typeof f?.name === 'string' && f.name ? f.name : p.split(/[/\\]/).pop() ?? '';
-    if (!isOpenableDocumentName(name)) continue;
+    if (isKnownBinaryName(name)) continue;
     if (paths.includes(p)) continue;
     paths.push(p);
   }

@@ -14,6 +14,7 @@ import {
   RELOAD_UNREADABLE_TIP,
 } from '../electron/reloadResult';
 import { SELECTION_COPY_TYPE } from '../electron/selectionCopy';
+import { PREVIEW_DROP } from './previewDrop';
 import { formatDocumentSource } from '../electron/sourceText';
 import { APP_RADIUS } from '../chromeRadius';
 import { PLACE_ANCHOR, PLACE_READ, PLACE_RESTORE, scrollTopForSource, measureSourceBox } from '../electron/viewPlace';
@@ -640,13 +641,15 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.recent-menu')).toBeNull();
   });
 
-  it('把 Markdown / JSON 拖进界面自动打开，其它类型忽略', async () => {
+  it('把文本拖进界面自动打开，图片忽略', async () => {
     mount();
     await flush();
 
     dropFiles([
       { path: '/docs/a.md', name: 'a.md' },
       { path: '/docs/readme.txt', name: 'readme.txt' },
+      { path: '/docs/id_ed25519.pub', name: 'id_ed25519.pub' },
+      { path: '/docs/pic.png', name: 'pic.png' },
       { path: '/docs/b.markdown', name: 'b.markdown' },
       { path: '/docs/data.json', name: 'data.json' },
       { path: '/docs/rows.jsonl', name: 'rows.jsonl' },
@@ -656,10 +659,33 @@ describe('PreviewApp 顶栏与大纲', () => {
     const openPath = electronStub('openPath');
     expect(openPath.mock.calls.map((c) => c[0])).toEqual([
       '/docs/a.md',
+      '/docs/readme.txt',
+      '/docs/id_ed25519.pub',
       '/docs/b.markdown',
       '/docs/data.json',
       '/docs/rows.jsonl',
     ]);
+    expect(openPath.mock.calls.every((c) => c[1] && (c[1] as { quiet?: boolean }).quiet === true)).toBe(true);
+  });
+
+  it('拖到预览正文上也会打开', async () => {
+    const el = mount();
+    await flush();
+    pushMsg('PREVIEW_HTML', { html: '<p>你好</p>' });
+    await flush();
+    const frame = el.querySelector('.preview-frame') as HTMLIFrameElement;
+    expect(frame?.contentWindow).toBeTruthy();
+    const openPath = electronStub('openPath');
+    openPath.mockClear();
+
+    const ev = new MessageEvent('message', {
+      data: { type: PREVIEW_DROP, files: [{ path: '/docs/id_ed25519.pub', name: 'id_ed25519.pub' }] },
+    });
+    Object.defineProperty(ev, 'source', { value: frame.contentWindow });
+    window.dispatchEvent(ev);
+    await flush();
+
+    expect(openPath).toHaveBeenCalledWith('/docs/id_ed25519.pub', { quiet: true });
   });
 
   it('刷新成功后顶部提示一会儿消失，正文换成新的', async () => {
@@ -787,6 +813,19 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(again.querySelector('.settings-page')).not.toBeNull();
     expect(settings.disabled).toBe(true);
     expect(settings.getAttribute('aria-label')).toBe('设置页不能刷新');
+  });
+
+  it('普通文本里的井号不当成目录', async () => {
+    electronStub('tabsState').mockReturnValue({
+      tabs: [{ id: 't1', kind: 'doc', title: 'notes.txt', filePath: '/docs/notes.txt' }],
+      activeId: 't1',
+    });
+    const el = mount();
+    await flush();
+    pushMsg('CONTENT_UPDATE', { content: '# 这不是标题\n\n正文' });
+    pushMsg('PREVIEW_HTML', { html: '<pre># 这不是标题</pre>' });
+    await flush();
+    expect(el.querySelector('.doc-outline')).toBeNull();
   });
 
   it('点源码看到 Markdown 原文，目录先让开，再点回到预览', async () => {

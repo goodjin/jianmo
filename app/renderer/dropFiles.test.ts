@@ -2,17 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { collectDroppedDocumentPaths } from './dropFiles';
 
 describe('collectDroppedDocumentPaths', () => {
-  it('留下带真实路径的 Markdown / JSON / JSONL，忽略其它类型', () => {
+  it('留下文本路径，图片和压缩包按扩展名略过', () => {
     const paths = collectDroppedDocumentPaths([
       { path: '/docs/a.md', name: 'a.md' },
       { path: '/docs/readme.txt', name: 'readme.txt' },
+      { path: '/docs/id_ed25519.pub', name: 'id_ed25519.pub' },
       { path: '/docs/b.MARKDOWN', name: 'b.MARKDOWN' },
       { path: '/docs/c.mdx', name: 'c.mdx' },
       { path: '/docs/data.json', name: 'data.json' },
       { path: '/docs/rows.JSONL', name: 'rows.JSONL' },
+      { path: '/docs/pic.png', name: 'pic.png' },
+      { path: '/docs/pack.zip', name: 'pack.zip' },
     ]);
     expect(paths).toEqual([
       '/docs/a.md',
+      '/docs/readme.txt',
+      '/docs/id_ed25519.pub',
       '/docs/b.MARKDOWN',
       '/docs/c.mdx',
       '/docs/data.json',
@@ -30,7 +35,8 @@ describe('collectDroppedDocumentPaths', () => {
       { path: '/docs/notes/b.md' },
       { path: '/docs/notes/pic.png' },
       { path: '/docs/notes/data.json' },
+      { path: '/docs/notes/Makefile' },
     ]);
-    expect(paths).toEqual(['/docs/notes/b.md', '/docs/notes/data.json']);
+    expect(paths).toEqual(['/docs/notes/b.md', '/docs/notes/data.json', '/docs/notes/Makefile']);
   });
 });

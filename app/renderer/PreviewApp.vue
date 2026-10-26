@@ -338,7 +338,7 @@ import type { HeadingNode } from '@wv/types';
 import type { ExtensionMessage } from '@types';
 import { buildClipboardWrite, extractPreviewContentHtml } from '../electron/copyPayload';
 import { parseExportResult, type AppExportFormat } from '../electron/exportTypes';
-import { structuredKindFromName } from '../electron/documentKind';
+import { isMarkdownFileName } from '../electron/documentKind';
 import { editingOriginalNote, formatDocumentSource, sourceFormatNote } from '../electron/sourceText';
 import { parseSaveResult } from '../electron/saveResult';
 import { mountSourceEditor, type SourceEditorHandle } from './sourceEditor';
@@ -372,6 +372,7 @@ import {
 } from '../electron/tabs';
 import { acceptSelectionCopyMessage } from '../electron/selectionCopy';
 import { collectDroppedDocumentPaths, type DroppedFileLike } from './dropFiles';
+import { readPreviewDropFiles } from './previewDrop';
 import { parseSystemFontList } from '../electron/appearance';
 import {
   electronApp,
@@ -838,12 +839,9 @@ const outline = computed<OutlineEntry[]>(() =>
   parseHeadings(markdownContent.value).map((h, i) => ({ ...h, id: headingNodeId(h, i + 1) }))
 );
 
-/** 没有 Markdown 标题、当前是 JSON、或正在看源码，就不显示目录。目录画在正文里面。 */
+/** 只有 Markdown 才出目录。普通文本里的井号不是标题。目录画在正文里面。 */
 const hasOutline = computed(
-  () =>
-    !sourceOpen.value &&
-    structuredKindFromName(activeFilePath.value) === null &&
-    outline.value.length > 0
+  () => !sourceOpen.value && isMarkdownFileName(activeFilePath.value) && outline.value.length > 0
 );
 
 function jumpToHeading(headingId: string): void {
@@ -1253,21 +1251,54 @@ function onWindowBlur(): void {
   }, 0);
 }
 
-/** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。 */
+function dragHasFiles(ev: DragEvent): boolean {
+  const types = ev.dataTransfer?.types;
+  if (types && Array.from(types).includes('Files')) return true;
+  const files = ev.dataTransfer?.files;
+  return !!files && files.length > 0;
+}
+
+/** 允许把文件放到窗口任意位置（不 preventDefault 的话 drop 不触发）。捕获阶段先接住，编辑器才不会把路径插进正文。 */
 function onDragOver(ev: DragEvent): void {
+  if (!dragHasFiles(ev)) return;
   if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
   ev.preventDefault();
 }
 
-/** 拖 Markdown / JSON / JSONL 进界面 → 自动打开；多份按拖入顺序逐个开标签。 */
+/** 拖文本进界面 → 自动打开；多份按拖入顺序逐个开标签。图片和压缩包略过。 */
+async function openDroppedFiles(files: ArrayLike<DroppedFileLike | null | undefined>): Promise<void> {
+  const incoming = Array.from({ length: files.length }, (_, i) => files[i]).filter((file) => {
+    const path = typeof file?.path === 'string' ? file.path.trim() : '';
+    return path.length > 0;
+  });
+  if (incoming.length === 0) return;
+  const paths = collectDroppedDocumentPaths(files);
+  if (paths.length === 0) {
+    flashSelectionToast('只打开文本文件', 2000);
+    return;
+  }
+  let opened = 0;
+  for (const p of paths) {
+    const result = await electronApp()?.openPath?.(p, { quiet: true });
+    if (result) opened += 1;
+  }
+  if (opened === 0) flashSelectionToast('只打开文本文件', 2000);
+}
+
 async function onDrop(ev: DragEvent): Promise<void> {
-  ev.preventDefault();
   const files = ev.dataTransfer?.files;
   if (!files || files.length === 0) return;
-  const paths = collectDroppedDocumentPaths(files as unknown as ArrayLike<DroppedFileLike>);
-  for (const p of paths) {
-    await electronApp()?.openPath?.(p);
-  }
+  ev.preventDefault();
+  await openDroppedFiles(files as unknown as ArrayLike<DroppedFileLike>);
+}
+
+/** 预览 iframe 里落下的文件。只认当前预览窗口。 */
+function onPreviewDropMessage(ev: MessageEvent): void {
+  const frameWindow = frameRef.value?.contentWindow ?? null;
+  if (!frameWindow || ev.source !== frameWindow) return;
+  const files = readPreviewDropFiles(ev.data);
+  if (!files || files.length === 0) return;
+  void openDroppedFiles(files);
 }
 
 function flashCopyState(ok: boolean, hint = '已复制到剪贴板'): void {
@@ -1309,7 +1340,7 @@ async function copyBoxText(text: string): Promise<void> {
   }
 }
 
-function flashSelectionToast(text: string): void {
+function flashSelectionToast(text: string, ms = 1200): void {
   if (selectionToastTimer) {
     clearTimeout(selectionToastTimer);
     selectionToastTimer = null;
@@ -1318,7 +1349,7 @@ function flashSelectionToast(text: string): void {
   selectionToastTimer = setTimeout(() => {
     selectionToast.value = '';
     selectionToastTimer = null;
-  }, 1200);
+  }, ms);
 }
 
 async function onSelectionCopyMessage(ev: MessageEvent): Promise<void> {
@@ -1539,9 +1570,10 @@ onMounted(() => {
   document.addEventListener('mousedown', onDocPointerDown);
   window.addEventListener('keydown', onDocKeydown);
   window.addEventListener('blur', onWindowBlur);
-  document.addEventListener('dragover', onDragOver);
-  document.addEventListener('drop', onDrop);
+  document.addEventListener('dragover', onDragOver, true);
+  document.addEventListener('drop', onDrop, true);
   window.addEventListener('message', onBoxCopyMessage);
+  window.addEventListener('message', onPreviewDropMessage);
   postMessage({ type: 'READY', payload: undefined });
 });
 
@@ -1556,9 +1588,10 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', onDocPointerDown);
   window.removeEventListener('keydown', onDocKeydown);
   window.removeEventListener('blur', onWindowBlur);
-  document.removeEventListener('dragover', onDragOver);
-  document.removeEventListener('drop', onDrop);
+  document.removeEventListener('dragover', onDragOver, true);
+  document.removeEventListener('drop', onDrop, true);
   window.removeEventListener('message', onBoxCopyMessage);
+  window.removeEventListener('message', onPreviewDropMessage);
   if (copiedTimer) {
     clearTimeout(copiedTimer);
     copiedTimer = null;

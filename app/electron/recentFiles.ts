@@ -100,7 +100,4 @@ export function formatOpenedAt(openedAt: number, nowMs: number = Date.now()): st
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
 }
 
-export function isMarkdownFileName(name: string): boolean {
-  const lower = String(name ?? '').toLowerCase();
-  return lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.mdx');
-}
+export { isMarkdownFileName } from './documentKind';

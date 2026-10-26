@@ -6,8 +6,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { buildExportHtmlString, exportToHtml } from '../../src/core/export/htmlExport';
 import type { MermaidScriptBundling } from '../../src/core/export/mermaidExport';
-import { inlineLocalPreviewImages } from './previewImages';
+import { previewKindFromName } from './documentKind';
 import { isAppExportFormat, type AppExportFormat } from './exportTypes';
+import { buildPlainPreviewHtml } from './plainView';
+import { inlineLocalPreviewImages } from './previewImages';
 
 export type { AppExportFormat, ExportIpcResult } from './exportTypes';
 export { isAppExportFormat, parseExportResult } from './exportTypes';
@@ -55,7 +57,6 @@ export interface AppExportInput {
   printPdf: (html: string, outputPath: string, options: ElectronPdfPrintOptions) => Promise<void>;
 }
 
-const MARKDOWN_EXT = /\.(md|markdown|mdx)$/i;
 const PAGE_SIZES = ['A4', 'A3', 'Letter', 'Legal'] as const;
 
 const PDF_HEADER =
@@ -63,11 +64,13 @@ const PDF_HEADER =
 const PDF_FOOTER =
   '<div style="font-size:9px;width:100%;padding:0 8px;color:#666;text-align:center;"><span class="pageNumber"></span></div>';
 
-/** 用源文件名做导出标题与默认文件名；空白标签退回 Markly。 */
+/** 用源文件名做导出标题与默认文件名；空白标签退回 Markly。扩展名去掉，避免笔记.txt.pdf。 */
 export function exportBaseName(sourcePath: string | null | undefined): string {
   if (!sourcePath) return 'Markly';
-  const base = path.basename(sourcePath).replace(MARKDOWN_EXT, '').trim();
-  return base || 'Markly';
+  const base = path.basename(sourcePath);
+  const ext = path.extname(base);
+  const stem = (ext ? base.slice(0, -ext.length) : base).trim();
+  return stem || 'Markly';
 }
 
 export function suggestExportPath(
@@ -127,6 +130,16 @@ export async function exportMarkdownDocument(input: AppExportInput): Promise<str
   const title = exportBaseName(input.sourcePath);
   const bundling: MermaidScriptBundling =
     input.mermaidScriptBundling === 'external' ? 'external' : 'embedded';
+
+  if (previewKindFromName(input.sourcePath ?? '') === 'plain') {
+    const html = buildPlainPreviewHtml(input.markdown);
+    if (input.format === 'html') {
+      fs.writeFileSync(outputPath, html, 'utf8');
+      return outputPath;
+    }
+    await input.printPdf(html, outputPath, electronPdfOptions(input.pdf));
+    return outputPath;
+  }
 
   if (input.format === 'html') {
     await exportToHtml(input.markdown, outputPath, {

@@ -159,6 +159,7 @@ describe('isMarkdownFileName', () => {
     expect(isMarkdownFileName('A.MD')).toBe(true);
     expect(isMarkdownFileName('n.markdown')).toBe(true);
     expect(isMarkdownFileName('x.mdx')).toBe(true);
+    expect(isMarkdownFileName('n.mkd')).toBe(true);
     expect(isMarkdownFileName('a.txt')).toBe(false);
     expect(isMarkdownFileName('md')).toBe(false);
   });

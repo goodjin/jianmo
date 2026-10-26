@@ -22,7 +22,7 @@ export interface TabsView {
 
 export interface ElectronAppBridge {
   openFile?: () => Promise<string | null>;
-  openPath?: (filePath: string) => Promise<string | null>;
+  openPath?: (filePath: string, opts?: { quiet?: boolean }) => Promise<string | null>;
   reloadDocument?: () => Promise<unknown>;
   saveDocument?: () => Promise<unknown>;
   settleEdits?: () => Promise<unknown>;

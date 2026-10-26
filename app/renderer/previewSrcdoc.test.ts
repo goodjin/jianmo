@@ -52,6 +52,8 @@ describe('buildPreviewSrcdoc', () => {
 
   it('挂上记住阅读位置的脚本，并且只挂一次', () => {
     const once = buildPreviewSrcdoc(SAMPLE);
+    expect(once.includes('data-markly-preview-drop')).toBe(true);
+    expect(once.split('data-markly-preview-drop').length - 1).toBe(1);
     expect(once.includes('data-markly-place')).toBe(true);
     expect(once.split('data-markly-place').length - 1).toBe(1);
     expect(once.includes('MARKLY_PLACE_READ')).toBe(true);

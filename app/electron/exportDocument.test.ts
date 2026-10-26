@@ -43,6 +43,8 @@ describe('导出路径', () => {
     expect(exportBaseName(null)).toBe('Markly');
     expect(suggestExportPath('/docs/笔记.md', 'pdf', '/home/docs')).toBe(path.join('/docs', '笔记.pdf'));
     expect(suggestExportPath('', 'html', '/home/docs')).toBe(path.join('/home/docs', 'Markly.html'));
+    expect(exportBaseName('/docs/notes.txt')).toBe('notes');
+    expect(suggestExportPath('/docs/notes.txt', 'pdf', '/home/docs')).toBe(path.join('/docs', 'notes.pdf'));
   });
 
   it('缺扩展名就补上，html 与 pdf 互相切换时替换', () => {
@@ -144,6 +146,30 @@ describe('exportMarkdownDocument', () => {
     expect(seen[0].html).toContain('data:image/png;base64,');
     expect(seen[0].options.pageSize).toBe('A4');
     expect(seen[0].options.margins.top).toBeCloseTo(25 / 25.4, 3);
+  });
+
+  it('普通文本导出仍是原文，井号不会变成标题', async () => {
+    const dir = tempDir();
+    const out = path.join(dir, 'notes.html');
+    const written = await exportMarkdownDocument({
+      format: 'html',
+      markdown: '# 不是标题\n\n<script>alert(1)</script>',
+      tabKind: 'doc',
+      sourcePath: path.join(dir, 'notes.txt'),
+      outputPath: out,
+      documentDir: dir,
+      includeToc: true,
+      htmlTheme: 'default',
+      copyLocalImages: false,
+      mermaidScriptBundling: 'embedded',
+      pdf: pdfConfig,
+      printPdf: vi.fn(),
+    });
+    const html = fs.readFileSync(written, 'utf8');
+    expect(html).toContain('class="plain-text"');
+    expect(html).toContain('# 不是标题');
+    expect(html).not.toContain('<h1');
+    expect(html).toContain('&lt;script&gt;');
   });
 
   it('设置页拒绝导出，也不会去写文件', async () => {

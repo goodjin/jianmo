@@ -19,19 +19,20 @@ afterEach(() => {
 });
 
 describe('listMarkdownFilesPage', () => {
-  it('只列出当前层可打开的文件，按名字排序，不含子目录与其它类型', () => {
+  it('只列出当前层可打开的文本，按名字排序，不含子目录与图片', () => {
     const dir = tmpDir();
     fs.writeFileSync(path.join(dir, 'b.md'), '# b');
     fs.writeFileSync(path.join(dir, 'a.md'), '# a');
     fs.writeFileSync(path.join(dir, 'c.mdx'), '# c');
     fs.writeFileSync(path.join(dir, 'data.json'), '{}');
     fs.writeFileSync(path.join(dir, 'rows.jsonl'), '{}\n');
-    fs.writeFileSync(path.join(dir, 'skip.txt'), 'no');
+    fs.writeFileSync(path.join(dir, 'skip.png'), 'no');
+    fs.writeFileSync(path.join(dir, 'notes.txt'), 'hi');
     fs.mkdirSync(path.join(dir, 'nested'));
     fs.writeFileSync(path.join(dir, 'nested', 'inner.md'), '# inner');
     fs.writeFileSync(path.join(dir, 'nested', 'inner.json'), '{}');
     const page = listMarkdownFilesPage(dir, 0, 100);
-    expect(page.files.map((f) => f.name)).toEqual(['a.md', 'b.md', 'c.mdx', 'data.json', 'rows.jsonl']);
+    expect(page.files.map((f) => f.name)).toEqual(['a.md', 'b.md', 'c.mdx', 'data.json', 'notes.txt', 'rows.jsonl']);
     expect(page.hasMore).toBe(false);
     expect(page.files[0]?.path).toBe(path.join(dir, 'a.md'));
   });

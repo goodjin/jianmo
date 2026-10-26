@@ -20,7 +20,7 @@ export function emptyDirMarkdownPage(dir: string, offset = 0): DirMarkdownPage {
 }
 
 /**
- * 列出目录下可打开的文件（Markdown / JSON / JSONL，仅当前层，不递归），按文件名排序后分页。
+ * 列出目录下可打开的文本文件（仅当前层，不递归），按文件名排序后分页。
  * 目录不存在 / 不可读 → 空页，不抛。
  */
 export function listMarkdownFilesPage(

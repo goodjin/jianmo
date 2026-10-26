@@ -8,7 +8,13 @@ import { loadAppConfig, saveAppConfigPatch } from './config';
 import { normalizeAppearancePatch, normalizeFontFamily, readAppearance } from './appearance';
 import { getInstalledFontFamilies, listInstalledFontFamilies } from './systemFonts';
 import { markdownToHtml } from '../../src/core/export/htmlExport';
-import { isOpenableDocumentName } from './documentKind';
+import {
+  isOpenableDocumentName,
+  openDocumentFilters,
+  saveDocumentFilters,
+  userLaunchArgs,
+} from './documentKind';
+import { shouldOpenTextDocument, TEXT_SNIFF_BYTES } from './textSniff';
 import { readFailureDetail } from './macFolderAccess';
 import { readDocumentForReload } from './reloadDocument';
 import { contentAfterReload, type ReloadIpc } from './reloadResult';
@@ -196,11 +202,7 @@ async function pickAndLoadFile(): Promise<string | null> {
   if (!mainWindow) return null;
   const res = await dialog.showOpenDialog(mainWindow, {
     title: '打开文件',
-    filters: [
-      { name: 'Markdown / JSON', extensions: ['md', 'markdown', 'mdx', 'json', 'jsonl'] },
-      { name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] },
-      { name: 'JSON', extensions: ['json', 'jsonl'] },
-    ],
+    filters: openDocumentFilters(),
     // 一次选多个文件 → 一次开多个标签
     properties: ['openFile', 'multiSelections'],
   });
@@ -290,6 +292,64 @@ function rememberRecent(p: string): void {
   writeRecent(upsertRecentFile(readRecent(), p, Date.now()));
 }
 
+type OpenClass = 'text' | 'binary' | 'missing' | 'unreadable';
+
+/** 只读开头一小段。打不开或不是文件时不抛。 */
+function classifyOpen(filePath: string): OpenClass {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return 'missing';
+  }
+  if (!stat.isFile()) return 'missing';
+  let fh: number | null = null;
+  try {
+    const size = Math.min(TEXT_SNIFF_BYTES, stat.size);
+    const buf = Buffer.alloc(size);
+    if (size > 0) {
+      fh = fs.openSync(filePath, 'r');
+      fs.readSync(fh, buf, 0, size, 0);
+    }
+    return shouldOpenTextDocument(filePath, buf) ? 'text' : 'binary';
+  } catch {
+    return 'unreadable';
+  } finally {
+    if (fh !== null) {
+      try {
+        fs.closeSync(fh);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+let pendingBinaryNotice: string | null = null;
+
+async function explainNotText(filePath: string): Promise<void> {
+  console.info('[markly] 不是文本，不打开', filePath);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    pendingBinaryNotice = filePath;
+    return;
+  }
+  const base = path.basename(filePath);
+  await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    message: '这个文件不是文本',
+    detail: `「${base}」打不开。这里只打开文本文件。`,
+    buttons: ['好'],
+    noLink: true,
+  });
+}
+
+function flushBinaryNotice(): void {
+  const pending = pendingBinaryNotice;
+  if (!pending) return;
+  pendingBinaryNotice = null;
+  void explainNotText(pending);
+}
+
 /** 读盘并装入标签页（同路径复用、空白标签就地占用，见 tabs.openFileTab）。不负责广播。 */
 function loadFile(p: string): void {
   let content: string;
@@ -314,9 +374,19 @@ function loadFile(p: string): void {
   }
 }
 
-/** 这份路径若有未保存的修改，先问。取消则留在原标签。 */
-async function loadFileAsking(p: string): Promise<void> {
+/**
+ * 这份路径若有未保存的修改，先问。取消则留在原标签。
+ * 二进制不建标签。拖进来时 quietBinary，只在日志里说一声。
+ */
+async function loadFileAsking(p: string, opts?: { quietBinary?: boolean }): Promise<void> {
   const resolved = path.resolve(p);
+  const kind = classifyOpen(resolved);
+  if (kind === 'binary') {
+    if (opts?.quietBinary) console.info('[markly] 不是文本，不打开', resolved);
+    else await explainNotText(resolved);
+    return;
+  }
+  if (kind === 'missing' && opts?.quietBinary) return;
   const existing = tabs.tabs.find((tab) => tab.filePath && path.resolve(tab.filePath) === resolved);
   if (existing && isTabDirty(existing)) {
     const settled = await settleTab(existing.id);
@@ -438,11 +508,7 @@ async function saveTabById(id: string, forcedPath?: string): Promise<SaveIpc> {
     const picked = await dialog.showSaveDialog({
       title: '保存',
       defaultPath: '未命名.md',
-      filters: [
-        { name: 'Markdown', extensions: ['md'] },
-        { name: 'JSON', extensions: ['json'] },
-        { name: 'JSONL', extensions: ['jsonl'] },
-      ],
+      filters: saveDocumentFilters(),
     });
     if (picked.canceled || !picked.filePath) return { ok: false, reason: 'cancelled', message: '' };
     filePath = picked.filePath;
@@ -479,11 +545,7 @@ async function saveTabById(id: string, forcedPath?: string): Promise<SaveIpc> {
       const picked = await dialog.showSaveDialog({
         title: '另存为',
         defaultPath: path.basename(resolved),
-        filters: [
-          { name: 'Markdown', extensions: ['md'] },
-          { name: 'JSON', extensions: ['json'] },
-          { name: 'JSONL', extensions: ['jsonl'] },
-        ],
+        filters: saveDocumentFilters(),
       });
       if (picked.canceled || !picked.filePath) return { ok: false, reason: 'cancelled', message: '' };
       return saveTabById(id, picked.filePath);
@@ -541,19 +603,25 @@ async function reloadActiveDocument(): Promise<ReloadIpc> {
   return { ok: false, reason: read.reason };
 }
 
-async function openExistingPath(p: string): Promise<string | null> {
+async function openExistingPath(p: string, quietBinary = false): Promise<string | null> {
   const raw = String(p ?? '').trim();
   if (!raw) return null;
   const resolved = path.resolve(raw);
-  try {
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+  const kind = classifyOpen(resolved);
+  if (kind === 'missing') {
+    try {
       writeRecent(removeRecentFile(removeRecentFile(readRecent(), raw), resolved));
-      return null;
+    } catch {
+      /* ignore */
     }
-  } catch {
     return null;
   }
-  await loadFileAsking(resolved);
+  if (kind === 'binary') {
+    if (quietBinary) console.info('[markly] 不是文本，不打开', resolved);
+    else await explainNotText(resolved);
+    return null;
+  }
+  await loadFileAsking(resolved, { quietBinary });
   emitActiveDocument();
   return resolved;
 }
@@ -968,9 +1036,7 @@ function createWindow(): void {
     } catch {
       return;
     }
-    if (isOpenableDocumentName(dropped)) {
-      void loadFileAsking(dropped).then(() => emitActiveDocument());
-    }
+    void loadFileAsking(dropped, { quietBinary: true }).then(() => emitActiveDocument());
   };
   mainWindow.webContents.on('will-navigate', (ev, url) => guardNavigation(ev, url));
   // 沙箱 iframe 里落下文件走的是 frame 级导航；老版本 Electron 没有该事件时自然不触发
@@ -1015,9 +1081,25 @@ app.whenReady().then(() => {
     .catch((err) => console.warn('[markly] 枚举系统字体失败', err));
 
   // 初始文件来源：open-file 待处理 > 命令行文档参数 > 初始空白标签（占位正文见 tabs.BLANK_TAB_CONTENT）
-  const argFiles = process.argv.filter((a) => isOpenableDocumentName(a) && fs.existsSync(a));
+  // 开发时 argv 前两项是 Electron 和脚本，不能当成要打开的文档。
+  const argFiles = userLaunchArgs(process.argv, app.isPackaged).filter((a) => {
+    try {
+      return fs.existsSync(a);
+    } catch {
+      return false;
+    }
+  });
   const initial = pendingFiles.length > 0 ? pendingFiles : argFiles;
-  for (const p of initial) loadFile(p);
+  for (const p of initial) {
+    const kind = classifyOpen(p);
+    if (kind === 'binary') {
+      pendingBinaryNotice = p;
+      console.info('[markly] 不是文本，不打开', p);
+      continue;
+    }
+    if (kind === 'missing' && !isOpenableDocumentName(p)) continue;
+    loadFile(p);
+  }
   pendingFiles = [];
 
   const bridge = createHostBridge({
@@ -1060,8 +1142,8 @@ app.whenReady().then(() => {
     e.returnValue = true;
   });
   ipcMain.handle('app:open-file', () => pickAndLoadFile());
-  ipcMain.handle('app:open-path', (_e, filePath: unknown) =>
-    openExistingPath(typeof filePath === 'string' ? filePath : '')
+  ipcMain.handle('app:open-path', (_e, filePath: unknown, quiet: unknown) =>
+    openExistingPath(typeof filePath === 'string' ? filePath : '', quiet === true)
   );
   ipcMain.handle('app:reload-document', () => reloadActiveDocument());
   ipcMain.handle('app:save-document', () => saveTabById(tabs.activeId));
@@ -1172,6 +1254,7 @@ app.whenReady().then(() => {
   } else {
     createWindow();
   }
+  flushBinaryNotice();
 });
 
 app.on('window-all-closed', () => {

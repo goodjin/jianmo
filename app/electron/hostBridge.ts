@@ -4,8 +4,9 @@ import * as path from 'path';
 import type Store from 'electron-store';
 import type { ExtensionConfig, ExtensionMessage, WebViewMessage } from '../../src/types';
 import { buildExportHtmlString } from '../../src/core/export/htmlExport';
-import { structuredKindFromName } from './documentKind';
+import { previewKindFromName } from './documentKind';
 import { buildStructuredPreviewHtml } from './jsonView';
+import { buildPlainPreviewHtml } from './plainView';
 import { inlineLocalPreviewImages } from './previewImages';
 import { applyPreviewTheme } from './previewTheme';
 import { previewFontOptions } from './readingFontFace';
@@ -67,9 +68,14 @@ export function createHostBridge(opts: HostBridgeOptions) {
             ),
             wordWrap: opts.getWordWrap?.() !== false,
           };
-          const structured = structuredKindFromName(opts.getCurrentFilePath?.() ?? '');
-          if (structured) {
-            const html = applyPreviewTheme(buildStructuredPreviewHtml(content, structured), palette, font);
+          const kind = previewKindFromName(opts.getCurrentFilePath?.() ?? '');
+          if (kind === 'json' || kind === 'jsonl') {
+            const html = applyPreviewTheme(buildStructuredPreviewHtml(content, kind), palette, font);
+            opts.sendToRenderer({ type: 'PREVIEW_HTML', payload: { html } });
+            break;
+          }
+          if (kind === 'plain') {
+            const html = applyPreviewTheme(buildPlainPreviewHtml(content), palette, font);
             opts.sendToRenderer({ type: 'PREVIEW_HTML', payload: { html } });
             break;
           }

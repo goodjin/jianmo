@@ -109,6 +109,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 # Scratchpad
 
+- [X] **文本文件与拖入打开**（桌面 0.8.18）：应用里能打开的扩到文本（树、对话框、拖入、命令行）。系统默认关联只给平时没有程序的类型，如 `.pub`、`.pem`、`.toml`、字幕、补丁；`.txt`、网页、JSON、代码用「打开方式」，不抢默认。`.bat`、`.ps1`、`.reg` 能看，不做关联。二进制（Publisher 的 `.pub`、带空字节、常见文件头）不打开。普通文本用转义后的等宽预览，不送进 Markdown。拖到预览 iframe 时父页面收不到，要在预览文档里接住再交出来。命令行要丢掉 Electron 自己的可执行文件和脚本路径。不改插件。
 - [X] **水纹更透、更慢**（桌面 0.8.16）：整圈像素透明度最高 0.3，不要再叠描边涂实。散开时间大约 1.4 秒，是 0.72 秒那一版的两倍，后一圈的延迟也跟着加倍。仍先快后慢，不要改回 2.2 秒。圆心和明暗不动。不改插件。
 - [X] **水纹要像水，有明暗**（桌面 0.8.15）：不要画成几根实线，也不要叠四层描边。细线像线圈，描边加粗又糊成一块光。用画布涂一整圈：外缘暗、往里水色、脊上窄亮、内侧暗。整圈仍透，字还露着。快慢和圆心不动。不改插件。
 - [X] **水纹收细**（桌面 0.8.14）：四层仍在，但靠在大约两像素里。描边要透，整圈透明度最高大约 0.7，不要涂成一条宽带盖住字和按钮底下的内容。快慢、圆心、字跟着晃都留着。不改插件。
@@ -163,6 +164,7 @@ If needed, you can further use the `web_scraper.py` file to scrape the web page 
 
 ## Lessons（项目）
 
+- 桌面「能打开」和「系统默认打开」分开。默认关联只给平时没有程序的文本扩展名（`.pub`、`.pem`、`.toml`、字幕、补丁等）。`.txt`、网页、JSON、代码放在 Alternate，只进「打开方式」。`.bat`、`.cmd`、`.ps1`、`.reg`、`.command` 可以在应用里当文本看，不要写进 `fileAssociations`。命令行参数先丢掉 Electron 可执行文件和脚本路径，否则 `.js` 变成可打开类型后，一启动会把自己的主文件当成文档。普通文本不要送进 Markdown 渲染，预览用转义后的 `pre`。带空字节、Publisher OLE、PNG 等文件头的不要打开。拖到预览上时事件落在 iframe 里，父页面的 drop 收不到，要在预览文档里接住再用 postMessage 交路径；父页面的 drop 用捕获阶段，免得编辑器把路径插进正文。
 - 桌面壳层不要让窗口自己滚动。`grid-template-rows` 里的 `1fr` 实际是 `minmax(auto, 1fr)`，文件树一长整页就被撑高，横向滚动条会从文件树底下一直拉到正文。行和列都写成 `minmax(0, 1fr)`，外壳 `overflow: hidden`。文件树只在 `.tree-scroll` 里纵向滚。
 - 预览正文不要沿用导出 HTML 的 `max-width` 加 `margin: 0 auto`。那会把文章收在中间，宽窗口上正文左侧空出一块。目录已经在正文左边，预览要铺满内容列，只留一圈边距。导出文件不要跟着改。
 - 桌面原文编辑复用 `webview/src/core/editor.ts`，但 CodeMirror 必须装在 `app` 里，并用 alias 指到 `app/node_modules`。插件目录还有一份，两份叠在一起会报 Unrecognized extension。读正文用 `state.sliceDoc()`，不要用 `doc.toString()`：后者永远拼成 LF。文件里有 CRLF 时，读出来再把 LF 拼回 CRLF，保存才不会改换行。

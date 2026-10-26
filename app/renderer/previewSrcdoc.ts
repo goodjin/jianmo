@@ -4,6 +4,7 @@
 
 import { selectionCopyRuntimeSource } from '../electron/selectionCopy';
 import { placeRuntimeSource } from '../electron/viewPlace';
+import { previewDropRuntimeSource } from './previewDrop';
 
 /** 正文可见文字（不含 script/style），用来核对选区是不是文档里的字。 */
 export function visibleTextFromHtml(html: string): string {
@@ -67,6 +68,13 @@ export function buildPreviewSrcdoc(html: string): string {
       runtime.setAttribute('data-markly-selection-copy', '1');
       runtime.textContent = selectionCopyRuntimeSource();
       host.appendChild(runtime);
+    }
+    // 拖到预览正文上时，父页面收不到 drop。这里接住再把路径交出去。
+    if (!doc.querySelector('script[data-markly-preview-drop]')) {
+      const drop = doc.createElement('script');
+      drop.setAttribute('data-markly-preview-drop', '1');
+      drop.textContent = previewDropRuntimeSource();
+      host.appendChild(drop);
     }
     // 桌面预览用来记住阅读位置。只挂在预览 iframe 上，不改导出文件和插件界面。
     if (!doc.querySelector('script[data-markly-place]')) {

@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('listFileTree', () => {
-  it('文件夹在前，含 Markdown / JSON / JSONL，跳过隐藏项、node_modules 和其它类型', () => {
+  it('文件夹在前，含文本文件，跳过隐藏项、node_modules 和图片', () => {
     const root = tmpDir();
     fs.mkdirSync(path.join(root, 'b-dir'));
     fs.mkdirSync(path.join(root, 'a-dir'));
@@ -37,7 +37,9 @@ describe('listFileTree', () => {
     fs.writeFileSync(path.join(root, 'notes.mdx'), '# x');
     fs.writeFileSync(path.join(root, 'data.json'), '{}');
     fs.writeFileSync(path.join(root, 'rows.JSONL'), '{}\n');
-    fs.writeFileSync(path.join(root, 'skip.txt'), 'no');
+    fs.writeFileSync(path.join(root, 'skip.png'), 'no');
+    fs.writeFileSync(path.join(root, 'readme.txt'), 'hi');
+    fs.writeFileSync(path.join(root, 'id.pub'), 'ssh-ed25519 AAAA');
     fs.writeFileSync(path.join(root, 'a-dir', 'inner.md'), '# in');
 
     const page = listFileTree(root, root);
@@ -46,9 +48,11 @@ describe('listFileTree', () => {
       'dir:a-dir',
       'dir:b-dir',
       'file:data.json',
+      'file:id.pub',
       'file:item2.md',
       'file:item10.md',
       'file:notes.mdx',
+      'file:readme.txt',
       'file:rows.JSONL',
     ]);
     expect(page.entries.find((e) => e.name === 'a-dir')?.path).toBe(path.join(root, 'a-dir'));

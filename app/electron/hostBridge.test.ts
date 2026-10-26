@@ -246,6 +246,18 @@ describe('预览 HTML 的主题与字体', () => {
     const mdHtml = String((md.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
     expect(mdHtml).toContain('<h1');
     expect(mdHtml).not.toContain('box-key');
+
+    const plain = makeBridge({
+      getCurrentContent: () => '# 不是标题\n\n<script>alert(1)</script>',
+      getCurrentFilePath: () => '/keys/id_ed25519.pub',
+    });
+    await plain.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} } as never);
+    const plainHtml = String((plain.sent.find((m) => m.type === 'PREVIEW_HTML')?.payload as { html: string }).html);
+    expect(plainHtml).toContain('class="plain-text"');
+    expect(plainHtml).toContain('# 不是标题');
+    expect(plainHtml).not.toContain('<h1');
+    expect(plainHtml).toContain('&lt;script&gt;');
+    expect(plainHtml).not.toContain('<script>alert');
   });
 
   it('思源黑体连同字体文件写进正文，系统默认则不用这套字', async () => {
