@@ -178,9 +178,14 @@ async function goUp(): Promise<void> {
 /**
  * 第一次打开停在主进程给的目录（默认是用户主目录）。
  * 当前文档不在这个目录里时，改到文档所在目录，方便在树里看到它。
+ * 用户刚选了文件夹时 rootEpoch 加一。初次加载若在这之后才返回，就不要再改到文档旁边。
  */
+let rootEpoch = 0;
+
 async function loadInitialRoot(): Promise<void> {
+  const seen = rootEpoch;
   const fromHost = await electronApp()?.fileTreeRoot?.();
+  if (seen !== rootEpoch) return;
   const hostRoot = typeof fromHost === 'string' ? fromHost.trim() : '';
   const file = props.activePath;
   let initial = hostRoot;
@@ -188,7 +193,15 @@ async function loadInitialRoot(): Promise<void> {
     initial = parentDir(file) || initial;
   }
   if (!initial) initial = parentDir(file) || filesystemRootOf(file);
+  if (seen !== rootEpoch) return;
   if (initial) await applyRoot(initial);
+}
+
+function showChosenFolder(next: string): void {
+  const dir = next.trim();
+  if (!dir) return;
+  rootEpoch += 1;
+  void applyRoot(dir);
 }
 
 async function onRefresh(): Promise<void> {
@@ -379,6 +392,7 @@ const ctx: FileTreeContext = {
 provide(FileTreeKey, ctx);
 
 let treeReady = false;
+let stopRootWatch: (() => void) | undefined;
 
 watch(
   [canGoUp, root],
@@ -412,6 +426,9 @@ watch(renamingPath, (path) => {
 onMounted(() => {
   document.addEventListener('mousedown', onDocPointerDown);
   document.addEventListener('keydown', onDocKeyDown);
+  stopRootWatch = electronApp()?.onFileTreeRoot?.((next) => {
+    showChosenFolder(next);
+  });
   void loadInitialRoot().finally(() => {
     treeReady = true;
   });
@@ -420,6 +437,8 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocPointerDown);
   document.removeEventListener('keydown', onDocKeyDown);
+  stopRootWatch?.();
+  stopRootWatch = undefined;
 });
 </script>
 

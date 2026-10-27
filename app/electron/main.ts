@@ -56,6 +56,7 @@ import {
   type RecentFileRecord,
 } from './recentFiles';
 import { resolveFileTreeRoot } from './fileTreeModel';
+import { openDialogProperties, splitOpenSelection } from './openSelection';
 import { applyFileRename, destinationTaken } from './fileRename';
 import { planTrash } from './trashFile';
 import {
@@ -200,16 +201,24 @@ async function enforceTabLimit(): Promise<void> {
 
 async function pickAndLoadFile(): Promise<string | null> {
   if (!mainWindow) return null;
+  const currentRoot = readFileTreeRoot();
   const res = await dialog.showOpenDialog(mainWindow, {
-    title: '打开文件',
+    title: '打开',
     filters: openDocumentFilters(),
-    // 一次选多个文件 → 一次开多个标签
-    properties: ['openFile', 'multiSelections'],
+    defaultPath: currentRoot || undefined,
+    // macOS 可同时选文件和文件夹；别的系统两项一起会变成只能选文件夹。
+    properties: openDialogProperties(process.platform),
   });
   if (res.canceled || res.filePaths.length === 0) return null;
-  for (const p of res.filePaths) await loadFileAsking(p);
+  const picked = splitOpenSelection(res.filePaths, directoryExists);
+  if (picked.directory) {
+    // 选了文件夹就只换左侧的树，不打开文件，也不要弹出「打开失败」。
+    showChosenFolder(picked.directory);
+    return null;
+  }
+  for (const p of picked.files) await loadFileAsking(p);
   emitActiveDocument();
-  return res.filePaths[res.filePaths.length - 1]!;
+  return picked.files[picked.files.length - 1] ?? null;
 }
 
 function readRecent(): RecentFileRecord[] {
@@ -267,6 +276,15 @@ function commitFileTreeRoot(raw: string): string {
   return readFileTreeRoot();
 }
 
+/** 记下文件夹并告诉左侧文件树。路径不是目录时不改已经记住的根。 */
+function showChosenFolder(dir: string): string | null {
+  const wanted = path.resolve(dir);
+  const root = commitFileTreeRoot(dir);
+  if (root !== wanted) return null;
+  publishFileTreeRoot(root);
+  return root;
+}
+
 /** 取消对话框时返回 null，避免把「没选」当成一次刷新。 */
 async function chooseFileTreeRoot(): Promise<string | null> {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -277,7 +295,7 @@ async function chooseFileTreeRoot(): Promise<string | null> {
     properties: ['openDirectory'],
   });
   if (res.canceled || !res.filePaths[0]) return null;
-  return commitFileTreeRoot(res.filePaths[0]);
+  return showChosenFolder(res.filePaths[0]);
 }
 
 function publishFileTreeRoot(root: string): void {
@@ -854,9 +872,7 @@ function installAppMenu(): void {
             label: '打开文件夹…',
             accelerator: 'CmdOrCtrl+Shift+O',
             click: () => {
-              void chooseFileTreeRoot().then((picked) => {
-                if (picked) publishFileTreeRoot(picked);
-              });
+              void chooseFileTreeRoot();
             },
           },
           { type: 'separator' },

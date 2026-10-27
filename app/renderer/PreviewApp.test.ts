@@ -216,6 +216,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const rail = el.querySelector('.open-rail') as HTMLElement;
     const bar = el.querySelector('.tab-bar') as HTMLElement;
     expect(rail.querySelector('.open-split')).not.toBeNull();
+    expect(rail.querySelector('.open-main')!.getAttribute('title')).toBe('打开文件或文件夹');
     expect(bar.querySelector('.open-split')).toBeNull();
     // 标签条在左，加号跟着最后一张。源码、刷新、编辑和三个点在最右。
     expect(bar.firstElementChild!.classList.contains('tab-scroller')).toBe(true);

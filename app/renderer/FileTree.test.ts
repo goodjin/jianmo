@@ -443,6 +443,92 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(listFileTree.mock.calls.filter((call) => call[0] === '/docs/notes').length).toBeGreaterThan(1);
   });
 
+  it('选了文件夹后左侧换成那棵树，不打开文件，也不跳回当前文档', async () => {
+    const listFileTree = fakeList();
+    const openPath = vi.fn(async () => '/docs/notes/b.md');
+    let pushRoot: (root: string) => void = () => {};
+    install({
+      listFileTree,
+      openPath,
+      onFileTreeRoot: (handler) => {
+        pushRoot = handler;
+        return () => {};
+      },
+    });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+    expect(el.querySelector('.file-root')!.textContent).toBe('/');
+    expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/docs/notes/b.md');
+
+    pushRoot('/other');
+    await flush();
+
+    expect(openPath).not.toHaveBeenCalled();
+    expect(el.querySelector('.file-root')!.textContent).toBe('other');
+    expect(listFileTree).toHaveBeenCalledWith('/other');
+    expect(el.querySelector('[data-path="/other/c.md"]')).not.toBeNull();
+    expect(el.querySelector('[data-path="/docs/notes/b.md"]')).toBeNull();
+    expect(el.querySelector('.tree-row.current')).toBeNull();
+  });
+
+  it('选文件夹的通知比初次加载先到时，树停在选中的文件夹', async () => {
+    let releaseRoot: (root: string) => void = () => {};
+    const fileTreeRoot = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseRoot = resolve;
+        })
+    );
+    const listFileTree = fakeList();
+    const openPath = vi.fn();
+    let pushRoot: (root: string) => void = () => {};
+    install({
+      fileTreeRoot,
+      listFileTree,
+      openPath,
+      onFileTreeRoot: (handler) => {
+        pushRoot = handler;
+        return () => {};
+      },
+    });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+    expect(el.querySelector('.file-root')).toBeNull();
+
+    pushRoot('/other');
+    await flush();
+    releaseRoot('/');
+    await flush();
+
+    expect(openPath).not.toHaveBeenCalled();
+    expect(el.querySelector('.file-root')!.textContent).toBe('other');
+    expect(listFileTree.mock.calls.map((call) => call[0])).toEqual(['/other']);
+  });
+
+  it('换了文件夹之后再打开别的文档，树仍会跟着文档走', async () => {
+    const listFileTree = fakeList();
+    let pushRoot: (root: string) => void = () => {};
+    install({
+      listFileTree,
+      onFileTreeRoot: (handler) => {
+        pushRoot = handler;
+        return () => {};
+      },
+    });
+    const el = mount({ activePath: '/docs/notes/b.md' });
+    await flush();
+    pushRoot('/other');
+    await flush();
+    expect(el.querySelector('.file-root')!.textContent).toBe('other');
+
+    mounted!.app._instance!.props.activePath = '/docs/a.md';
+    await flush();
+
+    expect(listFileTree).toHaveBeenCalledWith('/docs');
+    expect(el.querySelector('.file-root')!.textContent).toBe('docs');
+    expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/docs/a.md');
+  });
+
   it('收起后不渲染树', async () => {
     install({ listFileTree: fakeList() });
     const el = mount({ collapsed: true, activePath: '/docs/notes/b.md' });

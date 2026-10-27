@@ -21,7 +21,7 @@
           @pointerdown.stop.prevent="closeRecent"
           @click.stop="closeRecent"
         />
-        <button class="chrome-btn open-main" type="button" title="打开 Markdown 或 JSON 文件" @click="onOpen">
+        <button class="chrome-btn open-main" type="button" title="打开文件或文件夹" @click="onOpen">
           <span class="open-label">打开…</span>
         </button>
         <button
