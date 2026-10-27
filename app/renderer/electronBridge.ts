@@ -41,7 +41,7 @@ export interface ElectronAppBridge {
   fileTreeRoot?: () => Promise<unknown>;
   pickFileTreeRoot?: () => Promise<unknown>;
   setFileTreeRoot?: (dir: string) => Promise<unknown>;
-  listFileTree?: (dir: string) => Promise<unknown>;
+  listFileTree?: (dir: string, showHidden?: boolean) => Promise<unknown>;
   revealInFolder?: (filePath: string) => Promise<boolean>;
   renameFile?: (from: string, name: string) => Promise<unknown>;
   trashFile?: (filePath: string) => Promise<unknown>;

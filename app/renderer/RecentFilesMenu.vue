@@ -1,5 +1,7 @@
 <template>
-  <div class="recent-menu" role="menu" aria-label="最近打开">
+  <!-- 打开那一栏是 overflow:hidden，菜单留在里面会被裁掉，点下拉像没反应。 -->
+  <Teleport to="body">
+  <div class="recent-menu" role="menu" aria-label="最近打开" :style="{ top: top + 'px', left: left + 'px' }">
     <div class="recent-head">
       <span class="recent-title">最近打开</span>
       <button
@@ -71,6 +73,7 @@
       </li>
     </ul>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -80,6 +83,7 @@ import { formatOpenedAt, parseRecentFiles, type RecentFileRecord } from '../elec
 import { displayDirFromPath, displayNameFromPath } from './documentMeta';
 import { electronApp } from './electronBridge';
 
+defineProps<{ top: number; left: number }>();
 const emit = defineEmits<{
   (e: 'open', filePath: string): void;
 }>();
@@ -182,9 +186,7 @@ defineExpose({ refresh });
 
 <style>
 .recent-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
   width: 420px;
   max-width: min(420px, 92vw);
   max-height: min(70vh, 560px);
@@ -193,7 +195,7 @@ defineExpose({ refresh });
   border: 1px solid var(--markly-border-color, #d0d7de);
   border-radius: var(--app-radius-md);
   box-shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
-  z-index: 3;
+  z-index: 80;
   padding: 8px 0 10px;
   text-align: left;
 }

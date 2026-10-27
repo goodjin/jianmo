@@ -68,7 +68,7 @@ import { FileTreeKey, type FileTreeContext } from './fileTreeContext';
 import { parseRenameResult, planRename } from '../electron/fileRename';
 import { parseTrashResult } from '../electron/trashFile';
 
-const props = defineProps<{ collapsed: boolean; activePath: string }>();
+const props = defineProps<{ collapsed: boolean; activePath: string; showHidden?: boolean }>();
 const emit = defineEmits<{
   (e: 'chrome', state: { canGoUp: boolean; hasRoot: boolean }): void;
 }>();
@@ -111,20 +111,38 @@ function clearTree(): void {
   for (const key of Object.keys(errors)) delete errors[key];
 }
 
+/** 切换是否显示隐藏项时加一，进行中的旧读取不要再写回树。 */
+let listEpoch = 0;
+
 async function fetchDir(dir: string): Promise<FileTreeListResult> {
+  const epoch = listEpoch;
+  const showHidden = props.showHidden === true;
   loading[dir] = true;
   try {
-    const page = parseFileTreeResult(await electronApp()?.listFileTree?.(dir));
+    const list = electronApp()?.listFileTree;
+    const raw = list ? (showHidden ? await list(dir, true) : await list(dir)) : undefined;
+    const page = parseFileTreeResult(raw);
+    if (epoch !== listEpoch) return page;
     cache[dir] = page.entries;
     errors[dir] = page.error;
     return page;
   } catch {
     const page = { dir, entries: [], error: '无法读取该文件夹' };
+    if (epoch !== listEpoch) return page;
     cache[dir] = [];
     errors[dir] = page.error;
     return page;
   } finally {
-    loading[dir] = false;
+    if (epoch === listEpoch) loading[dir] = false;
+  }
+}
+
+async function reloadOpenDirs(): Promise<void> {
+  if (!root.value) return;
+  const openDirs = Object.keys(expanded).filter((key) => expanded[key] && key !== root.value);
+  await fetchDir(root.value);
+  for (const dir of openDirs) {
+    if (expanded[dir]) await fetchDir(dir);
   }
 }
 
@@ -416,6 +434,16 @@ watch(
   () => props.collapsed,
   (collapsed) => {
     if (collapsed) closeMenu();
+  }
+);
+
+watch(
+  () => props.showHidden === true,
+  () => {
+    listEpoch += 1;
+    for (const key of Object.keys(cache)) delete cache[key];
+    for (const key of Object.keys(loading)) delete loading[key];
+    void reloadOpenDirs();
   }
 );
 

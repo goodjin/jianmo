@@ -1199,12 +1199,12 @@ app.whenReady().then(() => {
   ipcMain.handle('app:trash-file', (_e, filePath: unknown) =>
     trashOpenedFile(typeof filePath === 'string' ? filePath : '')
   );
-  ipcMain.handle('app:file-tree:list', (_e, dir: unknown) => {
+  ipcMain.handle('app:file-tree:list', (_e, dir: unknown, showHidden: unknown) => {
     // 目录树从文件系统根铺开，不再限制在曾经选过的文件夹里。
     const target = typeof dir === 'string' ? dir.trim() : '';
     const root = filesystemRootOf(target);
     if (!root) return listFileTree('', '');
-    return listFileTree(target, root);
+    return listFileTree(target, root, showHidden === true);
   });
   ipcMain.handle('app:list-dir-markdown', (_e, payload?: { filePath?: unknown; offset?: unknown }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : '';

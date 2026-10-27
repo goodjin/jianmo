@@ -148,6 +148,7 @@ beforeEach(() => {
 afterEach(() => {
   mounted?.app.unmount();
   mounted?.el.remove();
+  document.querySelector('.recent-menu')?.remove();
   mounted = null;
   delete (window as unknown as { electron?: ElectronAppBridge }).electron;
   delete (window as unknown as { vscode?: unknown }).vscode;
@@ -275,7 +276,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(up.querySelector('.file-up-icon path')).not.toBeNull();
     expect(up.textContent).not.toContain('↑');
     expect(up.getAttribute('aria-label')).toBe('上一级目录');
-    expect(chrome.querySelector('.file-icon-btn:not(.file-up)')).toBeNull();
+    const hidden = chrome.querySelector('.file-hidden') as HTMLButtonElement;
+    expect(hidden.textContent?.trim()).toBe('.*');
+    expect(hidden.getAttribute('aria-pressed')).toBe('false');
+    expect(hidden.compareDocumentPosition(up) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(chrome.textContent).not.toContain('刷新');
     expect(toggle.textContent?.trim()).toBe('‹');
     expect(toggle.getAttribute('aria-label')).toBe('收起文件');
@@ -314,9 +318,57 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(el.querySelector('.open-split')).not.toBeNull();
     expect(el.querySelector('.open-main')!.textContent).toContain('打开');
     expect(el.querySelector('.file-tree-chrome .file-up')).not.toBeNull();
-    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-hidden')).not.toBeNull();
     expect(el.querySelector('.file-tree-chrome .file-toggle')!.textContent?.trim()).toBe('‹');
     expect(storeSet).toHaveBeenCalledWith('fileTreeCollapsed', false);
+  });
+
+  it('点一下才显示点开头的文件，并记住这个选择', async () => {
+    const listFileTree = vi.fn(async (dir: string) => ({
+      dir,
+      entries: [{ name: 'readme.md', path: `${dir}/readme.md`, kind: 'file' }],
+      error: '',
+    }));
+    const storeSet = vi.fn();
+    const electron = (window as unknown as { electron: ElectronAppBridge }).electron;
+    electron.listFileTree = listFileTree;
+    electron.fileTreeRoot = async () => '/home/me';
+    electron.storeSet = storeSet;
+    electron.tabsState = vi.fn(() => ({
+      tabs: [{ id: 't1', kind: 'doc', title: '新标签页', filePath: '' }],
+      activeId: 't1',
+    }));
+    const el = mount();
+    await flush();
+
+    const hidden = el.querySelector('.file-hidden') as HTMLButtonElement;
+    expect(hidden.getAttribute('aria-pressed')).toBe('false');
+    expect(listFileTree.mock.calls.some((call) => call[1] === true)).toBe(false);
+
+    hidden.click();
+    await flush();
+    expect(hidden.getAttribute('aria-pressed')).toBe('true');
+    expect(hidden.classList.contains('is-on')).toBe(true);
+    expect(storeSet).toHaveBeenCalledWith('fileTreeShowHidden', true);
+    expect(listFileTree).toHaveBeenCalledWith('/home/me', true);
+
+    hidden.click();
+    await flush();
+    expect(hidden.getAttribute('aria-pressed')).toBe('false');
+    expect(storeSet).toHaveBeenCalledWith('fileTreeShowHidden', false);
+    const last = listFileTree.mock.calls[listFileTree.mock.calls.length - 1]!;
+    expect(last[0]).toBe('/home/me');
+    expect(last[1]).toBeUndefined();
+  });
+
+  it('上次开着显示隐藏文件，这次进来按钮是按下的', async () => {
+    const electron = (window as unknown as { electron: ElectronAppBridge }).electron;
+    electron.storeGet = vi.fn((key: unknown) => key === 'fileTreeShowHidden');
+    const el = mount();
+    await flush();
+    const hidden = el.querySelector('.file-hidden') as HTMLButtonElement;
+    expect(hidden.getAttribute('aria-pressed')).toBe('true');
+    expect(hidden.classList.contains('is-on')).toBe(true);
   });
 
   it('打开旁边的上一级会作用到文件树，这里不再放刷新', async () => {
@@ -335,7 +387,7 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     const up = el.querySelector('.file-tree-chrome .file-up') as HTMLButtonElement;
     expect(up.disabled).toBe(false);
-    expect(el.querySelector('.file-tree-chrome .file-icon-btn:not(.file-up)')).toBeNull();
+    expect(el.querySelector('.file-tree-chrome .file-hidden')).not.toBeNull();
     expect(el.querySelector('[aria-label="刷新目录树"]')).toBeNull();
     expect(el.querySelector('.tab-reload')).not.toBeNull();
 
@@ -569,30 +621,33 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     (el.querySelector('.open-caret') as HTMLElement).click();
     await flush();
-    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    const opened = document.querySelector('.recent-menu');
+    expect(opened).not.toBeNull();
+    // 菜单若留在打开那一栏里，会被 overflow:hidden 裁掉，点 ▾ 像没反应
+    expect(el.querySelector('.open-rail')!.contains(opened)).toBe(false);
 
     // 菜单里的空白（标题区）不算“外面”
-    (el.querySelector('.recent-title') as HTMLElement).dispatchEvent(
+    (document.querySelector('.recent-title') as HTMLElement).dispatchEvent(
       new MouseEvent('pointerdown', { bubbles: true })
     );
     await flush();
-    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    expect(document.querySelector('.recent-menu')).not.toBeNull();
 
     // 预览 iframe 盖不住父页面的点击：全屏透明层接住空白点击
     const dismiss = el.querySelector('.recent-dismiss') as HTMLElement;
     expect(dismiss).not.toBeNull();
     dismiss.click();
     await flush();
-    expect(el.querySelector('.recent-menu')).toBeNull();
+    expect(document.querySelector('.recent-menu')).toBeNull();
     expect(el.querySelector('.recent-dismiss')).toBeNull();
 
     // 侧栏、预览区这类“外面”的按下也要收起（不依赖遮罩那一下 click）
     (el.querySelector('.open-caret') as HTMLElement).click();
     await flush();
-    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    expect(document.querySelector('.recent-menu')).not.toBeNull();
     el.querySelector('.preview-area')!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
     await flush();
-    expect(el.querySelector('.recent-menu')).toBeNull();
+    expect(document.querySelector('.recent-menu')).toBeNull();
   });
 
   it('最近打开菜单在焦点进入预览时收起', async () => {
@@ -603,13 +658,13 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     (el.querySelector('.open-caret') as HTMLElement).click();
     await flush();
-    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    expect(document.querySelector('.recent-menu')).not.toBeNull();
 
     // 普通失焦（焦点没进预览）不收起
     window.dispatchEvent(new Event('blur'));
     await flush();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(el.querySelector('.recent-menu')).not.toBeNull();
+    expect(document.querySelector('.recent-menu')).not.toBeNull();
 
     const frame = el.querySelector('.preview-frame') as HTMLIFrameElement;
     expect(frame).not.toBeNull();
@@ -617,7 +672,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     window.dispatchEvent(new Event('blur'));
     await flush();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(el.querySelector('.recent-menu')).toBeNull();
+    expect(document.querySelector('.recent-menu')).toBeNull();
   });
 
   it('设置在操作菜单里，最近打开里不再出现，点击进设置页', async () => {
@@ -632,14 +687,14 @@ describe('PreviewApp 顶栏与大纲', () => {
 
     (el.querySelector('.open-caret') as HTMLElement).click();
     await flush();
-    const menu = el.querySelector('.recent-menu')!;
+    const menu = document.querySelector('.recent-menu')!;
     expect(menu.querySelector('.recent-settings-btn')).toBeNull();
     expect(menu.textContent).not.toContain('设置');
 
     settings.click();
     await flush();
     expect(electronStub('openSettingsTab')).toHaveBeenCalled();
-    expect(el.querySelector('.recent-menu')).toBeNull();
+    expect(document.querySelector('.recent-menu')).toBeNull();
   });
 
   it('把文本拖进界面自动打开，图片忽略', async () => {
@@ -1171,7 +1226,9 @@ describe('PreviewApp 顶栏与大纲', () => {
       expect(pageStyle.justifyContent).toBe('flex-start');
     }
     expect(previewAppSource).toMatch(/\.chrome-btn\s*\{[^}]*border-radius:\s*var\(--app-radius-sm\)/);
-    expect(previewAppSource).toMatch(/\.file-up,\s*\n\.file-toggle\s*\{[^}]*border-radius:\s*var\(--app-radius-xxs\)/);
+    expect(previewAppSource).toMatch(
+      /\.file-up,\s*\n\.file-hidden,\s*\n\.file-toggle\s*\{[^}]*border-radius:\s*var\(--app-radius-xxs\)/
+    );
     const shell = el.querySelector('.markly-app') as HTMLElement;
     expect(shell.style.getPropertyValue('--app-radius-sm')).toBe(APP_RADIUS.sm);
     expect(shell.style.getPropertyValue('--app-radius-xxs')).toBe(APP_RADIUS.xxs);

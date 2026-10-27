@@ -53,8 +53,19 @@ function byName(a: FileTreeEntry, b: FileTreeEntry): number {
   return a.name.localeCompare(b.name, 'zh', { numeric: true, sensitivity: 'base' });
 }
 
+/**
+ * 默认不列以点开头的名字。打开「显示隐藏」后，点开头的文件夹和文件可以出现。
+ * `.`、`..` 和 node_modules 始终不列，避免树绕回去或把依赖目录铺开。
+ */
+export function shouldListTreeName(name: string, showHidden: boolean): boolean {
+  if (!name || name === '.' || name === '..') return false;
+  if (name.toLowerCase() === 'node_modules') return false;
+  if (!showHidden && name.startsWith('.')) return false;
+  return true;
+}
+
 /** 只列 `dir` 的直接子项。`dir` 省略时列根目录本身。越界或读不了都不抛。 */
-export function listFileTree(dir: string, root: string): FileTreeListResult {
+export function listFileTree(dir: string, root: string, showHidden = false): FileTreeListResult {
   const rootTrim = typeof root === 'string' ? root.trim() : '';
   if (!rootTrim) return { dir: '', entries: [], error: FILE_TREE_ERR_NO_ROOT };
 
@@ -75,8 +86,7 @@ export function listFileTree(dir: string, root: string): FileTreeListResult {
   const dirs: FileTreeEntry[] = [];
   const files: FileTreeEntry[] = [];
   for (const ent of dirents) {
-    if (!ent.name || ent.name.startsWith('.')) continue;
-    if (ent.name.toLowerCase() === 'node_modules') continue;
+    if (!shouldListTreeName(ent.name, showHidden)) continue;
     // 符号链接的真实位置可能在根外；目录树不跟着走。
     if (ent.isSymbolicLink()) continue;
     const full = path.join(dirAbs, ent.name);

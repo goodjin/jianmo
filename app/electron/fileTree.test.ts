@@ -7,6 +7,7 @@ import {
   FILE_TREE_ERR_OUTSIDE,
   FILE_TREE_ERR_UNREADABLE,
   listFileTree,
+  shouldListTreeName,
 } from './fileTree';
 
 const tmpDirs: string[] = [];
@@ -21,6 +22,25 @@ afterEach(() => {
   for (const dir of tmpDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe('shouldListTreeName', () => {
+  it('默认跳过点开头的名字，打开后才列出来', () => {
+    expect(shouldListTreeName('.git', false)).toBe(false);
+    expect(shouldListTreeName('.gitignore', false)).toBe(false);
+    expect(shouldListTreeName('.git', true)).toBe(true);
+    expect(shouldListTreeName('.gitignore', true)).toBe(true);
+    expect(shouldListTreeName('docs', false)).toBe(true);
+    expect(shouldListTreeName('docs', true)).toBe(true);
+  });
+
+  it('点自己、上一级和 node_modules 始终不列', () => {
+    expect(shouldListTreeName('', true)).toBe(false);
+    expect(shouldListTreeName('.', true)).toBe(false);
+    expect(shouldListTreeName('..', true)).toBe(false);
+    expect(shouldListTreeName('node_modules', true)).toBe(false);
+    expect(shouldListTreeName('Node_Modules', false)).toBe(false);
+  });
 });
 
 describe('listFileTree', () => {
@@ -59,6 +79,18 @@ describe('listFileTree', () => {
 
     const inner = listFileTree(path.join(root, 'a-dir'), root);
     expect(inner.entries.map((e) => e.name)).toEqual(['inner.md']);
+
+    const shown = listFileTree(root, root, true);
+    const names = shown.entries.map((e) => e.name);
+    expect(names).toContain('.git');
+    expect(names).toContain('.hidden.md');
+    expect(names).not.toContain('node_modules');
+    expect(names).not.toContain('skip.png');
+    expect(shown.entries.find((e) => e.name === '.git')?.kind).toBe('dir');
+    expect(shown.entries.find((e) => e.name === '.hidden.md')?.kind).toBe('file');
+    const lastDir = shown.entries.reduce((acc, entry, index) => (entry.kind === 'dir' ? index : acc), -1);
+    const firstFile = shown.entries.findIndex((entry) => entry.kind === 'file');
+    expect(lastDir).toBeLessThan(firstFile);
   });
 
   it('未选根、越界、不存在、把文件当目录，都返回错误且不抛', () => {

@@ -529,6 +529,45 @@ describe('FileTree（树根由主进程给定，默认是用户目录）', () =>
     expect(el.querySelector('.tree-row.current')!.getAttribute('data-path')).toBe('/docs/a.md');
   });
 
+  it('打开显示隐藏项后，点开头的目录和文件出现，再关掉就消失', async () => {
+    const listFileTree = vi.fn(async (dir: string, showHidden?: boolean) => {
+      if (dir === '/' && showHidden) {
+        return {
+          dir,
+          entries: [
+            { name: '.git', path: '/.git', kind: 'dir' as const },
+            { name: 'docs', path: '/docs', kind: 'dir' as const },
+            { name: '.hidden.md', path: '/.hidden.md', kind: 'file' as const },
+          ],
+          error: '',
+        };
+      }
+      return TREE[dir] ?? { dir, entries: [], error: '' };
+    });
+    const openPath = vi.fn();
+    install({ listFileTree, openPath, fileTreeRoot: async () => '/' });
+    const el = mount({ activePath: '', showHidden: false });
+    await flush();
+    expect(el.querySelector('[data-path="/.git"]')).toBeNull();
+    expect(el.querySelector('[data-path="/.hidden.md"]')).toBeNull();
+    expect(listFileTree).toHaveBeenCalledWith('/');
+    expect(listFileTree).not.toHaveBeenCalledWith('/', true);
+
+    mounted!.app._instance!.props.showHidden = true;
+    await flush();
+    expect(openPath).not.toHaveBeenCalled();
+    expect(listFileTree).toHaveBeenCalledWith('/', true);
+    expect(el.querySelector('[data-path="/.git"]')).not.toBeNull();
+    expect(el.querySelector('[data-path="/.hidden.md"]')).not.toBeNull();
+    expect(el.querySelector('[data-path="/docs"]')).not.toBeNull();
+
+    mounted!.app._instance!.props.showHidden = false;
+    await flush();
+    expect(el.querySelector('[data-path="/.git"]')).toBeNull();
+    expect(el.querySelector('[data-path="/.hidden.md"]')).toBeNull();
+    expect(el.querySelector('[data-path="/docs"]')).not.toBeNull();
+  });
+
   it('收起后不渲染树', async () => {
     install({ listFileTree: fakeList() });
     const el = mount({ collapsed: true, activePath: '/docs/notes/b.md' });

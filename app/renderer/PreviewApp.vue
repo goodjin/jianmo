@@ -32,9 +32,25 @@
           :aria-expanded="recentOpen"
           @click="toggleRecent"
         >▾</button>
-        <RecentFilesMenu v-if="recentOpen" ref="recentMenuRef" @open="onOpenRecent" />
+        <RecentFilesMenu
+          v-if="recentOpen"
+          ref="recentMenuRef"
+          :top="recentPos.top"
+          :left="recentPos.left"
+          @open="onOpenRecent"
+        />
       </div>
       <div class="file-tree-chrome">
+        <button
+          v-if="!fileTreeCollapsed"
+          type="button"
+          class="file-icon-btn file-hidden"
+          :class="{ 'is-on': fileTreeShowHidden }"
+          :title="fileTreeShowHidden ? '不显示以点开头的文件和文件夹' : '显示以点开头的文件和文件夹'"
+          :aria-label="fileTreeShowHidden ? '不显示以点开头的文件和文件夹' : '显示以点开头的文件和文件夹'"
+          :aria-pressed="fileTreeShowHidden"
+          @click="toggleShowHidden"
+        >.*</button>
         <button
           v-if="!fileTreeCollapsed"
           type="button"
@@ -215,6 +231,7 @@
       ref="fileTreeRef"
       :collapsed="fileTreeCollapsed"
       :active-path="activeFilePath"
+      :show-hidden="fileTreeShowHidden"
       @chrome="onFileTreeChrome"
     />
     <main class="preview-area">
@@ -393,6 +410,7 @@ import {
 } from './fileTreeWidth';
 import FileTree from './FileTree.vue';
 import RecentFilesMenu from './RecentFilesMenu.vue';
+import { placeRecentMenu } from './recentMenuPlace';
 import SettingsPage from './SettingsPage.vue';
 import TabBar from './TabBar.vue';
 import ClickBurstLayer from './ClickBurstLayer.vue';
@@ -418,8 +436,19 @@ const openSplitRef = ref<HTMLElement | null>(null);
 const exportSplitRef = ref<HTMLElement | null>(null);
 const recentMenuRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const recentOpen = ref(false);
+const recentPos = ref({ top: 0, left: 0 });
 const outlineCollapsed = ref(false);
 const fileTreeCollapsed = ref(false);
+
+function storedFlag(key: string): boolean {
+  try {
+    return electronApp()?.storeGet?.(key) === true;
+  } catch {
+    return false;
+  }
+}
+
+const fileTreeShowHidden = ref(storedFlag('fileTreeShowHidden'));
 const fileTreeWidth = ref(FILE_TREE_DEFAULT_WIDTH);
 const filesResizing = ref(false);
 function currentFileTreeLimit(): { min: number; max: number } {
@@ -1034,6 +1063,15 @@ function toggleOutline(): void {
   persistOutlineCollapsed();
 }
 
+function toggleShowHidden(): void {
+  fileTreeShowHidden.value = !fileTreeShowHidden.value;
+  try {
+    electronApp()?.storeSet?.('fileTreeShowHidden', fileTreeShowHidden.value);
+  } catch {
+    /* ignore */
+  }
+}
+
 function toggleFileTree(): void {
   fileTreeCollapsed.value = !fileTreeCollapsed.value;
   if (fileTreeCollapsed.value) {
@@ -1196,13 +1234,23 @@ async function onPickExport(format: AppExportFormat): Promise<void> {
   }
 }
 
+function syncRecentPos(): void {
+  const root = openSplitRef.value;
+  if (!root) return;
+  const rect = root.getBoundingClientRect();
+  recentPos.value = placeRecentMenu({ left: rect.left, bottom: rect.bottom }, window.innerWidth || 0);
+}
+
 async function toggleRecent(): Promise<void> {
   closeExportMenu();
-  recentOpen.value = !recentOpen.value;
   if (recentOpen.value) {
-    await nextTick();
-    void recentMenuRef.value?.refresh?.();
+    recentOpen.value = false;
+    return;
   }
+  syncRecentPos();
+  recentOpen.value = true;
+  await nextTick();
+  void recentMenuRef.value?.refresh?.();
 }
 
 function onOpen(): void {
@@ -1219,8 +1267,8 @@ async function onOpenRecent(p: string): Promise<void> {
 function onDocPointerDown(ev: MouseEvent): void {
   const target = ev.target instanceof Node ? ev.target : null;
   if (recentOpen.value) {
-    // 透明层自己的点击负责收起，这里不再关第二次
-    if (target instanceof Element && target.closest('.recent-dismiss')) return;
+    // 透明层自己的点击负责收起。菜单画在 body 上，不在打开按钮里面，点菜单不能当成点了外面。
+    if (target instanceof Element && (target.closest('.recent-dismiss') || target.closest('.recent-menu'))) return;
     const root = openSplitRef.value;
     if (!(root && target && root.contains(target))) closeRecent();
   }
@@ -1570,6 +1618,7 @@ onMounted(() => {
   document.addEventListener('mousedown', onDocPointerDown);
   window.addEventListener('keydown', onDocKeydown);
   window.addEventListener('blur', onWindowBlur);
+  window.addEventListener('resize', syncRecentPos);
   document.addEventListener('dragover', onDragOver, true);
   document.addEventListener('drop', onDrop, true);
   window.addEventListener('message', onBoxCopyMessage);
@@ -1588,6 +1637,7 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', onDocPointerDown);
   window.removeEventListener('keydown', onDocKeydown);
   window.removeEventListener('blur', onWindowBlur);
+  window.removeEventListener('resize', syncRecentPos);
   document.removeEventListener('dragover', onDragOver, true);
   document.removeEventListener('drop', onDrop, true);
   window.removeEventListener('message', onBoxCopyMessage);
@@ -1690,6 +1740,7 @@ html, body, #app {
   gap: 8px;
   min-width: 0;
   min-height: 40px;
+  /* 下拉菜单不画在这一栏里。这里裁切之后，菜单会被切掉，点 ▾ 像没反应。 */
   overflow: hidden;
   padding: 0 8px;
   box-sizing: border-box;
@@ -1719,6 +1770,7 @@ html, body, #app {
 }
 /* 上一级和收起是小方块。高度跟打开按钮对齐。 */
 .file-up,
+.file-hidden,
 .file-toggle {
   display: inline-flex;
   align-items: center;
@@ -1743,6 +1795,14 @@ html, body, #app {
 .file-icon-btn:hover,
 .file-toggle:hover {
   background: var(--markly-surface, #f6f8fa);
+}
+.file-hidden {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.file-hidden.is-on {
+  border-color: var(--markly-primary, #0969da);
+  color: var(--markly-primary, #0969da);
 }
 .file-icon-btn:disabled {
   opacity: 0.45;
