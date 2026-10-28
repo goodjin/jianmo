@@ -33,6 +33,10 @@ export interface HostBridgeOptions {
   getPrefersDark?: () => boolean;
   /** 预览长行是否折行。没提供时默认折行。 */
   getWordWrap?: () => boolean;
+  /** 是否在文档上方渲染目录块。没提供时默认开。 */
+  getShowDocToc?: () => boolean;
+  /** 阅读宽度档位。没提供时铺满。 */
+  getReadingWidth?: () => 'full' | 'standard' | 'wide' | 'fit';
 }
 
 export function createHostBridge(opts: HostBridgeOptions) {
@@ -67,6 +71,7 @@ export function createHostBridge(opts: HostBridgeOptions) {
               getInstalledFontFamilies()
             ),
             wordWrap: opts.getWordWrap?.() !== false,
+            readingWidth: opts.getReadingWidth?.() ?? 'full',
           };
           const kind = previewKindFromName(opts.getCurrentFilePath?.() ?? '');
           if (kind === 'json' || kind === 'jsonl') {
@@ -80,7 +85,7 @@ export function createHostBridge(opts: HostBridgeOptions) {
             break;
           }
           let html = await buildExportHtmlString(content, {
-            includeToc: true,
+            includeToc: opts.getShowDocToc?.() !== false,
             title: 'Markly',
             htmlTheme: opts.config.export.html?.theme ?? 'default',
             mermaidScriptBundling: opts.config.export.diagram?.mermaidScriptBundling ?? 'embedded',

@@ -18,6 +18,11 @@ export interface PreviewFontOptions {
   fontFaceCss?: string;
   /** 长行是否折行。没写时默认折行，正文不出现横向滚动条。 */
   wordWrap?: boolean;
+  /**
+   * 阅读宽度：full 铺满 / standard≈820 / wide≈980 / fit 适应窗口。
+   * 只约束 Markdown 预览正文列，导出文件不受影响。
+   */
+  readingWidth?: 'full' | 'standard' | 'wide' | 'fit';
 }
 
 export const PREVIEW_WRAP_CLASS = 'markly-wrap';
@@ -65,6 +70,21 @@ ${bodyFont}
       margin: 0;
       max-width: none;
       padding: 28px 32px 64px;
+    }
+    body.markly-width-standard {
+      max-width: 820px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    body.markly-width-wide {
+      max-width: 980px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    body.markly-width-fit {
+      max-width: min(1120px, 92%);
+      margin-left: auto;
+      margin-right: auto;
     }
     body:has(.json-view) {
       padding: 0;
@@ -123,18 +143,38 @@ ${bodyFont}
     }`;
 }
 
-/** 给 body 加上折行或横滚的类。已有 class 保留，两种类不会同时在。找不到 body 时原样返回。 */
-export function applyPreviewBodyClass(html: string, wordWrap: boolean): string {
+export const PREVIEW_WIDTH_CLASSES = [
+  'markly-width-full',
+  'markly-width-standard',
+  'markly-width-wide',
+  'markly-width-fit',
+] as const;
+
+export function previewWidthClass(width: PreviewFontOptions['readingWidth']): string {
+  if (width === 'standard') return 'markly-width-standard';
+  if (width === 'wide') return 'markly-width-wide';
+  if (width === 'fit') return 'markly-width-fit';
+  return 'markly-width-full';
+}
+
+/** 给 body 加上折行/横滚与阅读宽度类。找不到 body 时原样返回。 */
+export function applyPreviewBodyClass(
+  html: string,
+  wordWrap: boolean,
+  readingWidth: PreviewFontOptions['readingWidth'] = 'full'
+): string {
   const source = typeof html === 'string' ? html : '';
   const next = wordWrap ? PREVIEW_WRAP_CLASS : PREVIEW_SCROLL_CLASS;
+  const widthClass = previewWidthClass(readingWidth);
   if (!/<body\b/i.test(source)) return source;
   return source.replace(/<body\b([^>]*)>/i, (_open, attrs: string) => {
     const classAttr = String(attrs).match(/\sclass\s*=\s*(['"])([\s\S]*?)\1/i);
-    if (!classAttr) return `<body class="${next}"${attrs}>`;
+    const drop = new Set<string>([PREVIEW_WRAP_CLASS, PREVIEW_SCROLL_CLASS, ...PREVIEW_WIDTH_CLASSES]);
+    if (!classAttr) return `<body class="${next} ${widthClass}"${attrs}>`;
     const names = classAttr[2]
       .split(/\s+/)
-      .filter((name) => name && name !== PREVIEW_WRAP_CLASS && name !== PREVIEW_SCROLL_CLASS);
-    names.push(next);
+      .filter((name) => name && !drop.has(name));
+    names.push(next, widthClass);
     const updated = String(attrs).replace(classAttr[0], ` class="${names.join(' ')}"`);
     return `<body${updated}>`;
   });
@@ -163,5 +203,5 @@ export function applyPreviewTheme(
     if (closing < 0) return source;
     injected = source.slice(0, closing) + style + source.slice(closing);
   }
-  return applyPreviewBodyClass(injected, font.wordWrap !== false);
+  return applyPreviewBodyClass(injected, font.wordWrap !== false, font.readingWidth ?? 'full');
 }

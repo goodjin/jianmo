@@ -247,3 +247,30 @@ describe('设置页 · 标签', () => {
     expect((el.querySelector('#settings-max-tabs') as HTMLInputElement).value).toBe('12');
   });
 });
+
+
+describe('设置页 · 阅读宽度与文档目录', () => {
+  it('列出阅读宽度档位，点选会抛出 readingWidth', () => {
+    const onUpdateReader = vi.fn();
+    const el = mount({ readingWidth: 'full', onUpdateReader });
+    const cards = [...el.querySelectorAll('.width-card')];
+    expect(cards.map((c) => c.querySelector('.width-name')!.textContent)).toEqual([
+      '铺满',
+      '标准',
+      '宽屏',
+      '适应窗口',
+    ]);
+    (cards[1] as HTMLElement).click();
+    expect(onUpdateReader).toHaveBeenCalledWith({ readingWidth: 'standard' });
+  });
+
+  it('切换文档上方目录开关', () => {
+    const onUpdateReader = vi.fn();
+    const el = mount({ showDocToc: true, onUpdateReader });
+    const box = el.querySelector('#settings-show-doc-toc') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    change(box);
+    expect(onUpdateReader).toHaveBeenCalledWith({ showDocToc: false });
+  });
+});

@@ -222,3 +222,33 @@ html[data-theme='dark'] .markly-app {
     transform: none;
   }
 }
+
+
+/* 专注阅读：顶栏导航改扁平透明，去掉双阴影叠水波的吵闹感 */
+.markly-app.focus-reading button.chrome-btn.reading-flat,
+.markly-app.focus-reading button.chrome-btn.tab-actions.reading-flat {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+.markly-app.focus-reading button.chrome-btn.reading-flat:hover:not(:disabled),
+.markly-app.focus-reading button.chrome-btn.tab-actions.reading-flat:hover {
+  background: color-mix(in srgb, var(--markly-primary, #0969da) 12%, transparent);
+  box-shadow: none;
+}
+.markly-app.focus-reading button.chrome-btn.reading-flat:active:not(:disabled),
+.markly-app.focus-reading button.chrome-btn.tab-actions.reading-flat:active {
+  transform: none;
+  box-shadow: none;
+}
+.markly-app.focus-reading button.chrome-btn.reading-flat.active {
+  background: color-mix(in srgb, var(--markly-primary, #0969da) 16%, transparent);
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .markly-app.focus-reading button.chrome-btn.reading-flat,
+  .markly-app.focus-reading button.chrome-btn.tab-actions.reading-flat {
+    transition: none;
+  }
+}

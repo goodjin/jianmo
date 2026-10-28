@@ -129,6 +129,38 @@
           </label>
           <p class="field-hint">勾选后，太长的文字会自动折到下一行，正文下面不再出现左右滚动条。取消后，长行保持一行，只在正文里面左右滚动。</p>
         </div>
+        <div class="field">
+          <div class="field-label" id="settings-reading-width-label">阅读宽度</div>
+          <p class="field-hint">只作用于 Markdown 预览正文，不影响文件树与源码编辑。</p>
+          <div class="width-grid" role="listbox" aria-labelledby="settings-reading-width-label">
+            <button
+              v-for="opt in widthOptions"
+              :key="opt.id"
+              type="button"
+              class="width-card"
+              :class="{ selected: opt.id === readingWidth }"
+              role="option"
+              :aria-selected="opt.id === readingWidth"
+              :title="opt.hint"
+              @click="onPickWidth(opt.id)"
+            >
+              <span class="width-name">{{ opt.label }}</span>
+              <span class="width-hint">{{ opt.hint }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="auto-row copy-on-select-row" for="settings-show-doc-toc">
+            <input
+              id="settings-show-doc-toc"
+              type="checkbox"
+              :checked="showDocToc"
+              @change="onToggleShowDocToc(($event.target as HTMLInputElement).checked)"
+            />
+            <span>在文档上方显示目录</span>
+          </label>
+          <p class="field-hint">关闭后，预览正文顶部不再插入目录块；左侧大纲导航仍然可用。长文档目录占位较大时可关掉。</p>
+        </div>
       </section>
 
       <section class="settings-section" aria-labelledby="settings-tabs">
@@ -159,8 +191,12 @@ import { resolveEditorPaletteId } from '@types';
 import { FONT_SIZE_OPTIONS, SYSTEM_FONT_STACK, readingFontOptions } from '../electron/appearance';
 import {
   DEFAULT_MAX_OPEN_TABS,
+  DEFAULT_READING_WIDTH,
+  DEFAULT_SHOW_DOC_TOC,
   MAX_MAX_OPEN_TABS,
   MIN_MAX_OPEN_TABS,
+  READING_WIDTH_OPTIONS,
+  type ReadingWidth,
 } from '../electron/readerPrefs';
 import type { AppearanceState } from './electronBridge';
 
@@ -171,18 +207,31 @@ const props = withDefaults(
     copyOnSelect?: boolean;
     wordWrap?: boolean;
     maxOpenTabs?: number;
+    readingWidth?: ReadingWidth;
+    showDocToc?: boolean;
   }>(),
   {
     systemFonts: () => [],
     copyOnSelect: true,
     wordWrap: true,
     maxOpenTabs: DEFAULT_MAX_OPEN_TABS,
+    readingWidth: DEFAULT_READING_WIDTH,
+    showDocToc: DEFAULT_SHOW_DOC_TOC,
   }
 );
 
 const emit = defineEmits<{
   (e: 'update', patch: Partial<AppearanceState>): void;
-  (e: 'updateReader', patch: { copyOnSelect?: boolean; wordWrap?: boolean; maxOpenTabs?: number }): void;
+  (
+    e: 'updateReader',
+    patch: {
+      copyOnSelect?: boolean;
+      wordWrap?: boolean;
+      maxOpenTabs?: number;
+      readingWidth?: ReadingWidth;
+      showDocToc?: boolean;
+    }
+  ): void;
 }>();
 
 const minOpenTabs = MIN_MAX_OPEN_TABS;
@@ -254,6 +303,16 @@ function onToggleCopyOnSelect(checked: boolean): void {
 
 function onToggleWordWrap(checked: boolean): void {
   emit('updateReader', { wordWrap: checked });
+}
+
+const widthOptions = READING_WIDTH_OPTIONS;
+
+function onPickWidth(id: ReadingWidth): void {
+  emit('updateReader', { readingWidth: id });
+}
+
+function onToggleShowDocToc(checked: boolean): void {
+  emit('updateReader', { showDocToc: checked });
 }
 </script>
 
@@ -437,5 +496,37 @@ function onToggleWordWrap(checked: boolean): void {
   border-radius: var(--app-radius-md);
   background: var(--markly-background, #fff);
   line-height: 1.7;
+}
+.width-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+.width-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-md);
+  background: var(--markly-background, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.width-card:hover { border-color: var(--markly-primary, #0969da); }
+.width-card.selected {
+  border-color: var(--markly-primary, #0969da);
+  background: color-mix(in srgb, var(--markly-primary, #0969da) 10%, transparent);
+}
+.width-name {
+  font-size: 13px;
+  font-weight: 650;
+}
+.width-hint {
+  font-size: 11px;
+  color: var(--markly-textSecondary, #57606a);
+  line-height: 1.35;
 }
 </style>

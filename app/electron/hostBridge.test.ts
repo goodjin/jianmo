@@ -84,6 +84,26 @@ describe('createHostBridge.handleMessage', () => {
     expect(pv!.payload.html).toContain('正文段落');
   });
 
+  it('REQUEST_PREVIEW_HTML 可按偏好隐藏文档上方目录', async () => {
+    const withToc = makeBridge({
+      getCurrentContent: () => '# 甲\n\n## 乙\n\n正文。',
+      getShowDocToc: () => true,
+    });
+    await withToc.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} });
+    const htmlOn = (withToc.sent.find((m) => m.type === 'PREVIEW_HTML') as { payload: { html?: string } })
+      .payload.html!;
+    expect(htmlOn).toContain('class="toc"');
+
+    const noToc = makeBridge({
+      getCurrentContent: () => '# 甲\n\n## 乙\n\n正文。',
+      getShowDocToc: () => false,
+    });
+    await noToc.bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} });
+    const htmlOff = (noToc.sent.find((m) => m.type === 'PREVIEW_HTML') as { payload: { html?: string } })
+      .payload.html!;
+    expect(htmlOff).not.toContain('class="toc"');
+  });
+
   it('REQUEST_PREVIEW_HTML → 渲染抛错时发 PREVIEW_HTML(error)', async () => {
     const { bridge, sent } = makeBridge({ getCurrentContent: () => { throw new Error('boom'); } });
     await bridge.handleMessage({ type: 'REQUEST_PREVIEW_HTML', payload: {} });

@@ -115,7 +115,7 @@ describe('applyPreviewTheme', () => {
 
   it('正文与结构原样保留，并默认标上自动换行', () => {
     const out = applyPreviewTheme(HTML, DRACULA);
-    expect(out).toContain(`<body class="${PREVIEW_WRAP_CLASS}"><h1>标题</h1></body>`);
+    expect(out).toContain(`<body class="${PREVIEW_WRAP_CLASS} markly-width-full"><h1>标题</h1></body>`);
     expect(out.startsWith('<!DOCTYPE html>')).toBe(true);
   });
 
@@ -125,7 +125,7 @@ describe('applyPreviewTheme', () => {
       DRACULA,
       { wordWrap: false }
     );
-    expect(out).toContain(`class="markly-export-print-friendly ${PREVIEW_SCROLL_CLASS}"`);
+    expect(out).toContain(`class="markly-export-print-friendly ${PREVIEW_SCROLL_CLASS} markly-width-full"`);
     expect(out).not.toMatch(/<body[^>]*markly-wrap/);
   });
 

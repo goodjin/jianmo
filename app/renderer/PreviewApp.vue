@@ -6,6 +6,7 @@
       'files-collapsed': fileTreeCollapsed,
       'word-wrap': wordWrap,
       'is-resizing': filesResizing,
+      'focus-reading': focusReading,
     }"
   >
     <div ref="openSplitRef" class="open-rail">
@@ -83,8 +84,77 @@
       @new="onNewTab"
     >
       <template #tools>
+        <!-- 阅读导航组：非编辑 / 专注阅读时露出 -->
+        <template v-if="showReadingNav">
+          <button
+            class="chrome-btn tab-icon reading-flat"
+            type="button"
+            :disabled="!canNavBack"
+            title="后退（Alt+←）"
+            aria-label="后退"
+            @click="onNavBack"
+          >
+            <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M10.2 3.2 5.4 8l4.8 4.8" />
+            </svg>
+          </button>
+          <button
+            class="chrome-btn tab-icon reading-flat"
+            type="button"
+            :disabled="!canNavForward"
+            title="前进（Alt+→）"
+            aria-label="前进"
+            @click="onNavForward"
+          >
+            <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M5.8 3.2 10.6 8 5.8 12.8" />
+            </svg>
+          </button>
+          <button
+            class="chrome-btn tab-icon reading-flat"
+            type="button"
+            :class="{ active: searchUi.open }"
+            :disabled="isSettingsTab || editing || sourceOpen"
+            title="文内搜索（⌘/Ctrl+F）"
+            aria-label="文内搜索"
+            @click="toggleSearchBar"
+          >
+            <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.2" />
+              <path d="M10.2 10.2 13.5 13.5" />
+            </svg>
+          </button>
+          <button
+            v-if="hasOutline"
+            class="chrome-btn tab-icon reading-flat"
+            type="button"
+            :class="{ active: !outlineCollapsed }"
+            title="目录"
+            aria-label="目录"
+            @click="toggleOutline"
+          >
+            <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3 4.5h10M3 8h10M3 11.5h7" />
+            </svg>
+          </button>
+        </template>
         <button
-          v-if="editing"
+          class="chrome-btn tab-icon reading-flat"
+          type="button"
+          :class="{ active: focusReading }"
+          :disabled="isSettingsTab"
+          :title="focusReading ? '退出专注阅读' : '专注阅读'"
+          :aria-label="focusReading ? '退出专注阅读' : '专注阅读'"
+          :aria-pressed="focusReading"
+          @click="toggleFocusReading"
+        >
+          <svg class="chrome-glyph" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 3.5h11v9H2.5z" />
+            <path d="M5 6.5h6M5 9.5h4" />
+          </svg>
+        </button>
+        <button
+          v-if="editing && !focusReading"
           class="chrome-btn tab-icon tab-undo"
           type="button"
           :disabled="!canUndo"
@@ -98,7 +168,7 @@
           </svg>
         </button>
         <button
-          v-if="editing"
+          v-if="editing && !focusReading"
           class="chrome-btn tab-icon tab-redo"
           type="button"
           :disabled="!canRedo"
@@ -112,7 +182,7 @@
           </svg>
         </button>
         <button
-          v-if="editing"
+          v-if="editing && !focusReading"
           class="chrome-btn tab-save"
           type="button"
           :disabled="!activeDirty || saving"
@@ -121,6 +191,7 @@
           @click="onSave"
         >保存</button>
         <button
+          v-if="!focusReading"
           class="chrome-btn tab-source"
           type="button"
           :disabled="isSettingsTab"
@@ -140,6 +211,7 @@
           <span>{{ sourceLabel }}</span>
         </button>
         <button
+          v-if="!focusReading"
           class="chrome-btn tab-reload"
           type="button"
           :disabled="reloadDisabled"
@@ -148,6 +220,7 @@
           @click="onReload"
         >刷新</button>
         <button
+          v-if="!focusReading"
           class="chrome-btn tab-edit"
           type="button"
           :disabled="isSettingsTab"
@@ -165,6 +238,7 @@
         >
           <button
             class="chrome-btn tab-actions"
+            :class="{ 'reading-flat': focusReading }"
             type="button"
             :title="exportOpen ? '' : actionsTitle"
             aria-label="菜单"
@@ -250,6 +324,8 @@
         :copy-on-select="copyOnSelect"
         :word-wrap="wordWrap"
         :max-open-tabs="maxOpenTabs"
+        :reading-width="readingWidth"
+        :show-doc-toc="showDocToc"
         @update="onUpdateAppearance"
         @update-reader="onUpdateReader"
       />
@@ -341,8 +417,38 @@
         </div>
       </template>
       </div>
+      <div v-if="searchUi.open && !isSettingsTab && !editing && !sourceOpen" class="search-bar" role="search">
+        <input
+          ref="searchInputRef"
+          class="search-input"
+          type="search"
+          placeholder="在文档中查找…"
+          :value="searchUi.query"
+          aria-label="在文档中查找"
+          @input="onSearchInput"
+          @keydown="onSearchKeydown"
+        />
+        <span class="search-count" aria-live="polite">{{ searchCountLabel }}</span>
+        <button type="button" class="search-nav" title="上一个（Shift+Enter）" aria-label="上一个" @click="searchPrev">↑</button>
+        <button type="button" class="search-nav" title="下一个（Enter）" aria-label="下一个" @click="searchNext">↓</button>
+        <button type="button" class="search-nav" title="关闭（Esc）" aria-label="关闭搜索" @click="closeSearchBar">×</button>
+      </div>
       <p v-if="selectionToast" class="selection-toast" role="status">{{ selectionToast }}</p>
+      <footer v-if="showReadingStatus" class="reading-status" role="status">
+        <span class="reading-status-dot" aria-hidden="true"></span>
+        <span>{{ focusReading ? '专注阅读' : '预览' }}</span>
+        <span class="reading-status-sep">·</span>
+        <span>{{ readingWidthLabel }}</span>
+        <span v-if="activeFileSizeLabel" class="reading-status-sep">·</span>
+        <span v-if="activeFileSizeLabel">{{ activeFileSizeLabel }}</span>
+      </footer>
     </main>
+    <MermaidViewer
+      :open="mermaidOpen"
+      :svg="mermaidSvg"
+      :source="mermaidSource"
+      @close="closeMermaidViewer"
+    />
     <ClickBurstLayer />
   </div>
 </template>
@@ -377,7 +483,38 @@ import {
   scrollTopForSource,
   type PlaceAnchor,
 } from '../electron/viewPlace';
-import { DEFAULT_MAX_OPEN_TABS, readReaderPrefs } from '../electron/readerPrefs';
+import {
+  DEFAULT_MAX_OPEN_TABS,
+  DEFAULT_READING_WIDTH,
+  DEFAULT_SHOW_DOC_TOC,
+  READING_WIDTH_OPTIONS,
+  readReaderPrefs,
+  type ReadingWidth,
+} from '../electron/readerPrefs';
+import {
+  SEARCH_CLEAR,
+  SEARCH_FIND,
+  SEARCH_NEXT,
+  SEARCH_PREV,
+  emptySearchUi,
+  emptyTabSearch,
+  readSearchResult,
+  type SearchUiState,
+  type TabSearchState,
+} from './reading/documentSearch';
+import {
+  canNavBack as navCanBack,
+  canNavForward as navCanForward,
+  emptyNavState,
+  entryFromAnchor,
+  navBack,
+  navForward,
+  pushNavJump,
+  readNavJump,
+  type NavState,
+} from './reading/readingNav';
+import { readMermaidOpen } from './reading/mermaidViewer';
+import MermaidViewer from './MermaidViewer.vue';
 import {
   WELCOME_EMAIL,
   WELCOME_EMAIL_LABEL,
@@ -476,6 +613,16 @@ const copiedTick = ref(0);
 const copyOnSelect = ref(true);
 const wordWrap = ref(true);
 const maxOpenTabs = ref(DEFAULT_MAX_OPEN_TABS);
+const readingWidth = ref<ReadingWidth>(DEFAULT_READING_WIDTH);
+const showDocToc = ref(DEFAULT_SHOW_DOC_TOC);
+const focusReading = ref(false);
+const searchUi = ref<SearchUiState>(emptySearchUi());
+const searchInputRef = ref<HTMLInputElement | null>(null);
+const mermaidOpen = ref(false);
+const mermaidSvg = ref('');
+const mermaidSource = ref('');
+/** 进入专注阅读前是否收起了文件树，退出时还原。 */
+let focusSavedTreeCollapsed: boolean | null = null;
 const selectionToast = ref('');
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 let selectionToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -509,6 +656,8 @@ interface TabReading {
   source: boolean;
   editing: boolean;
   anchor: PlaceAnchor | null;
+  search: TabSearchState;
+  nav: NavState;
 }
 
 const readingByTab = new Map<string, TabReading>();
@@ -542,7 +691,15 @@ const editTitle = computed(() => {
 });
 
 function readingOf(id: string): TabReading {
-  return readingByTab.get(id) ?? { source: false, editing: false, anchor: null };
+  return (
+    readingByTab.get(id) ?? {
+      source: false,
+      editing: false,
+      anchor: null,
+      search: emptyTabSearch(),
+      nav: emptyNavState(),
+    }
+  );
 }
 
 function putReading(id: string, patch: Partial<TabReading>): void {
@@ -873,13 +1030,242 @@ const hasOutline = computed(
   () => !sourceOpen.value && isMarkdownFileName(activeFilePath.value) && outline.value.length > 0
 );
 
+const showReadingNav = computed(
+  () => !isSettingsTab.value && !editing.value && (!sourceOpen.value || focusReading.value)
+);
+const showReadingStatus = computed(
+  () => focusReading.value && !isSettingsTab.value && !editing.value && !sourceOpen.value
+);
+const readingWidthLabel = computed(() => {
+  const hit = READING_WIDTH_OPTIONS.find((o) => o.id === readingWidth.value);
+  return hit ? `宽度：${hit.label}` : '宽度：铺满';
+});
+const activeFileSizeLabel = computed(() => {
+  const n = markdownContent.value ? new Blob([markdownContent.value]).size : 0;
+  if (!activeFilePath.value || !n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+});
+const searchCountLabel = computed(() => {
+  if (!searchUi.value.query) return '';
+  if (searchUi.value.matchCount <= 0) return '无匹配';
+  return `${searchUi.value.activeIndex + 1}/${searchUi.value.matchCount}`;
+});
+const canNavBack = computed(() => navCanBack(readingOf(activeTabId.value).nav));
+const canNavForward = computed(() => navCanForward(readingOf(activeTabId.value).nav));
+
+function postToPreview(payload: Record<string, unknown>): void {
+  try {
+    frameRef.value?.contentWindow?.postMessage(payload, '*');
+  } catch {
+    /* ignore */
+  }
+}
+
+async function recordJumpThen(run: () => void, reason: 'outline' | 'search' | 'anchor' = 'outline'): Promise<void> {
+  const id = activeTabId.value;
+  if (!id || editing.value || sourceOpen.value) {
+    run();
+    return;
+  }
+  const from = entryFromAnchor(await capturePreviewAnchor(), 'restore');
+  run();
+  // 目标位置由 iframe MARKLY_NAV_JUMP 回报后再入栈；这里先记下「从哪来」
+  const pending = { from, reason };
+  (window as unknown as { __marklyPendingNav?: typeof pending }).__marklyPendingNav = pending;
+}
+
 function jumpToHeading(headingId: string): void {
   if (editing.value) {
     const item = outline.value.find((heading) => heading.id === headingId);
     if (item) editors.get(activeTabId.value)?.reveal(item.from);
     return;
   }
-  frameRef.value?.contentWindow?.postMessage({ type: 'SCROLL_TO_HEADING', headingId }, '*');
+  void recordJumpThen(() => {
+    postToPreview({ type: 'SCROLL_TO_HEADING', headingId });
+  }, 'outline');
+}
+
+function applyNavEntry(entry: { snippet: string; ratio: number } | null): void {
+  if (!entry) return;
+  postPreviewRestore({ snippet: entry.snippet, ratio: entry.ratio });
+}
+
+function onNavBack(): void {
+  const id = activeTabId.value;
+  if (!id || editing.value) return;
+  const cur = readingOf(id);
+  const next = navBack(cur.nav);
+  if (!next.entry) return;
+  putReading(id, { nav: next.state });
+  applyNavEntry(next.entry);
+}
+
+function onNavForward(): void {
+  const id = activeTabId.value;
+  if (!id || editing.value) return;
+  const cur = readingOf(id);
+  const next = navForward(cur.nav);
+  if (!next.entry) return;
+  putReading(id, { nav: next.state });
+  applyNavEntry(next.entry);
+}
+
+function syncSearchUiFromTab(): void {
+  const id = activeTabId.value;
+  if (!id || isSettingsTab.value) {
+    searchUi.value = emptySearchUi();
+    return;
+  }
+  const s = readingOf(id).search;
+  searchUi.value = {
+    open: s.open,
+    query: s.query,
+    matchCount: 0,
+    activeIndex: s.activeIndex,
+  };
+  if (s.open && s.query) {
+    void nextTick(() => postToPreview({ type: SEARCH_FIND, query: s.query }));
+  }
+}
+
+function persistSearchToTab(): void {
+  const id = activeTabId.value;
+  if (!id) return;
+  putReading(id, {
+    search: {
+      open: searchUi.value.open,
+      query: searchUi.value.query,
+      activeIndex: searchUi.value.activeIndex,
+    },
+  });
+}
+
+async function toggleSearchBar(): Promise<void> {
+  if (isSettingsTab.value || editing.value || sourceOpen.value) return;
+  if (searchUi.value.open) {
+    closeSearchBar();
+    return;
+  }
+  searchUi.value = { ...searchUi.value, open: true };
+  persistSearchToTab();
+  await nextTick();
+  searchInputRef.value?.focus();
+  searchInputRef.value?.select();
+}
+
+function closeSearchBar(): void {
+  searchUi.value = emptySearchUi();
+  persistSearchToTab();
+  postToPreview({ type: SEARCH_CLEAR });
+}
+
+function onSearchInput(ev: Event): void {
+  const query = (ev.target as HTMLInputElement).value;
+  searchUi.value = { ...searchUi.value, query, matchCount: 0, activeIndex: -1 };
+  persistSearchToTab();
+  postToPreview({ type: SEARCH_FIND, query });
+}
+
+function onSearchKeydown(ev: KeyboardEvent): void {
+  if (ev.key === 'Escape') {
+    ev.preventDefault();
+    closeSearchBar();
+    return;
+  }
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (ev.shiftKey) searchPrev();
+    else searchNext();
+  }
+}
+
+function searchNext(): void {
+  postToPreview({ type: SEARCH_NEXT });
+}
+
+function searchPrev(): void {
+  postToPreview({ type: SEARCH_PREV });
+}
+
+function toggleFocusReading(): void {
+  if (isSettingsTab.value) return;
+  if (focusReading.value) {
+    focusReading.value = false;
+    if (focusSavedTreeCollapsed !== null) {
+      fileTreeCollapsed.value = focusSavedTreeCollapsed;
+      focusSavedTreeCollapsed = null;
+      try {
+        electronApp()?.storeSet?.('fileTreeCollapsed', fileTreeCollapsed.value);
+      } catch {
+        /* ignore */
+      }
+    }
+  } else {
+    focusSavedTreeCollapsed = fileTreeCollapsed.value;
+    focusReading.value = true;
+    if (!fileTreeCollapsed.value) {
+      fileTreeCollapsed.value = true;
+      closeRecent();
+      try {
+        electronApp()?.storeSet?.('fileTreeCollapsed', true);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (editing.value) void leaveEdit();
+    if (sourceOpen.value) void toggleSource();
+  }
+  try {
+    electronApp()?.storeSet?.('focusReading', focusReading.value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function closeMermaidViewer(): void {
+  mermaidOpen.value = false;
+  mermaidSvg.value = '';
+  mermaidSource.value = '';
+}
+
+function onSearchResultMessage(ev: MessageEvent): void {
+  const frame = frameRef.value?.contentWindow;
+  if (!frame || ev.source !== frame) return;
+  const result = readSearchResult(ev.data);
+  if (!result) return;
+  searchUi.value = {
+    ...searchUi.value,
+    matchCount: result.matchCount,
+    activeIndex: result.activeIndex,
+  };
+  persistSearchToTab();
+}
+
+function onNavJumpMessage(ev: MessageEvent): void {
+  const frame = frameRef.value?.contentWindow;
+  if (!frame || ev.source !== frame) return;
+  const to = readNavJump(ev.data);
+  if (!to) return;
+  const id = activeTabId.value;
+  if (!id || editing.value || sourceOpen.value) return;
+  const pending = (window as unknown as { __marklyPendingNav?: { from: ReturnType<typeof entryFromAnchor>; reason: string } })
+    .__marklyPendingNav;
+  const from = pending?.from ?? entryFromAnchor(readingOf(id).anchor ?? { snippet: '', ratio: 0 }, 'restore');
+  (window as unknown as { __marklyPendingNav?: unknown }).__marklyPendingNav = undefined;
+  const next = pushNavJump(readingOf(id).nav, from, to);
+  putReading(id, { nav: next, anchor: { snippet: to.snippet, ratio: to.ratio } });
+}
+
+function onMermaidMessage(ev: MessageEvent): void {
+  const frame = frameRef.value?.contentWindow;
+  if (!frame || ev.source !== frame) return;
+  const payload = readMermaidOpen(ev.data);
+  if (!payload) return;
+  mermaidSvg.value = payload.svg;
+  mermaidSource.value = payload.source;
+  mermaidOpen.value = true;
 }
 
 const safeHtml = computed(() => buildPreviewSrcdoc(previewHtml.value));
@@ -922,6 +1308,7 @@ function applyTabsView(raw: unknown): void {
     clearReloadTipTimer();
   }
   syncSourceOpen();
+  if (switched) syncSearchUiFromTab();
   // 换标签时正文还是上一份，等 CONTENT_UPDATE 到了再接编辑器，避免把撤销步骤清掉。
   if (editing.value && !switched) void nextTick(() => syncEditor(false));
 }
@@ -972,10 +1359,14 @@ function refreshReaderPrefs(): void {
     copyOnSelect.value = prefs.copyOnSelect;
     wordWrap.value = prefs.wordWrap;
     maxOpenTabs.value = prefs.maxOpenTabs;
+    readingWidth.value = prefs.readingWidth;
+    showDocToc.value = prefs.showDocToc;
   } catch {
     copyOnSelect.value = true;
     wordWrap.value = true;
     maxOpenTabs.value = DEFAULT_MAX_OPEN_TABS;
+    readingWidth.value = DEFAULT_READING_WIDTH;
+    showDocToc.value = DEFAULT_SHOW_DOC_TOC;
   }
 }
 
@@ -983,18 +1374,30 @@ async function onUpdateReader(patch: {
   copyOnSelect?: boolean;
   wordWrap?: boolean;
   maxOpenTabs?: number;
+  readingWidth?: ReadingWidth;
+  showDocToc?: boolean;
 }): Promise<void> {
   const api = electronApp();
-  const apply = (prefs: { copyOnSelect: boolean; wordWrap: boolean; maxOpenTabs: number }): void => {
+  const apply = (prefs: {
+    copyOnSelect: boolean;
+    wordWrap: boolean;
+    maxOpenTabs: number;
+    readingWidth: ReadingWidth;
+    showDocToc: boolean;
+  }): void => {
     copyOnSelect.value = prefs.copyOnSelect;
     wordWrap.value = prefs.wordWrap;
     maxOpenTabs.value = prefs.maxOpenTabs;
+    readingWidth.value = prefs.readingWidth;
+    showDocToc.value = prefs.showDocToc;
   };
   if (!api?.updateReaderPrefs) {
     apply({
       copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
       wordWrap: patch.wordWrap ?? wordWrap.value,
       maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+      readingWidth: patch.readingWidth ?? readingWidth.value,
+      showDocToc: patch.showDocToc ?? showDocToc.value,
     });
   } else {
     try {
@@ -1005,10 +1408,16 @@ async function onUpdateReader(patch: {
         copyOnSelect: patch.copyOnSelect ?? copyOnSelect.value,
         wordWrap: patch.wordWrap ?? wordWrap.value,
         maxOpenTabs: patch.maxOpenTabs ?? maxOpenTabs.value,
+        readingWidth: patch.readingWidth ?? readingWidth.value,
+        showDocToc: patch.showDocToc ?? showDocToc.value,
       });
     }
   }
-  if (patch.wordWrap !== undefined) {
+  if (
+    patch.wordWrap !== undefined ||
+    patch.readingWidth !== undefined ||
+    patch.showDocToc !== undefined
+  ) {
     previewCache.clear();
     requestPreview();
   }
@@ -1280,8 +1689,40 @@ function onDocPointerDown(ev: MouseEvent): void {
 
 function onDocKeydown(ev: KeyboardEvent): void {
   if (ev.key === 'Escape') {
+    if (mermaidOpen.value) {
+      closeMermaidViewer();
+      ev.preventDefault();
+      return;
+    }
+    if (searchUi.value.open) {
+      closeSearchBar();
+      ev.preventDefault();
+      return;
+    }
     closeRecent();
     closeExportMenu();
+    return;
+  }
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod && !ev.altKey && (ev.key === 'f' || ev.key === 'F')) {
+    if (!isSettingsTab.value && !editing.value && !sourceOpen.value) {
+      ev.preventDefault();
+      void toggleSearchBar();
+    }
+    return;
+  }
+  if (ev.altKey && !mod && ev.key === 'ArrowLeft') {
+    if (showReadingNav.value && canNavBack.value) {
+      ev.preventDefault();
+      onNavBack();
+    }
+    return;
+  }
+  if (ev.altKey && !mod && ev.key === 'ArrowRight') {
+    if (showReadingNav.value && canNavForward.value) {
+      ev.preventDefault();
+      onNavForward();
+    }
   }
 }
 
@@ -1464,6 +1905,9 @@ function onFrameLoad(): void {
     const anchor = readingOf(activeTabId.value).anchor;
     if (!anchor || postPreviewRestore(anchor)) wantRestore = false;
   }
+  if (searchUi.value.open && searchUi.value.query && !sourceOpen.value && !editing.value) {
+    postToPreview({ type: SEARCH_FIND, query: searchUi.value.query });
+  }
   try {
     const doc = frame.contentDocument;
     if (!doc) return;
@@ -1596,6 +2040,9 @@ onMounted(() => {
   void refreshSystemFonts();
   refreshReaderPrefs();
   window.addEventListener('message', onSelectionCopyMessage);
+  window.addEventListener('message', onSearchResultMessage);
+  window.addEventListener('message', onNavJumpMessage);
+  window.addEventListener('message', onMermaidMessage);
   try {
     outlineCollapsed.value = electronApp()?.storeGet?.('outlineCollapsed') === true;
   } catch {
@@ -1605,6 +2052,15 @@ onMounted(() => {
     fileTreeCollapsed.value = electronApp()?.storeGet?.('fileTreeCollapsed') === true;
   } catch {
     fileTreeCollapsed.value = false;
+  }
+  try {
+    focusReading.value = electronApp()?.storeGet?.('focusReading') === true;
+    if (focusReading.value) {
+      focusSavedTreeCollapsed = fileTreeCollapsed.value;
+      if (!fileTreeCollapsed.value) fileTreeCollapsed.value = true;
+    }
+  } catch {
+    focusReading.value = false;
   }
   try {
     fileTreeWidth.value = readStoredFileTreeWidth(
@@ -1633,6 +2089,9 @@ onUnmounted(() => {
   offTabsChanged?.();
   for (const id of [...editors.keys()]) destroyEditor(id);
   window.removeEventListener('message', onSelectionCopyMessage);
+  window.removeEventListener('message', onSearchResultMessage);
+  window.removeEventListener('message', onNavJumpMessage);
+  window.removeEventListener('message', onMermaidMessage);
   window.removeEventListener('pointerdown', onDocPointerDown, true);
   document.removeEventListener('mousedown', onDocPointerDown);
   window.removeEventListener('keydown', onDocKeydown);
@@ -2364,4 +2823,79 @@ html, body, #app {
 }
 .status { padding: 24px; color: var(--markly-textSecondary, #666); }
 .status.error { color: var(--markly-error, #d33); }
+
+/* —— 文内搜索条 —— */
+.search-bar {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-md, 8px);
+  background: var(--markly-background, #fff);
+  box-shadow: 0 6px 18px rgba(31, 35, 40, 0.12);
+}
+.search-input {
+  width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--markly-border-color, #d0d7de);
+  border-radius: var(--app-radius-sm, 6px);
+  background: var(--markly-surface, #f6f8fa);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.search-count {
+  min-width: 52px;
+  font-size: 12px;
+  color: var(--markly-textSecondary, #57606a);
+  text-align: right;
+}
+.search-nav {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--app-radius-sm, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.search-nav:hover {
+  background: var(--markly-surfaceHover, #eaeef2);
+}
+
+/* —— 专注阅读底栏 —— */
+.reading-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 14px;
+  border-top: 1px solid var(--markly-border-color, #d0d7de);
+  background: color-mix(in srgb, var(--markly-surface, #f6f8fa) 88%, transparent);
+  color: var(--markly-textSecondary, #57606a);
+  font-size: 12px;
+}
+.reading-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+}
+.reading-status-sep {
+  opacity: 0.55;
+}
+.preview-area {
+  position: relative;
+}
+.markly-app.focus-reading .preview-area {
+  /* 底栏占位已在 footer 流式布局里 */
+}
+
 </style>

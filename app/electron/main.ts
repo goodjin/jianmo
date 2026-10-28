@@ -30,6 +30,8 @@ import {
 import { printHtmlToPdfFile } from './printPdf';
 import {
   DEFAULT_MAX_OPEN_TABS,
+  DEFAULT_READING_WIDTH,
+  DEFAULT_SHOW_DOC_TOC,
   normalizeReaderPatch,
   readReaderPrefs,
   type ReaderPrefs,
@@ -105,6 +107,8 @@ let readerPrefs: ReaderPrefs = {
   copyOnSelect: true,
   wordWrap: true,
   maxOpenTabs: DEFAULT_MAX_OPEN_TABS,
+  readingWidth: DEFAULT_READING_WIDTH,
+  showDocToc: DEFAULT_SHOW_DOC_TOC,
 };
 /** 查看时间。同一毫秒里连续打开也要分出先后。 */
 let viewClock = 0;
@@ -708,12 +712,17 @@ function updateReaderPrefs(raw: unknown): ReaderPrefs {
         copyOnSelect: readerPrefs.copyOnSelect,
         wordWrap: readerPrefs.wordWrap,
         maxOpenTabs: readerPrefs.maxOpenTabs,
+        readingWidth: readerPrefs.readingWidth,
+        showDocToc: readerPrefs.showDocToc,
       },
     });
     installAppMenu();
     if (patch.maxOpenTabs !== undefined) {
       tabLimitHold = false;
       scheduleTabLimit();
+    }
+    if (patch.readingWidth !== undefined || patch.showDocToc !== undefined || patch.wordWrap !== undefined) {
+      send({ type: 'CONFIG_CHANGE', payload: { config: appConfig } });
     }
   }
   return { ...readerPrefs };
@@ -1138,6 +1147,8 @@ app.whenReady().then(() => {
     },
     getPrefersDark: prefersDark,
     getWordWrap: () => readerPrefs.wordWrap,
+    getShowDocToc: () => readerPrefs.showDocToc,
+    getReadingWidth: () => readerPrefs.readingWidth,
   });
 
   // 主题设为 auto 时，系统明暗切换要即时反映到预览与外壳

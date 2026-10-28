@@ -60,6 +60,8 @@ export interface ElectronAppBridge {
     copyOnSelect?: boolean;
     wordWrap?: boolean;
     maxOpenTabs?: number;
+    readingWidth?: 'full' | 'standard' | 'wide' | 'fit';
+    showDocToc?: boolean;
   }) => Promise<unknown>;
   storeGet?: (key: string) => unknown;
   storeSet?: (key: string, val: unknown) => void;
