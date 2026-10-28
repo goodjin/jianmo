@@ -79,7 +79,8 @@ export function transformMermaidFencesForExport(html: string, markdown?: string)
     const safeDef = escapeMermaidDefinitionForHtmlText(definition);
     const alt = alts[idx - 1];
     const ariaLabel = alt?.length ? escapeAttr(alt) : escapeAttr('Mermaid 图表');
-    return `<div id="${id}" class="mermaid markly-mermaid-await" role="img" aria-roledescription="diagram" aria-label="${ariaLabel}" data-markly-mermaid-index="${idx}">${safeDef}</div>`;
+    const sourceAttr = escapeAttr(definition);
+    return `<div id="${id}" class="mermaid markly-mermaid-await" role="img" aria-roledescription="diagram" aria-label="${ariaLabel}" data-markly-mermaid-index="${idx}" data-markly-source="${sourceAttr}">${safeDef}</div>`;
   });
 }
 

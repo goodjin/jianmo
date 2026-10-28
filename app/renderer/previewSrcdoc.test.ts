@@ -106,16 +106,23 @@ describe('buildPreviewSrcdoc', () => {
     expect(visibleTextFromHtml(out)).not.toContain('TAIL_MARKER_LEAK');
     expect(visibleTextFromHtml(out)).toContain('正文');
 
-    // 注入脚本都在长脚本之后，没有插进包里面。位置脚本挂在最后，选择即复制仍完整且只有一份。
+    // 注入脚本都在长脚本之后，没有插进包里面。选择即复制仍完整且只有一份。
     const sel = doc.querySelector('script[data-markly-selection-copy]');
     const place = doc.querySelector('script[data-markly-place]');
+    const search = doc.querySelector('script[data-markly-search]');
+    const nav = doc.querySelector('script[data-markly-nav]');
+    const mermaid = doc.querySelector('script[data-markly-mermaid-viewer]');
     expect(sel).not.toBeNull();
     expect(place).not.toBeNull();
+    expect(search).not.toBeNull();
+    expect(nav).not.toBeNull();
+    expect(mermaid).not.toBeNull();
     expect(doc.querySelectorAll('script[data-markly-selection-copy]')).toHaveLength(1);
-    expect(doc.body.lastElementChild).toBe(place);
+    expect(doc.body.lastElementChild).toBe(mermaid);
     const children = [...doc.body.children];
     const libIndex = children.findIndex((el) => (el.textContent || '').includes('TAIL_MARKER_LEAK'));
     expect(children.indexOf(sel as Element)).toBeGreaterThan(libIndex);
+    expect(children.indexOf(place as Element)).toBeGreaterThan(libIndex);
     expect(sel?.textContent).toContain('MARKLY_SELECTION_COPY');
     expect(sel?.textContent).toContain('selectionchange');
   });

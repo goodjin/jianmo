@@ -188,6 +188,10 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(row).toBeTruthy();
     (row as HTMLElement).click();
 
+    // 跳转前先抓当前位置（PLACE_READ），约 100ms 超时后再发 SCROLL_TO_HEADING
+    await new Promise((r) => setTimeout(r, 130));
+    await flush();
+
     const headings = parseHeadings(markdown);
     expect(post).toHaveBeenCalledWith(
       { type: 'SCROLL_TO_HEADING', headingId: headingNodeId(headings[1], 2) },

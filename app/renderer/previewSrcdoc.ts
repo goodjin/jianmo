@@ -5,6 +5,9 @@
 import { selectionCopyRuntimeSource } from '../electron/selectionCopy';
 import { placeRuntimeSource } from '../electron/viewPlace';
 import { previewDropRuntimeSource } from './previewDrop';
+import { documentSearchRuntimeSource } from './reading/documentSearch';
+import { navJumpNotifyRuntimeSource } from './reading/readingNav';
+import { mermaidViewerRuntimeSource } from './reading/mermaidViewer';
 
 /** 正文可见文字（不含 script/style），用来核对选区是不是文档里的字。 */
 export function visibleTextFromHtml(html: string): string {
@@ -82,6 +85,24 @@ export function buildPreviewSrcdoc(html: string): string {
       place.setAttribute('data-markly-place', '1');
       place.textContent = placeRuntimeSource();
       host.appendChild(place);
+    }
+    if (!doc.querySelector('script[data-markly-search]')) {
+      const search = doc.createElement('script');
+      search.setAttribute('data-markly-search', '1');
+      search.textContent = documentSearchRuntimeSource();
+      host.appendChild(search);
+    }
+    if (!doc.querySelector('script[data-markly-nav]')) {
+      const nav = doc.createElement('script');
+      nav.setAttribute('data-markly-nav', '1');
+      nav.textContent = navJumpNotifyRuntimeSource();
+      host.appendChild(nav);
+    }
+    if (!doc.querySelector('script[data-markly-mermaid-viewer]')) {
+      const mermaid = doc.createElement('script');
+      mermaid.setAttribute('data-markly-mermaid-viewer', '1');
+      mermaid.textContent = mermaidViewerRuntimeSource();
+      host.appendChild(mermaid);
     }
     return doc.documentElement.outerHTML;
   } catch {

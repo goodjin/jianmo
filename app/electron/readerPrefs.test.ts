@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MAX_OPEN_TABS, MAX_MAX_OPEN_TABS, normalizeReaderPatch, readReaderPrefs } from './readerPrefs';
+import {
+  DEFAULT_MAX_OPEN_TABS,
+  DEFAULT_READING_WIDTH,
+  DEFAULT_SHOW_DOC_TOC,
+  MAX_MAX_OPEN_TABS,
+  normalizeReaderPatch,
+  readReaderPrefs,
+} from './readerPrefs';
 
 describe('readReaderPrefs', () => {
   it('没写过时默认开启选择即复制和自动换行', () => {
@@ -65,5 +72,28 @@ describe('normalizeReaderPatch', () => {
       copyOnSelect: false,
       maxOpenTabs: 6,
     });
+  });
+});
+
+
+describe('阅读宽度与文档目录开关', () => {
+  it('没写过时默认铺满且显示文档上方目录', () => {
+    expect(readReaderPrefs(undefined).readingWidth).toBe(DEFAULT_READING_WIDTH);
+    expect(readReaderPrefs(undefined).showDocToc).toBe(DEFAULT_SHOW_DOC_TOC);
+    expect(DEFAULT_READING_WIDTH).toBe('full');
+    expect(DEFAULT_SHOW_DOC_TOC).toBe(true);
+  });
+
+  it('能读出并规范化阅读宽度', () => {
+    expect(readReaderPrefs({ reader: { readingWidth: 'standard' } }).readingWidth).toBe('standard');
+    expect(readReaderPrefs({ readingWidth: 'wide' }).readingWidth).toBe('wide');
+    expect(readReaderPrefs({ readingWidth: 'nope' }).readingWidth).toBe('full');
+  });
+
+  it('能改阅读宽度与目录开关', () => {
+    expect(normalizeReaderPatch({ readingWidth: 'fit' })).toEqual({ readingWidth: 'fit' });
+    expect(normalizeReaderPatch({ showDocToc: false })).toEqual({ showDocToc: false });
+    expect(normalizeReaderPatch({ readingWidth: 'bad' })).toBeNull();
+    expect(normalizeReaderPatch({ showDocToc: 'no' })).toBeNull();
   });
 });
