@@ -544,7 +544,7 @@ describe('PreviewApp 顶栏与大纲', () => {
     const actionRule = previewAppSource.match(/\.tab-actions\s*\{[^}]+\}/)?.[0] ?? '';
     expect(actionRule).toMatch(/(?<![\w-])width:\s*28px/);
     expect(actionRule).toMatch(/padding:\s*0/);
-    expect(actionRule).toMatch(/border:\s*0/);
+    expect(actionRule).toMatch(/border:\s*1px\s+solid/);
     expect(actionRule).toMatch(/border-radius:\s*var\(--app-radius-pill\)/);
     expect(actionRule).not.toMatch(/width:\s*100%/);
     const splitRule = previewAppSource.match(/\.actions-split\s*\{[^}]+\}/)?.[0] ?? '';
@@ -563,8 +563,8 @@ describe('PreviewApp 顶栏与大纲', () => {
     expect(menuRule).not.toMatch(/border-top:\s*0/);
     expect(menuRule).toMatch(/border-radius:\s*var\(--app-radius-md\)/);
     expect(menuRule).toMatch(/box-shadow:/);
-    const openRule = previewAppSource.match(/\.tab-actions:hover,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions,\s*\.actions-split:has\(\.actions-menu\) \.tab-actions:hover\s*\{[^}]+\}/)?.[0] ?? '';
-    expect(openRule).toMatch(/background:\s*rgba\(31,\s*35,\s*40,\s*0\.08\)/);
+    const openRule = previewAppSource.match(/\.actions-split:has\(\.actions-menu\) \.tab-actions\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(openRule).toMatch(/background:\s*var\(--markly-surfaceHover/);
     expect(button.title).toBe('');
     expect(button.getAttribute('aria-label')).toBe('菜单');
 
