@@ -392,7 +392,7 @@ function onToggleWordWrap(checked: boolean): void {
 .theme-card:hover { border-color: var(--markly-primary, #0969da); }
 .theme-card.selected {
   border-color: var(--markly-primary, #0969da);
-  box-shadow: 0 0 0 1px var(--markly-primary, #0969da);
+  /* 选中描边 + 拟物凸起由 neumorphicButtons.css 合并处理 */
 }
 .theme-swatch {
   display: flex;

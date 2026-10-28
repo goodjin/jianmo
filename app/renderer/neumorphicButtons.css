@@ -1,0 +1,224 @@
+/**
+ * 桌面壳层拟物（neumorphic）按钮：统一凸起阴影 + 按下凹陷再弹起。
+ * 挂在 main.ts，覆盖工具栏 / 设置 / 最近打开 / 标签栏等所有壳层按钮。
+ * 选择器用 `.markly-app button.xxx`，压过 Vue scoped 的 `.xxx[data-v-…]`。
+ * 菜单行、文件树行保留扁平外观，只加按下反馈，避免密排列表被阴影撑乱。
+ * 系统「减少动效」时关掉位移与阴影过渡。
+ */
+
+.markly-app {
+  --neo-dark: rgba(163, 177, 198, 0.55);
+  --neo-light: rgba(255, 255, 255, 0.92);
+  --neo-raised:
+    3px 3px 7px var(--neo-dark),
+    -2px -2px 6px var(--neo-light);
+  --neo-hover:
+    4px 4px 9px var(--neo-dark),
+    -3px -3px 7px var(--neo-light);
+  --neo-pressed:
+    inset 3px 3px 6px var(--neo-dark),
+    inset -2px -2px 5px var(--neo-light);
+  --neo-press-ms: 140ms;
+}
+
+html[data-theme='dark'] .markly-app {
+  --neo-dark: rgba(0, 0, 0, 0.55);
+  --neo-light: rgba(255, 255, 255, 0.08);
+}
+
+/* —— 凸起的壳层操作按钮 —— */
+.markly-app button.chrome-btn,
+.markly-app button.file-icon-btn,
+.markly-app button.file-toggle,
+.markly-app button.tab-new,
+.markly-app button.tab-scroll,
+.markly-app button.doc-outline-toggle,
+.markly-app button.doc-copy,
+.markly-app button.recent-clear,
+.markly-app button.recent-icon,
+.markly-app button.recent-more,
+.markly-app button.font-picker-button,
+.markly-app button.theme-card,
+.markly-app button.tab-actions {
+  border-color: color-mix(in srgb, var(--markly-border-color, #d0d7de) 55%, transparent);
+  background: var(--markly-surface, #f6f8fa);
+  box-shadow: var(--neo-raised);
+  transition:
+    transform var(--neo-press-ms) ease-out,
+    box-shadow var(--neo-press-ms) ease-out,
+    background-color var(--neo-press-ms) ease-out,
+    border-color var(--neo-press-ms) ease-out,
+    color var(--neo-press-ms) ease-out;
+}
+
+.markly-app button.chrome-btn:hover:not(:disabled),
+.markly-app button.file-icon-btn:hover:not(:disabled),
+.markly-app button.file-toggle:hover:not(:disabled),
+.markly-app button.tab-new:hover,
+.markly-app button.tab-scroll:hover,
+.markly-app button.doc-outline-toggle:hover,
+.markly-app button.doc-copy:hover:not(:disabled),
+.markly-app button.recent-clear:hover:not(:disabled),
+.markly-app button.recent-icon:hover,
+.markly-app button.recent-more:hover:not(:disabled),
+.markly-app button.font-picker-button:hover,
+.markly-app button.theme-card:hover,
+.markly-app button.tab-actions:hover {
+  background: var(--markly-surfaceHover, #eaeef2);
+  box-shadow: var(--neo-hover);
+}
+
+.markly-app button.chrome-btn:active:not(:disabled),
+.markly-app button.file-icon-btn:active:not(:disabled),
+.markly-app button.file-toggle:active:not(:disabled),
+.markly-app button.tab-new:active,
+.markly-app button.tab-scroll:active,
+.markly-app button.doc-outline-toggle:active,
+.markly-app button.doc-copy:active:not(:disabled),
+.markly-app button.recent-clear:active:not(:disabled),
+.markly-app button.recent-icon:active,
+.markly-app button.recent-more:active:not(:disabled),
+.markly-app button.font-picker-button:active,
+.markly-app button.theme-card:active,
+.markly-app button.tab-actions:active {
+  transform: translateY(1px);
+  box-shadow: var(--neo-pressed);
+  background: var(--markly-surfaceHover, #eaeef2);
+}
+
+/* 打开是左右拼缝：只凹陷，不位移，避免接缝裂开。 */
+.markly-app button.chrome-btn.open-main:active,
+.markly-app button.chrome-btn.open-caret:active {
+  transform: none;
+}
+
+.markly-app button.chrome-btn.active,
+.markly-app button.file-hidden.is-on,
+.markly-app button.theme-card.selected,
+.markly-app button.recent-arrow.active {
+  box-shadow:
+    var(--neo-raised),
+    0 0 0 1px color-mix(in srgb, var(--markly-primary, #0969da) 55%, transparent);
+}
+
+.markly-app button.theme-card.selected {
+  box-shadow:
+    var(--neo-raised),
+    0 0 0 1px var(--markly-primary, #0969da);
+}
+
+.markly-app button.tab-copy.is-copied {
+  box-shadow: var(--neo-raised);
+}
+.markly-app button.tab-copy.is-copied:active:not(:disabled) {
+  box-shadow: var(--neo-pressed);
+}
+
+.markly-app button.chrome-btn:focus-visible,
+.markly-app button.file-icon-btn:focus-visible,
+.markly-app button.file-toggle:focus-visible,
+.markly-app button.tab-new:focus-visible,
+.markly-app button.tab-scroll:focus-visible,
+.markly-app button.tab-close:focus-visible,
+.markly-app button.tab-actions:focus-visible,
+.markly-app button.doc-outline-toggle:focus-visible,
+.markly-app button.doc-copy:focus-visible,
+.markly-app button.doc-outline-row:focus-visible,
+.markly-app button.action-item:focus-visible,
+.markly-app button.recent-clear:focus-visible,
+.markly-app button.recent-icon:focus-visible,
+.markly-app button.recent-more:focus-visible,
+.markly-app button.recent-main:focus-visible,
+.markly-app button.sibling-btn:focus-visible,
+.markly-app button.font-picker-button:focus-visible,
+.markly-app button.font-option:focus-visible,
+.markly-app button.theme-card:focus-visible,
+.markly-app button.tree-row:focus-visible,
+.markly-app .tree-menu button:focus-visible,
+.markly-app button.welcome-link:focus-visible {
+  outline: 2px solid var(--markly-primary, #0969da);
+  outline-offset: 2px;
+}
+
+/* 扁平菜单 / 列表行：只加按下凹陷与轻下沉。 */
+.markly-app button.action-item,
+.markly-app button.font-option,
+.markly-app .tree-menu button,
+.markly-app button.sibling-btn,
+.markly-app button.recent-main,
+.markly-app button.tree-row,
+.markly-app button.tab-close,
+.markly-app button.doc-outline-row,
+.markly-app button.welcome-link {
+  transition:
+    transform var(--neo-press-ms) ease-out,
+    box-shadow var(--neo-press-ms) ease-out,
+    background-color var(--neo-press-ms) ease-out,
+    color var(--neo-press-ms) ease-out,
+    opacity var(--neo-press-ms) ease-out;
+}
+
+.markly-app button.action-item:active:not(:disabled),
+.markly-app button.font-option:active,
+.markly-app .tree-menu button:active:not(:disabled),
+.markly-app button.sibling-btn:active,
+.markly-app button.recent-main:active,
+.markly-app button.tree-row:active,
+.markly-app button.tab-close:active,
+.markly-app button.doc-outline-row:active,
+.markly-app button.welcome-link:active {
+  transform: translateY(1px);
+  box-shadow: var(--neo-pressed);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markly-app button.chrome-btn,
+  .markly-app button.file-icon-btn,
+  .markly-app button.file-toggle,
+  .markly-app button.tab-new,
+  .markly-app button.tab-scroll,
+  .markly-app button.doc-outline-toggle,
+  .markly-app button.doc-copy,
+  .markly-app button.recent-clear,
+  .markly-app button.recent-icon,
+  .markly-app button.recent-more,
+  .markly-app button.font-picker-button,
+  .markly-app button.theme-card,
+  .markly-app button.tab-actions,
+  .markly-app button.action-item,
+  .markly-app button.font-option,
+  .markly-app .tree-menu button,
+  .markly-app button.sibling-btn,
+  .markly-app button.recent-main,
+  .markly-app button.tree-row,
+  .markly-app button.tab-close,
+  .markly-app button.doc-outline-row,
+  .markly-app button.welcome-link {
+    transition: none;
+  }
+
+  .markly-app button.chrome-btn:active,
+  .markly-app button.file-icon-btn:active,
+  .markly-app button.file-toggle:active,
+  .markly-app button.tab-new:active,
+  .markly-app button.tab-scroll:active,
+  .markly-app button.doc-outline-toggle:active,
+  .markly-app button.doc-copy:active,
+  .markly-app button.recent-clear:active,
+  .markly-app button.recent-icon:active,
+  .markly-app button.recent-more:active,
+  .markly-app button.font-picker-button:active,
+  .markly-app button.theme-card:active,
+  .markly-app button.tab-actions:active,
+  .markly-app button.action-item:active,
+  .markly-app button.font-option:active,
+  .markly-app .tree-menu button:active,
+  .markly-app button.sibling-btn:active,
+  .markly-app button.recent-main:active,
+  .markly-app button.tree-row:active,
+  .markly-app button.tab-close:active,
+  .markly-app button.doc-outline-row:active,
+  .markly-app button.welcome-link:active {
+    transform: none;
+  }
+}
